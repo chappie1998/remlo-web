@@ -7,7 +7,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import Header from "@/components/header";
-import { shortenAddress, formatDate, isValidPasscode } from "@/lib/utils";
+import { shortenAddress, formatDate, isValidPasscode, copyToClipboard } from "@/lib/utils";
 import { isValidSolanaAddress } from "@/lib/solana";
 
 interface Transaction {
@@ -205,8 +205,23 @@ export default function WalletDashboard() {
                   </p>
                 </div>
               </div>
-              <div className="bg-muted p-2 rounded break-all font-mono text-xs">
+              <div className="bg-muted p-2 rounded break-all font-mono text-xs relative group">
                 {session?.user?.solanaAddress || "Loading..."}
+                <button
+                  className="absolute right-2 top-2 text-xs bg-primary/10 text-primary px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity"
+                  onClick={async () => {
+                    if (session?.user?.solanaAddress) {
+                      const success = await copyToClipboard(session.user.solanaAddress);
+                      if (success) {
+                        toast.success("Address copied to clipboard");
+                      } else {
+                        toast.error("Failed to copy address");
+                      }
+                    }
+                  }}
+                >
+                  Copy
+                </button>
               </div>
               <p className="text-sm text-muted-foreground mt-2">
                 This is your Solana wallet address on {process.env.NEXT_PUBLIC_SOLANA_NETWORK || 'devnet'}.
@@ -280,14 +295,39 @@ export default function WalletDashboard() {
                       </div>
                       <p className="text-sm mt-1">{formatTxData(tx.txData)}</p>
                       {tx.signature && (
-                        <a
-                          href={`https://explorer.solana.com/tx/${tx.signature}?cluster=devnet`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-xs text-primary hover:underline mt-1 inline-block"
-                        >
-                          View on Explorer
-                        </a>
+                        <div className="flex space-x-2 mt-1">
+                          <a
+                            href={`https://explorer.solana.com/tx/${tx.signature}?cluster=${process.env.NEXT_PUBLIC_SOLANA_NETWORK || 'devnet'}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-xs text-primary hover:underline inline-block"
+                          >
+                            View on Explorer
+                          </a>
+                          <a
+                            href={`https://solscan.io/tx/${tx.signature}?cluster=${process.env.NEXT_PUBLIC_SOLANA_NETWORK || 'devnet'}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-xs text-primary hover:underline inline-block"
+                          >
+                            View on Solscan
+                          </a>
+                          <button
+                            className="text-xs text-primary hover:underline inline-block"
+                            onClick={async () => {
+                              if (tx.signature) {
+                                const success = await copyToClipboard(tx.signature);
+                                if (success) {
+                                  toast.success("Signature copied to clipboard");
+                                } else {
+                                  toast.error("Failed to copy signature");
+                                }
+                              }
+                            }}
+                          >
+                            Copy ID
+                          </button>
+                        </div>
                       )}
                     </div>
                   ))

@@ -37,3 +37,16 @@ export function formatDate(date: Date | string | number): string {
 export function isValidPasscode(passcode: string): boolean {
   return /^\d{6}$/.test(passcode);
 }
+
+/**
+ * Copies text to clipboard
+ */
+export async function copyToClipboard(text: string): Promise<boolean> {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch (error) {
+    console.error("Failed to copy:", error);
+    return false;
+  }
+}
