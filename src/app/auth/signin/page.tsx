@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, FormEvent } from "react";
+import { useState, FormEvent, useEffect } from "react";
 import { signIn } from "next-auth/react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
@@ -12,10 +12,45 @@ export default function SignIn() {
   const [otp, setOtp] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [step, setStep] = useState<"email" | "otp">("email");
+  const [simulatedOtp, setSimulatedOtp] = useState<string | null>(null);
   const router = useRouter();
   const searchParams = useSearchParams();
   const callbackUrl = searchParams.get("callbackUrl") || "/wallet";
   const error = searchParams.get("error");
+  const isDevelopment = process.env.NODE_ENV === "development";
+
+  // Function to fetch the simulated OTP in development mode
+  const fetchSimulatedOTP = async (emailAddress: string) => {
+    if (!isDevelopment) return;
+
+    try {
+      const response = await fetch(`/api/dev/get-otp?email=${encodeURIComponent(emailAddress)}`);
+      if (response.ok) {
+        const data = await response.json();
+        setSimulatedOtp(data.otp);
+      } else {
+        setSimulatedOtp(null);
+      }
+    } catch (error) {
+      console.error("Error fetching simulated OTP:", error);
+      setSimulatedOtp(null);
+    }
+  };
+
+  // Fetch the simulated OTP periodically in development mode
+  useEffect(() => {
+    if (!isDevelopment || step !== "otp" || !email) return;
+
+    // Fetch immediately
+    fetchSimulatedOTP(email);
+
+    // Then fetch every 2 seconds
+    const interval = setInterval(() => {
+      fetchSimulatedOTP(email);
+    }, 2000);
+
+    return () => clearInterval(interval);
+  }, [email, step, isDevelopment]);
 
   const handleRequestOTP = async (e: FormEvent) => {
     e.preventDefault();
@@ -39,6 +74,11 @@ export default function SignIn() {
       // Move to the OTP verification step
       setStep("otp");
       toast.success("OTP sent to your email");
+
+      // In development mode, fetch the simulated OTP
+      if (isDevelopment) {
+        fetchSimulatedOTP(email);
+      }
     } catch (error) {
       console.error("Error sending OTP:", error);
       toast.error(error instanceof Error ? error.message : "Failed to send OTP");
@@ -155,6 +195,14 @@ export default function SignIn() {
               </p>
             </div>
 
+            {/* Development mode OTP display */}
+            {isDevelopment && simulatedOtp && (
+              <div className="p-3 bg-blue-500/20 border border-blue-500/50 rounded text-center">
+                <p className="text-xs text-blue-400 mb-1">Development Mode - Simulated OTP</p>
+                <p className="text-lg font-mono tracking-widest">{simulatedOtp}</p>
+              </div>
+            )}
+
             <div className="space-y-3">
               <Button
                 type="submit"
@@ -180,6 +228,11 @@ export default function SignIn() {
                       body: JSON.stringify({ email }),
                     });
                     toast.success("New code sent to your email");
+
+                    // In development mode, fetch the new simulated OTP
+                    if (isDevelopment) {
+                      setTimeout(() => fetchSimulatedOTP(email), 1000);
+                    }
                   } catch (error) {
                     toast.error("Failed to send new code");
                   } finally {
@@ -197,6 +250,7 @@ export default function SignIn() {
                 onClick={() => {
                   setStep("email");
                   setOtp("");
+                  setSimulatedOtp(null);
                 }}
               >
                 Change Email
@@ -211,6 +265,11 @@ export default function SignIn() {
               ? "We'll send you a one-time verification code to your email."
               : "The code will expire in 10 minutes."}
           </p>
+          {isDevelopment && step === "email" && (
+            <p className="mt-2 text-blue-400 text-xs">
+              In development mode, you'll see the OTP on the next screen.
+            </p>
+          )}
         </div>
       </div>
 

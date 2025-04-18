@@ -1,40 +1,51 @@
 import { PrismaClient } from "@prisma/client";
-import { createTransport } from "nodemailer";
 
 const prisma = new PrismaClient();
+
+// Store OTPs in memory for simulation (this will be lost on server restart)
+const otpSimulationStore: Record<string, { otp: string; email: string; createdAt: Date }> = {};
 
 // Generate a random 6-digit OTP
 export function generateOTP(): string {
   return Math.floor(100000 + Math.random() * 900000).toString();
 }
 
-// Send email with OTP
+// Simulate sending email with OTP (log to console instead)
 export async function sendOTPEmail(email: string, otp: string): Promise<void> {
-  const transport = createTransport({
-    host: process.env.EMAIL_SERVER_HOST || "localhost",
-    port: Number(process.env.EMAIL_SERVER_PORT) || 1025,
-    auth: {
-      user: process.env.EMAIL_SERVER_USER || "",
-      pass: process.env.EMAIL_SERVER_PASSWORD || "",
-    },
-  });
+  // Store the OTP for simulation
+  otpSimulationStore[email] = {
+    otp,
+    email,
+    createdAt: new Date()
+  };
 
-  await transport.sendMail({
-    from: process.env.EMAIL_FROM || "noreply@solanawallet.app",
-    to: email,
-    subject: "Your Solana Wallet OTP",
-    text: `Your OTP for Solana Passcode Wallet is: ${otp}. It will expire in 10 minutes.`,
-    html: `
-      <div style="padding: 20px; background-color: #1e1e1e; color: #ffffff;">
-        <h2 style="color: #ffffff;">Your OTP for Solana Passcode Wallet</h2>
-        <div style="background-color: #2e2e2e; padding: 15px; border-radius: 5px; margin: 20px 0; text-align: center;">
-          <h1 style="font-size: 36px; margin: 10px 0; color: #ffffff;">${otp}</h1>
-        </div>
-        <p>This OTP will expire in 10 minutes.</p>
-        <p>If you didn't request this OTP, please ignore this email.</p>
-      </div>
-    `,
-  });
+  // Log the OTP to console for testing
+  console.log(`===== SIMULATED EMAIL =====`);
+  console.log(`To: ${email}`);
+  console.log(`Subject: Your Solana Wallet OTP`);
+  console.log(`Body: Your OTP for Solana Passcode Wallet is: ${otp}`);
+  console.log(`=========================`);
+
+  // In a real app, we would send an actual email here
+  // But for this simulation, we're just logging it
+}
+
+// Get the most recent simulated OTP for an email (for development purposes only)
+export function getSimulatedOTP(email: string): string | null {
+  const record = otpSimulationStore[email];
+  if (!record) return null;
+
+  // Check if OTP is older than 10 minutes
+  const tenMinutesAgo = new Date();
+  tenMinutesAgo.setMinutes(tenMinutesAgo.getMinutes() - 10);
+
+  if (record.createdAt < tenMinutesAgo) {
+    // OTP expired
+    delete otpSimulationStore[email];
+    return null;
+  }
+
+  return record.otp;
 }
 
 // Create a new OTP in the database
