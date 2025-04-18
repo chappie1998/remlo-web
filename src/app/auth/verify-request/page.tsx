@@ -26,17 +26,17 @@ export default function VerifyRequest() {
           </div>
           <h1 className="text-2xl font-bold">Check your email</h1>
           <p className="text-muted-foreground mt-2">
-            A sign in link has been sent to your email address.
+            A verification code has been sent to your email address.
             <br />
-            Click the link to sign in to your wallet.
+            Enter the 6-digit code to sign in to your wallet.
           </p>
         </div>
 
         <div className="space-y-4">
           <div className="p-4 bg-muted rounded-md text-sm">
             <p>
-              The link will expire in 24 hours. If you don't see the email, check
-              your spam folder.
+              The verification code will expire in 10 minutes. If you don't see the email, check
+              your spam folder or click the button below to request a new code.
             </p>
           </div>
 

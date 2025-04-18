@@ -17,11 +17,11 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
-      <body className={inter.className}>
+    <html lang="en" className="dark">
+      <body className={`${inter.className} bg-background text-foreground`}>
         <AuthProvider>
           {children}
-          <Toaster position="top-right" />
+          <Toaster position="top-right" richColors theme="dark" />
         </AuthProvider>
       </body>
     </html>

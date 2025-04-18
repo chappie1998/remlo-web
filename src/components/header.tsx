@@ -8,7 +8,7 @@ export default function Header() {
   const { data: session } = useSession();
 
   return (
-    <header className="border-b">
+    <header className="border-b bg-card">
       <div className="container mx-auto px-4 py-4 flex items-center justify-between">
         <div className="flex items-center space-x-4">
           <Link href="/" className="text-xl font-bold">
@@ -17,10 +17,10 @@ export default function Header() {
 
           {session && (
             <nav className="hidden md:flex items-center space-x-4 text-sm">
-              <Link href="/wallet" className="hover:text-primary">
+              <Link href="/wallet" className="hover:text-primary transition-colors">
                 My Wallet
               </Link>
-              <Link href="/about" className="hover:text-primary">
+              <Link href="/about" className="hover:text-primary transition-colors">
                 About
               </Link>
             </nav>
