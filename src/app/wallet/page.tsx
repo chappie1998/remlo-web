@@ -295,7 +295,15 @@ export default function WalletDashboard() {
                       </div>
                       <p className="text-sm mt-1">{formatTxData(tx.txData)}</p>
                       {tx.signature && (
-                        <div className="flex space-x-2 mt-1">
+                        <div className="flex flex-col space-y-1 mt-1">
+                          <a
+                            href={`https://solscan.io/tx/${tx.signature}?cluster=${process.env.NEXT_PUBLIC_SOLANA_NETWORK || 'devnet'}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-xs bg-primary/10 text-primary px-2 py-1 rounded hover:bg-primary/20 inline-flex items-center w-fit"
+                          >
+                            View on Solscan
+                          </a>
                           <a
                             href={`https://explorer.solana.com/tx/${tx.signature}?cluster=${process.env.NEXT_PUBLIC_SOLANA_NETWORK || 'devnet'}`}
                             target="_blank"
@@ -304,29 +312,6 @@ export default function WalletDashboard() {
                           >
                             View on Explorer
                           </a>
-                          <a
-                            href={`https://solscan.io/tx/${tx.signature}?cluster=${process.env.NEXT_PUBLIC_SOLANA_NETWORK || 'devnet'}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-xs text-primary hover:underline inline-block"
-                          >
-                            View on Solscan
-                          </a>
-                          <button
-                            className="text-xs text-primary hover:underline inline-block"
-                            onClick={async () => {
-                              if (tx.signature) {
-                                const success = await copyToClipboard(tx.signature);
-                                if (success) {
-                                  toast.success("Signature copied to clipboard");
-                                } else {
-                                  toast.error("Failed to copy signature");
-                                }
-                              }
-                            }}
-                          >
-                            Copy ID
-                          </button>
                         </div>
                       )}
                     </div>
