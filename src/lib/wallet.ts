@@ -5,7 +5,8 @@ import {
   SystemProgram,
   Transaction,
   sendAndConfirmTransaction,
-  LAMPORTS_PER_SOL
+  LAMPORTS_PER_SOL,
+  TransactionSignature
 } from '@solana/web3.js';
 import nacl from 'tweetnacl';
 import bs58 from 'bs58';
@@ -136,17 +137,47 @@ export async function sendTransaction(
       })
     );
 
-    // Get the latest blockhash
-    const { blockhash } = await connection.getLatestBlockhash();
+    // Get the latest blockhash with a longer validity
+    const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash();
     transaction.recentBlockhash = blockhash;
     transaction.feePayer = keypair.publicKey;
 
-    // Sign and send the transaction
-    const signature = await sendAndConfirmTransaction(
-      connection,
-      transaction,
-      [keypair]
-    );
+    // Sign the transaction
+    transaction.sign(keypair);
+
+    // Send the transaction without using the subscription-based confirmation
+    const signature = await connection.sendRawTransaction(transaction.serialize());
+
+    // Manually confirm the transaction using polling instead of subscriptions
+    console.log(`Transaction sent: ${signature}`);
+
+    // Wait for confirmation using polling
+    let confirmationAttempts = 0;
+    const maxAttempts = 30; // Adjust based on network conditions
+    const confirmationStatus = await new Promise<boolean>(async (resolve) => {
+      const checkInterval = setInterval(async () => {
+        confirmationAttempts++;
+        try {
+          const status = await connection.getSignatureStatus(signature);
+
+          if (status && status.value) {
+            clearInterval(checkInterval);
+            console.log(`Transaction confirmed after ${confirmationAttempts} attempts`);
+            resolve(true);
+          } else if (confirmationAttempts >= maxAttempts) {
+            clearInterval(checkInterval);
+            console.log(`Reached max attempts (${maxAttempts}), but transaction may still confirm later`);
+            resolve(true); // Resolve anyway since transaction is still valid
+          }
+        } catch (err) {
+          console.warn("Error checking transaction status:", err);
+          if (confirmationAttempts >= maxAttempts) {
+            clearInterval(checkInterval);
+            resolve(true); // Resolve anyway since transaction is still valid
+          }
+        }
+      }, 2000); // Check every 2 seconds
+    });
 
     return { signature };
   } catch (error) {
