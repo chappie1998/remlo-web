@@ -13,17 +13,41 @@ import bs58 from 'bs58';
 import { getSolanaConnection } from './solana';
 
 /**
- * Generate a keypair deterministically using email as entropy
- * In a real app, this would use more secure methods and better randomness
+ * Generate a keypair with strong entropy
+ * In a production environment, you would want to use hardware wallet integration
+ * or secure key generation capabilities
  */
 export function generateKeypair(email: string): Keypair {
-  // For demo purposes, we're using a deterministic approach
-  // In production, you would use a more secure method with proper entropy
+  // Create a secure random seed by combining multiple entropy sources
   const encoder = new TextEncoder();
-  const encodedEmail = encoder.encode(email);
 
-  // Hash the email to use as seed (32 bytes needed for ed25519 keypair)
-  const seed = nacl.hash(encodedEmail).slice(0, 32);
+  // User-specific entropy from email
+  const emailBytes = encoder.encode(email);
+
+  // Add timestamp as additional entropy
+  const timestamp = Date.now().toString();
+  const timestampBytes = encoder.encode(timestamp);
+
+  // Add browser/environment specific entropy if available
+  const randomValues = new Uint8Array(32);
+  // Use crypto.getRandomValues in browser or crypto.randomFillSync in Node
+  if (typeof crypto !== 'undefined' && crypto.getRandomValues) {
+    crypto.getRandomValues(randomValues);
+  } else {
+    // Fallback for environments without crypto
+    for (let i = 0; i < 32; i++) {
+      randomValues[i] = Math.floor(Math.random() * 256);
+    }
+  }
+
+  // Mix all entropy sources together
+  const combinedEntropy = new Uint8Array(emailBytes.length + timestampBytes.length + randomValues.length);
+  combinedEntropy.set(emailBytes, 0);
+  combinedEntropy.set(timestampBytes, emailBytes.length);
+  combinedEntropy.set(randomValues, emailBytes.length + timestampBytes.length);
+
+  // Hash the combined entropy to get a uniform seed
+  const seed = nacl.hash(combinedEntropy).slice(0, 32);
 
   // Generate the keypair from the seed
   const keypair = Keypair.fromSeed(seed);
@@ -49,44 +73,87 @@ export function stringToKeypair(keypairString: string): Keypair {
 
 /**
  * Encrypt a keypair with a passcode
- * Note: This is a simplified implementation for demo purposes
- * In a real app, use a proper encryption library
+ * Using authenticated encryption with TweetNaCl
  */
 export function encryptKeypair(keypair: Keypair, passcode: string): string {
   // Convert keypair to string format first
   const keypairString = keypairToString(keypair);
+  const keypairData = new TextEncoder().encode(keypairString);
 
-  // Create a simple hash of the passcode to use as a verification
-  // This is just for demo - in real apps, use proper encryption
+  // Derive a key from the passcode using PBKDF2 principles
+  // For simplicity, we'll use multiple rounds of hashing
+  // In production, use a proper PBKDF2 implementation
   const encoder = new TextEncoder();
-  const encodedPasscode = encoder.encode(passcode);
-  const passcodeHash = bs58.encode(nacl.hash(encodedPasscode).slice(0, 8));
+  let derivedKey = encoder.encode(passcode);
 
-  // Concatenate the keypair string and passcode hash with a separator
-  const encryptedKeypair = `${keypairString}_${passcodeHash}`;
+  // Multiple rounds of hashing to strengthen the key
+  for (let i = 0; i < 10000; i++) {
+    derivedKey = nacl.hash(derivedKey);
+  }
 
-  return encryptedKeypair;
+  // Use first 32 bytes as the encryption key
+  const encryptionKey = derivedKey.slice(0, 32);
+
+  // Generate a random nonce
+  const nonce = nacl.randomBytes(24);
+
+  // Encrypt the keypair data
+  const encryptedData = nacl.secretbox(keypairData, nonce, encryptionKey);
+
+  // Encode the encrypted data and nonce to bs58 for storage
+  const encryptedBS58 = bs58.encode(encryptedData);
+  const nonceBS58 = bs58.encode(nonce);
+
+  // Store a version identifier for future compatibility
+  return `v1:${encryptedBS58}:${nonceBS58}`;
 }
 
 /**
  * Decrypt a keypair with a passcode
  */
 export function decryptKeypair(encryptedKeypair: string, passcode: string): Keypair | null {
-  // Create the passcode hash to verify
-  const encoder = new TextEncoder();
-  const encodedPasscode = encoder.encode(passcode);
-  const passcodeHash = bs58.encode(nacl.hash(encodedPasscode).slice(0, 8));
+  try {
+    // Check the version and split the components
+    const parts = encryptedKeypair.split(':');
 
-  // Split the encrypted keypair by the separator
-  const [keypairString, storedHash] = encryptedKeypair.split('_');
+    if (parts.length !== 3 || parts[0] !== 'v1') {
+      console.error('Invalid encrypted keypair format');
+      return null;
+    }
 
-  // Verify the passcode hash
-  if (storedHash === passcodeHash) {
-    // If verified, convert the keypair string back to a Keypair
+    const [_, encryptedBS58, nonceBS58] = parts;
+
+    // Decode the encrypted data and nonce
+    const encryptedData = bs58.decode(encryptedBS58);
+    const nonce = bs58.decode(nonceBS58);
+
+    // Derive the key from the passcode (same process as encryption)
+    const encoder = new TextEncoder();
+    let derivedKey = encoder.encode(passcode);
+
+    // Multiple rounds of hashing to strengthen the key
+    for (let i = 0; i < 10000; i++) {
+      derivedKey = nacl.hash(derivedKey);
+    }
+
+    // Use first 32 bytes as the decryption key
+    const decryptionKey = derivedKey.slice(0, 32);
+
+    // Decrypt the data
+    const decryptedData = nacl.secretbox.open(encryptedData, nonce, decryptionKey);
+
+    if (!decryptedData) {
+      // Decryption failed - wrong passcode
+      return null;
+    }
+
+    // Convert the decrypted data back to a string and then to a keypair
+    const keypairString = new TextDecoder().decode(decryptedData);
     return stringToKeypair(keypairString);
+  } catch (error) {
+    console.error('Error decrypting keypair:', error);
+    return null;
   }
-
-  return null; // Passcode doesn't match
 }
 
 /**
