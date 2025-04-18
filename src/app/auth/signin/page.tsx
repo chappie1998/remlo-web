@@ -156,7 +156,7 @@ export default function SignIn() {
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                className="w-full p-2 rounded-md border focus:ring-2 focus:ring-primary"
+                className="w-full p-2 rounded-md border border-input bg-background text-foreground focus:ring-2 focus:ring-primary"
                 placeholder="your@email.com"
               />
             </div>
@@ -186,7 +186,7 @@ export default function SignIn() {
                 maxLength={6}
                 value={otp}
                 onChange={(e) => setOtp(e.target.value.replace(/[^0-9]/g, "").slice(0, 6))}
-                className="w-full p-2 text-center rounded-md border focus:ring-2 focus:ring-primary tracking-widest text-xl"
+                className="w-full p-2 text-center rounded-md border border-input bg-background text-foreground focus:ring-2 focus:ring-primary tracking-widest text-xl"
                 placeholder="000000"
                 autoFocus
               />

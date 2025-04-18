@@ -153,7 +153,7 @@ export default function WalletSetup() {
                 required
                 value={passcode}
                 onChange={(e) => setPasscode(e.target.value.replace(/[^0-9]/g, '').slice(0, 6))}
-                className="w-full p-2 rounded-md border focus:ring-2 focus:ring-primary text-center text-xl tracking-widest"
+                className="w-full p-2 rounded-md border border-input bg-background text-foreground focus:ring-2 focus:ring-primary text-center text-xl tracking-widest"
                 placeholder="******"
               />
               <p className="text-xs text-muted-foreground">
@@ -176,7 +176,7 @@ export default function WalletSetup() {
                 required
                 value={confirmPasscode}
                 onChange={(e) => setConfirmPasscode(e.target.value.replace(/[^0-9]/g, '').slice(0, 6))}
-                className="w-full p-2 rounded-md border focus:ring-2 focus:ring-primary text-center text-xl tracking-widest"
+                className="w-full p-2 rounded-md border border-input bg-background text-foreground focus:ring-2 focus:ring-primary text-center text-xl tracking-widest"
                 placeholder="******"
               />
             </div>
