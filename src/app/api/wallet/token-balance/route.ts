@@ -15,15 +15,36 @@ export async function GET(req: NextRequest) {
     }
 
     // Check if a solana address is assigned to the user
-    if (!session.user.solanaAddress) {
+    // Use a more robust check to handle null, undefined, or empty string
+    if (!session.user.solanaAddress || session.user.solanaAddress === "null") {
+      console.log("Wallet not set up for user:", session.user.email);
+      console.log("Session solanaAddress value:", session.user.solanaAddress);
+
       return NextResponse.json(
-        { error: "Wallet not set up" },
-        { status: 400 }
+        {
+          error: "Wallet not set up",
+          tokens: [], // Return empty tokens array to prevent errors in UI
+          debug: {
+            session: {
+              ...session,
+              // Redact any sensitive info
+              user: {
+                email: session.user.email,
+                hasWallet: !!session.user.solanaAddress,
+                hasPasscode: !!session.user.hasPasscode,
+              }
+            }
+          }
+        },
+        { status: 200 } // Return 200 instead of 400 to prevent error cycles
       );
     }
 
     const url = new URL(req.url);
     const tokenMint = url.searchParams.get("tokenMint");
+
+    // Log for debugging
+    console.log(`Fetching tokens for wallet: ${session.user.solanaAddress}`);
 
     if (tokenMint) {
       // Get a single token balance
@@ -46,7 +67,7 @@ export async function GET(req: NextRequest) {
         return {
           ...token,
           balance: balance.tokenAmount,
-          formattedBalance: balance.formattedAmount,
+          formattedAmount: balance.formattedAmount,
         };
       });
 
@@ -59,7 +80,7 @@ export async function GET(req: NextRequest) {
     console.error("Error fetching token balance:", error);
     const errorMessage = error instanceof Error ? error.message : "Failed to fetch token balance";
     return NextResponse.json(
-      { error: errorMessage },
+      { error: errorMessage, tokens: [] }, // Return empty tokens array to prevent errors in UI
       { status: 500 }
     );
   }

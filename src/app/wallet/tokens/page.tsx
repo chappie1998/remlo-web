@@ -50,12 +50,15 @@ export default function TokenWalletDashboard() {
   });
 
   useEffect(() => {
-    if (session?.user?.solanaAddress) {
+    // Only fetch data if we have a session with a Solana address
+    // and not already loading tokens
+    if (session?.user?.solanaAddress && !loadingTokens && status === "authenticated") {
+      console.log("Fetching token data for address:", session.user.solanaAddress);
       fetchTokens();
       fetchTransactions();
       checkRelayerStatus();
     }
-  }, [session]);
+  }, [session?.user?.solanaAddress, status]); // Only depend on the address and auth status
 
   // Handle authentication redirects using useEffect for client-side only execution
   useEffect(() => {
