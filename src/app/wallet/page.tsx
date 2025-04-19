@@ -28,8 +28,15 @@ export default function WalletDashboard() {
   const router = useRouter();
   const [showPasscodeModal, setShowPasscodeModal] = useState(false);
   const [passcode, setPasscode] = useState("");
-  const [recipient, setRecipient] = useState("");
-  const [amount, setAmount] = useState("");
+
+  // Separate state for SOL transfers
+  const [solRecipient, setSolRecipient] = useState("");
+  const [solAmount, setSolAmount] = useState("");
+
+  // Separate state for token transfers
+  const [tokenRecipient, setTokenRecipient] = useState("");
+  const [tokenAmount, setTokenAmount] = useState("");
+
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
   const [balance, setBalance] = useState("0.0");
@@ -181,9 +188,12 @@ export default function WalletDashboard() {
   };
 
   // Validate form inputs before proceeding
-  const validateSendForm = () => {
+  const validateSendForm = (isToken = false) => {
+    const recipient = isToken ? tokenRecipient : solRecipient;
+    const amount = isToken ? tokenAmount : solAmount;
+
     if (!recipient) {
-      setError("Recipient address is required");
+      setError(`Recipient address is required for ${isToken ? 'token' : 'SOL'} transfer`);
       return false;
     }
 
@@ -193,7 +203,7 @@ export default function WalletDashboard() {
     }
 
     if (!amount || isNaN(parseFloat(amount)) || parseFloat(amount) <= 0) {
-      setError("Enter a valid amount");
+      setError(`Enter a valid amount for ${isToken ? 'token' : 'SOL'} transfer`);
       return false;
     }
 
@@ -244,8 +254,8 @@ export default function WalletDashboard() {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          to: recipient,
-          amount,
+          to: isSendingToken ? tokenRecipient : solRecipient,
+          amount: isSendingToken ? tokenAmount : solAmount,
           passcode,
         }),
       });
@@ -261,8 +271,10 @@ export default function WalletDashboard() {
       toast.success("Transaction sent successfully!");
       setShowPasscodeModal(false);
       setPasscode("");
-      setRecipient("");
-      setAmount("");
+      setSolRecipient("");
+      setSolAmount("");
+      setTokenRecipient("");
+      setTokenAmount("");
 
       // Refresh balance and transactions
       fetchBalance();
@@ -301,7 +313,7 @@ export default function WalletDashboard() {
     setError("");
     setIsSendingToken(isToken);
 
-    if (validateSendForm()) {
+    if (validateSendForm(isToken)) {
       setShowPasscodeModal(true);
     }
   };
@@ -376,8 +388,8 @@ export default function WalletDashboard() {
                       type="text"
                       required
                       placeholder="Solana address (e.g., 3Dru...y149)"
-                      value={recipient}
-                      onChange={(e) => setRecipient(e.target.value)}
+                      value={solRecipient}
+                      onChange={(e) => setSolRecipient(e.target.value)}
                       className="w-full p-2 rounded-md border border-input bg-background text-foreground focus:ring-2 focus:ring-primary"
                     />
                   </div>
@@ -392,8 +404,8 @@ export default function WalletDashboard() {
                       inputMode="decimal"
                       required
                       placeholder="0.1"
-                      value={amount}
-                      onChange={(e) => setAmount(e.target.value)}
+                      value={solAmount}
+                      onChange={(e) => setSolAmount(e.target.value)}
                       className="w-full p-2 rounded-md border border-input bg-background text-foreground focus:ring-2 focus:ring-primary"
                     />
                   </div>
@@ -422,8 +434,8 @@ export default function WalletDashboard() {
                       type="text"
                       required
                       placeholder="Solana address (e.g., 3Dru...y149)"
-                      value={recipient}
-                      onChange={(e) => setRecipient(e.target.value)}
+                      value={tokenRecipient}
+                      onChange={(e) => setTokenRecipient(e.target.value)}
                       className="w-full p-2 rounded-md border border-input bg-background text-foreground focus:ring-2 focus:ring-primary"
                     />
                   </div>
@@ -441,8 +453,8 @@ export default function WalletDashboard() {
                       inputMode="decimal"
                       required
                       placeholder="10"
-                      value={amount}
-                      onChange={(e) => setAmount(e.target.value)}
+                      value={tokenAmount}
+                      onChange={(e) => setTokenAmount(e.target.value)}
                       className="w-full p-2 rounded-md border border-input bg-background text-foreground focus:ring-2 focus:ring-primary"
                     />
                   </div>
