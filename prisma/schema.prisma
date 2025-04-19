@@ -20,6 +20,7 @@ model User {
   image         String?
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
+  isAdmin       Boolean   @default(false)  // Whether the user is an admin
 
   // Account abstraction related fields
   solanaAddress    String?   @unique  // Public address (public key)

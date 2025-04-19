@@ -9,6 +9,17 @@ import Link from "next/link";
 import Header from "@/components/header";
 import { shortenAddress, formatDate, isValidPasscode, copyToClipboard } from "@/lib/utils";
 import { isValidSolanaAddress } from "@/lib/solana";
+import { DEVNET_TEST_TOKENS } from "@/lib/token";
+
+interface TokenData {
+  address: string;
+  symbol: string;
+  name: string;
+  decimals: number;
+  logoURI?: string;
+  balance: number;
+  formattedBalance: string;
+}
 
 interface Transaction {
   id: string;
@@ -18,19 +29,20 @@ interface Transaction {
   createdAt: string;
 }
 
-export default function WalletDashboard() {
+export default function TokenWalletDashboard() {
   const { data: session, status } = useSession();
   const router = useRouter();
   const [showPasscodeModal, setShowPasscodeModal] = useState(false);
   const [passcode, setPasscode] = useState("");
   const [recipient, setRecipient] = useState("");
   const [amount, setAmount] = useState("");
+  const [selectedToken, setSelectedToken] = useState<string | null>(null);
   const [useRelayer, setUseRelayer] = useState(true);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
-  const [balance, setBalance] = useState("0.0");
+  const [tokens, setTokens] = useState<TokenData[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
-  const [loadingBalance, setLoadingBalance] = useState(true);
+  const [loadingTokens, setLoadingTokens] = useState(true);
   const [relayerStatus, setRelayerStatus] = useState({
     initialized: false,
     publicKey: "",
@@ -39,26 +51,44 @@ export default function WalletDashboard() {
 
   useEffect(() => {
     if (session?.user?.solanaAddress) {
-      fetchBalance();
+      fetchTokens();
       fetchTransactions();
       checkRelayerStatus();
     }
   }, [session]);
 
-  const fetchBalance = async () => {
+  // Handle authentication redirects using useEffect for client-side only execution
+  useEffect(() => {
+    // If not authenticated, redirect to login
+    if (status === "unauthenticated") {
+      router.push("/auth/signin");
+    }
+
+    // If user doesn't have a wallet yet, redirect to setup
+    if (status === "authenticated" && !session?.user?.hasPasscode) {
+      router.push("/wallet/setup");
+    }
+  }, [status, session, router]);
+
+  const fetchTokens = async () => {
     try {
-      setLoadingBalance(true);
-      const response = await fetch("/api/wallet/balance");
+      setLoadingTokens(true);
+      const response = await fetch("/api/wallet/token-balance");
       const data = await response.json();
       if (response.ok) {
-        setBalance(data.formattedBalance);
+        setTokens(data.tokens || []);
+
+        // Select the first token by default
+        if (data.tokens?.length > 0 && !selectedToken) {
+          setSelectedToken(data.tokens[0].address);
+        }
       } else {
-        console.error("Failed to fetch balance:", data.error);
+        console.error("Failed to fetch tokens:", data.error);
       }
     } catch (error) {
-      console.error("Error fetching balance:", error);
+      console.error("Error fetching tokens:", error);
     } finally {
-      setLoadingBalance(false);
+      setLoadingTokens(false);
     }
   };
 
@@ -67,7 +97,16 @@ export default function WalletDashboard() {
       const response = await fetch("/api/wallet/transactions");
       if (response.ok) {
         const data = await response.json();
-        setTransactions(data.transactions || []);
+        // Filter transactions to show only token transfers
+        const tokenTxs = (data.transactions || []).filter((tx: Transaction) => {
+          try {
+            const txData = JSON.parse(tx.txData);
+            return !!txData.tokenMint; // Only include transactions with tokenMint
+          } catch {
+            return false;
+          }
+        });
+        setTransactions(tokenTxs);
       }
     } catch (error) {
       console.error("Error fetching transactions:", error);
@@ -107,6 +146,11 @@ export default function WalletDashboard() {
       return false;
     }
 
+    if (!selectedToken) {
+      setError("Please select a token");
+      return false;
+    }
+
     return true;
   };
 
@@ -137,10 +181,15 @@ export default function WalletDashboard() {
       return;
     }
 
+    if (!selectedToken) {
+      setError("Please select a token");
+      return;
+    }
+
     setIsLoading(true);
 
     try {
-      const response = await fetch("/api/wallet/send-transaction", {
+      const response = await fetch("/api/wallet/send-token-transaction", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -148,6 +197,7 @@ export default function WalletDashboard() {
         body: JSON.stringify({
           to: recipient,
           amount,
+          tokenMint: selectedToken,
           passcode,
           useRelayer,
         }),
@@ -159,14 +209,14 @@ export default function WalletDashboard() {
         throw new Error(data.error || "Transaction failed");
       }
 
-      toast.success("Transaction sent successfully!");
+      toast.success("Token transaction sent successfully!");
       setShowPasscodeModal(false);
       setPasscode("");
       setRecipient("");
       setAmount("");
 
-      // Refresh balance and transactions
-      fetchBalance();
+      // Refresh tokens and transactions
+      fetchTokens();
       fetchTransactions();
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : "Transaction failed";
@@ -181,6 +231,14 @@ export default function WalletDashboard() {
   const formatTxData = (txDataString: string) => {
     try {
       const txData = JSON.parse(txDataString);
+
+      // Check if it's a token transaction
+      if (txData.tokenMint) {
+        const token = tokens.find(t => t.address === txData.tokenMint);
+        const symbol = token?.symbol || "Unknown";
+        return `${txData.amount} ${symbol} to ${shortenAddress(txData.to)}`;
+      }
+
       return `${txData.amount} SOL to ${shortenAddress(txData.to)}`;
     } catch (e) {
       return "Unknown transaction";
@@ -197,6 +255,13 @@ export default function WalletDashboard() {
     }
   };
 
+  // Get the selected token data
+  const getSelectedTokenData = () => {
+    return tokens.find(token => token.address === selectedToken);
+  };
+
+  const selectedTokenData = getSelectedTokenData();
+
   return (
     <div className="min-h-screen flex flex-col">
       <Header />
@@ -204,12 +269,12 @@ export default function WalletDashboard() {
       {/* Main content */}
       <main className="flex-1 container mx-auto p-4 md:p-6">
         <div className="mb-6 flex items-center justify-between">
-          <h1 className="text-2xl font-bold">SOL Wallet</h1>
+          <h1 className="text-2xl font-bold">Token Wallet</h1>
           <div className="flex gap-2">
-            <Button variant="default" asChild>
+            <Button variant="outline" asChild>
               <Link href="/wallet">SOL Wallet</Link>
             </Button>
-            <Button variant="outline" asChild>
+            <Button variant="default" asChild>
               <Link href="/wallet/tokens">SPL Tokens</Link>
             </Button>
           </div>
@@ -221,12 +286,6 @@ export default function WalletDashboard() {
             <div className="p-6 border rounded-lg">
               <div className="flex justify-between items-start mb-4">
                 <h2 className="text-xl font-bold">Wallet Address</h2>
-                <div className="flex flex-col items-end">
-                  <p className="text-sm text-muted-foreground">Balance</p>
-                  <p className="text-xl font-bold">
-                    {loadingBalance ? "Loading..." : `${balance} SOL`}
-                  </p>
-                </div>
               </div>
               <div className="bg-muted p-2 rounded break-all font-mono text-xs relative group">
                 {session?.user?.solanaAddress || "Loading..."}
@@ -251,9 +310,67 @@ export default function WalletDashboard() {
               </p>
             </div>
 
+            {/* Token balances */}
             <div className="p-6 border rounded-lg">
-              <h2 className="text-xl font-bold mb-4">Send SOL</h2>
+              <h2 className="text-xl font-bold mb-4">Token Balances</h2>
+              {loadingTokens ? (
+                <p>Loading tokens...</p>
+              ) : tokens.length > 0 ? (
+                <div className="space-y-4">
+                  {tokens.map((token) => (
+                    <div key={token.address} className="flex items-center justify-between p-3 border rounded">
+                      <div className="flex items-center gap-3">
+                        {token.logoURI && (
+                          <img
+                            src={token.logoURI}
+                            alt={token.symbol}
+                            width={24}
+                            height={24}
+                            className="rounded-full"
+                          />
+                        )}
+                        <div>
+                          <div className="font-medium">{token.name}</div>
+                          <div className="text-sm text-muted-foreground">{token.symbol}</div>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <div className="font-medium">{token.formattedBalance}</div>
+                        <div className="text-sm text-muted-foreground">
+                          {shortenAddress(token.address)}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-muted-foreground">No tokens found.</p>
+              )}
+            </div>
+
+            <div className="p-6 border rounded-lg">
+              <h2 className="text-xl font-bold mb-4">Send Tokens</h2>
               <form onSubmit={handleSendFormSubmit} className="space-y-4">
+                <div className="space-y-2">
+                  <label htmlFor="token" className="text-sm font-medium">
+                    Select Token
+                  </label>
+                  <select
+                    id="token"
+                    required
+                    value={selectedToken || ""}
+                    onChange={(e) => setSelectedToken(e.target.value)}
+                    className="w-full p-2 rounded-md border border-input bg-background text-foreground focus:ring-2 focus:ring-primary"
+                  >
+                    <option value="">Select a token</option>
+                    {tokens.map((token) => (
+                      <option key={token.address} value={token.address}>
+                        {token.symbol} - {token.formattedBalance}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
                 <div className="space-y-2">
                   <label htmlFor="recipient" className="text-sm font-medium">
                     Recipient Address
@@ -271,7 +388,7 @@ export default function WalletDashboard() {
 
                 <div className="space-y-2">
                   <label htmlFor="amount" className="text-sm font-medium">
-                    Amount (SOL)
+                    Amount {selectedTokenData ? `(${selectedTokenData.symbol})` : ""}
                   </label>
                   <input
                     id="amount"
@@ -300,6 +417,12 @@ export default function WalletDashboard() {
                   </div>
                 )}
 
+                {error && (
+                  <div className="p-3 rounded bg-destructive/10 text-destructive text-sm">
+                    {error}
+                  </div>
+                )}
+
                 <Button type="submit" className="w-full">
                   Send Transaction
                 </Button>
@@ -307,29 +430,43 @@ export default function WalletDashboard() {
             </div>
           </div>
 
-          {/* Transaction history */}
-          <div className="md:col-span-1">
-            <div className="p-6 border rounded-lg h-full space-y-6">
-              {/* Relayer status */}
-              {relayerStatus.initialized && (
-                <div className="mb-6">
-                  <h2 className="text-lg font-bold mb-4">Relayer Status</h2>
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm font-medium">Status:</span>
-                      <span className="px-2 py-1 text-xs bg-green-100 text-green-800 rounded-full">
-                        Active
-                      </span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm font-medium">Balance:</span>
-                      <span>{relayerStatus.formattedBalance} SOL</span>
+          {/* Sidebar */}
+          <div className="md:col-span-1 space-y-6">
+            {/* Relayer status */}
+            <div className="p-6 border rounded-lg">
+              <h2 className="text-lg font-bold mb-4">Relayer Status</h2>
+              {relayerStatus.initialized ? (
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-medium">Status:</span>
+                    <span className="px-2 py-1 text-xs bg-green-100 text-green-800 rounded-full">
+                      Active
+                    </span>
+                  </div>
+                  <div className="space-y-1">
+                    <div className="text-sm text-muted-foreground">Relayer address:</div>
+                    <div className="font-mono text-xs bg-muted p-2 rounded break-all">
+                      {relayerStatus.publicKey}
                     </div>
                   </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-medium">Balance:</span>
+                    <span>{relayerStatus.formattedBalance} SOL</span>
+                  </div>
+                </div>
+              ) : (
+                <div className="text-center py-3">
+                  <div className="text-muted-foreground">Relayer not active</div>
+                  <p className="text-xs mt-2">
+                    The relayer is not initialized. Your transactions will use your own SOL for gas fees.
+                  </p>
                 </div>
               )}
+            </div>
 
-              <h2 className="text-xl font-bold mb-4">Transaction History</h2>
+            {/* Transaction history */}
+            <div className="p-6 border rounded-lg h-full">
+              <h2 className="text-lg font-bold mb-4">Token Transaction History</h2>
               <div className="space-y-3">
                 {transactions.length > 0 ? (
                   transactions.map((tx) => (
@@ -361,21 +498,13 @@ export default function WalletDashboard() {
                           >
                             View on Solscan
                           </a>
-                          <a
-                            href={`https://explorer.solana.com/tx/${tx.signature}?cluster=${process.env.NEXT_PUBLIC_SOLANA_NETWORK || 'devnet'}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-xs text-primary hover:underline inline-block"
-                          >
-                            View on Explorer
-                          </a>
                         </div>
                       )}
                     </div>
                   ))
                 ) : (
                   <p className="text-sm text-muted-foreground">
-                    No transactions yet.
+                    No token transactions yet.
                   </p>
                 )}
               </div>

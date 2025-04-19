@@ -1,13 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { PrismaClient } from "@prisma/client";
-import { LAMPORTS_PER_SOL, Transaction, SystemProgram } from "@solana/web3.js";
-import { sendTransaction } from "@/lib/wallet";
+import { Keypair, Transaction } from "@solana/web3.js";
 import { isValidPasscode } from "@/lib/utils";
-import { isValidSolanaAddress, getSolanaConnection } from "@/lib/solana";
+import { isValidSolanaAddress } from "@/lib/solana";
 import { decryptMnemonic, getKeypairFromMnemonic } from "@/lib/crypto";
 import { prepareMPCSigningKeypair } from "@/lib/mpc";
-import { isRelayerInitialized, sendGaslessTransaction } from "@/lib/relayer";
+import { getTokenDetails, createTokenTransferTransaction, parseTokenAmount } from "@/lib/token";
+import { isRelayerInitialized, createUserSplTokenTransaction, sendGaslessSplTokenTransaction } from "@/lib/relayer";
 import bs58 from "bs58";
 
 const prisma = new PrismaClient();
@@ -25,11 +25,11 @@ export async function POST(req: NextRequest) {
     }
 
     // Get transaction details and passcode from the request
-    const { to, amount, passcode, backupShare, recoveryShare, useRelayer } = await req.json();
+    const { to, amount, tokenMint, passcode, useRelayer, backupShare, recoveryShare } = await req.json();
 
-    if (!to || !amount) {
+    if (!to || !amount || !tokenMint) {
       return NextResponse.json(
-        { error: "Missing required fields: to, amount" },
+        { error: "Missing required fields: to, amount, tokenMint" },
         { status: 400 }
       );
     }
@@ -144,10 +144,13 @@ export async function POST(req: NextRequest) {
       keypair = getKeypairFromMnemonic(mnemonic);
     }
 
-    // Convert the amount from SOL to lamports
-    const amountInLamports = Math.floor(Number.parseFloat(amount) * LAMPORTS_PER_SOL);
+    // Get token details to parse the amount correctly
+    const tokenDetails = await getTokenDetails(tokenMint);
 
-    if (Number.isNaN(amountInLamports) || amountInLamports <= 0) {
+    // Parse the token amount based on decimals
+    const tokenAmount = parseTokenAmount(amount, tokenDetails.decimals);
+
+    if (isNaN(tokenAmount) || tokenAmount <= 0) {
       return NextResponse.json(
         { error: "Invalid amount" },
         { status: 400 }
@@ -157,7 +160,7 @@ export async function POST(req: NextRequest) {
     // Create a record of the transaction request
     const transaction = await prisma.transaction.create({
       data: {
-        txData: JSON.stringify({ to, amount }),
+        txData: JSON.stringify({ to, amount, tokenMint }),
         status: "pending",
         user: {
           connect: { id: user.id }
@@ -165,7 +168,7 @@ export async function POST(req: NextRequest) {
       },
     });
 
-    // Send the transaction - use relayer if requested and available
+    // Handle transaction based on whether to use the relayer or not
     try {
       let signature;
 
@@ -174,38 +177,50 @@ export async function POST(req: NextRequest) {
         console.log("Using relayer for gasless transaction");
 
         // Create a transaction for the user to sign
-        const connection = getSolanaConnection();
-        const unsignedTx = new Transaction().add(
-          SystemProgram.transfer({
-            fromPubkey: keypair.publicKey,
-            toPubkey: to,
-            lamports: amountInLamports,
-          })
+        const unsignedTx = await createUserSplTokenTransaction(
+          tokenMint,
+          user.solanaAddress,
+          to,
+          tokenAmount
         );
 
-        // Get the latest blockhash
-        const { blockhash } = await connection.getLatestBlockhash();
-        unsignedTx.recentBlockhash = blockhash;
-        unsignedTx.feePayer = keypair.publicKey;
-
-        // Sign the transaction
+        // Sign the transaction with the user's keypair
         unsignedTx.sign(keypair);
 
-        // Serialize the transaction to send to the relayer
+        // Serialize the signed transaction
         const serializedTx = bs58.encode(unsignedTx.serialize());
 
-        // Send via the relayer
-        const result = await sendGaslessTransaction(
-          unsignedTx,
-          serializedTx,
-          user.solanaAddress
+        // Send the transaction via the relayer
+        const result = await sendGaslessSplTokenTransaction(
+          tokenMint,
+          user.solanaAddress,
+          to,
+          tokenAmount,
+          serializedTx
         );
 
         signature = result.signature;
       } else {
-        // Standard transaction flow (user pays gas)
-        const result = await sendTransaction(keypair, to, amountInLamports);
-        signature = result.signature;
+        // Standard transaction flow where user pays gas
+        console.log("Using standard transaction flow (user pays gas)");
+
+        // Create token transfer transaction
+        const tx = await createTokenTransferTransaction(
+          keypair,
+          tokenMint,
+          to,
+          tokenAmount
+        );
+
+        // Sign and send the transaction
+        tx.sign(keypair);
+
+        // Send the transaction
+        const connection = await import("@/lib/solana").then(m => m.getSolanaConnection());
+        signature = await connection.sendRawTransaction(tx.serialize());
+
+        // Wait for confirmation
+        await connection.confirmTransaction(signature);
       }
 
       // Update the transaction record with the executed status and signature
@@ -221,7 +236,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({
         success: true,
         signature,
-        message: "Transaction sent successfully",
+        message: "Token transaction sent successfully",
       });
     } catch (txError) {
       // Update the transaction record with the rejected status
@@ -240,7 +255,7 @@ export async function POST(req: NextRequest) {
       );
     }
   } catch (error) {
-    console.error("Error sending transaction:", error);
+    console.error("Error sending token transaction:", error);
     const errorMessage = error instanceof Error ? error.message : "Failed to send transaction";
     return NextResponse.json(
       { error: errorMessage },

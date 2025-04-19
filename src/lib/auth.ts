@@ -1,12 +1,17 @@
 import { NextAuthOptions } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
+import EmailProvider from "next-auth/providers/email";
 import { PrismaAdapter } from "@auth/prisma-adapter";
 import { PrismaClient } from "@prisma/client";
+import type { Adapter } from "next-auth/adapters";
 
 const prisma = new PrismaClient();
 
+// List of admin email addresses
+const ADMIN_EMAILS = ['admin@example.com']; // Add actual admin emails here
+
 export const authOptions: NextAuthOptions = {
-  adapter: PrismaAdapter(prisma),
+  adapter: PrismaAdapter(prisma) as Adapter,
   providers: [
     CredentialsProvider({
       id: "otp-login",
@@ -69,7 +74,22 @@ export const authOptions: NextAuthOptions = {
         }
       },
     }),
+    EmailProvider({
+      server: {
+        host: process.env.EMAIL_SERVER_HOST as string,
+        port: Number(process.env.EMAIL_SERVER_PORT),
+        auth: {
+          user: process.env.EMAIL_SERVER_USER as string,
+          pass: process.env.EMAIL_SERVER_PASSWORD as string,
+        },
+      },
+      from: process.env.EMAIL_FROM,
+    }),
   ],
+  pages: {
+    signIn: "/auth/signin",
+    verifyRequest: "/auth/verify-request",
+  },
   callbacks: {
     jwt: async ({ token, user }) => {
       if (user) {
@@ -96,16 +116,20 @@ export const authOptions: NextAuthOptions = {
           solanaAddress: userData?.solanaAddress || null,
           hasPasscode: userData?.hasPasscode || false,
         };
+
+        // Check if user is an admin
+        if (userData?.email && ADMIN_EMAILS.includes(userData.email)) {
+          session.user.isAdmin = true;
+        } else {
+          session.user.isAdmin = false;
+        }
       }
       return session;
     },
-  },
-  pages: {
-    signIn: "/auth/signin",
-    verifyRequest: "/auth/verify-request",
   },
   session: {
     strategy: "jwt",
     maxAge: 30 * 24 * 60 * 60, // 30 days
   },
+  secret: process.env.NEXTAUTH_SECRET,
 };

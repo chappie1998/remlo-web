@@ -8,33 +8,27 @@ export default function Header() {
   const { data: session } = useSession();
 
   return (
-    <header className="border-b bg-card">
-      <div className="container mx-auto px-4 py-4 flex items-center justify-between">
-        <div className="flex items-center space-x-4">
-          <Link href="/" className="text-xl font-bold">
-            Solana Passcode Wallet
-          </Link>
-
-          {session && (
-            <nav className="hidden md:flex items-center space-x-4 text-sm">
-              <Link href="/wallet" className="hover:text-primary transition-colors">
-                My Wallet
-              </Link>
-              <Link href="/about" className="hover:text-primary transition-colors">
-                About
-              </Link>
-            </nav>
-          )}
-        </div>
-
-        <div className="flex items-center space-x-2">
+    <header className="border-b py-3">
+      <div className="container mx-auto px-4 flex justify-between items-center">
+        <Link href="/" className="font-bold text-xl">
+          Solana Passcode Wallet
+        </Link>
+        <div className="flex items-center gap-4">
           {session ? (
             <>
-              <span className="text-sm text-muted-foreground hidden md:inline-block mr-2">
-                {session.user?.email || ""}
-              </span>
+              {session.user?.isAdmin && (
+                <Link href="/admin/relayer" className="text-primary hover:underline text-sm">
+                  Admin
+                </Link>
+              )}
+              <Link
+                href="/wallet"
+                className="text-foreground hover:text-foreground/80"
+              >
+                My Wallet
+              </Link>
               <Button
-                variant="outline"
+                variant="ghost"
                 size="sm"
                 onClick={() => signOut({ callbackUrl: "/" })}
               >
@@ -42,9 +36,12 @@ export default function Header() {
               </Button>
             </>
           ) : (
-            <Button asChild size="sm">
-              <Link href="/auth/signin">Sign In</Link>
-            </Button>
+            <Link
+              href="/auth/signin"
+              className="text-foreground hover:text-foreground/80"
+            >
+              Sign In
+            </Link>
           )}
         </div>
       </div>
