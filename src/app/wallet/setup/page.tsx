@@ -14,24 +14,15 @@ export default function WalletSetup() {
   const [confirmPasscode, setConfirmPasscode] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
-  const [step, setStep] = useState(1); // 1 = create passcode, 2 = view mnemonic, 3 = verify mnemonic, 4 = success
+  const [step, setStep] = useState(1); // 1 = create passcode, 2 = backup info, 3 = success
   const [solanaAddress, setSolanaAddress] = useState("");
-  const [mnemonic, setMnemonic] = useState("");
-  const [mnemonicConfirmation, setMnemonicConfirmation] = useState("");
-  const [isShowingMnemonic, setIsShowingMnemonic] = useState(false);
+  const [backupShare, setBackupShare] = useState("");
   const router = useRouter();
   const { data: session, update } = useSession();
 
-  // Generate a mnemonic when the component mounts
-  useEffect(() => {
-    if (!mnemonic) {
-      setMnemonic(generateMnemonic());
-    }
-  }, [mnemonic]);
-
   // Handle redirect if user already has wallet (in client-side only)
   useEffect(() => {
-    if (session?.user?.solanaAddress && step !== 4) {
+    if (session?.user?.solanaAddress && step !== 3) {
       router.push("/wallet");
     }
   }, [session, step, router]);
@@ -50,28 +41,8 @@ export default function WalletSetup() {
       return;
     }
 
-    // Move to mnemonic step
-    setStep(2);
-  };
-
-  const handleMnemonicConfirm = () => {
-    setIsShowingMnemonic(false);
-    setStep(3);
-  };
-
-  const handleVerifyMnemonic = (e: React.FormEvent) => {
-    e.preventDefault();
-
-    // Clean up whitespace and compare
-    const cleanedOriginal = mnemonic.trim().toLowerCase();
-    const cleanedConfirmation = mnemonicConfirmation.trim().toLowerCase();
-
-    if (cleanedOriginal !== cleanedConfirmation) {
-      setError("The recovery phrase you entered doesn't match. Please try again.");
-      return;
-    }
-
-    // If mnemonic is correct, proceed with wallet setup
+    // With MPC approach, we don't need the mnemonic step
+    // We can directly set up the wallet
     setupWallet();
   };
 
@@ -87,7 +58,6 @@ export default function WalletSetup() {
         },
         body: JSON.stringify({
           passcode,
-          mnemonic
         }),
       });
 
@@ -103,10 +73,13 @@ export default function WalletSetup() {
         solanaAddress: data.solanaAddress
       });
 
-      // Move to success state
-      setStep(4);
+      // Store info for the success screen
       setSolanaAddress(data.solanaAddress);
-      toast.success("Wallet set up successfully!");
+      setBackupShare(data.backupShare);
+
+      // Move to backup share information
+      setStep(2);
+      toast.success("Wallet created successfully!");
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : "Failed to set up wallet";
       setError(errorMessage);
@@ -116,8 +89,13 @@ export default function WalletSetup() {
     }
   };
 
+  const handleBackupConfirm = () => {
+    // Move to success state
+    setStep(3);
+  };
+
   // If user already has a wallet, show loading until client-side redirect happens
-  if (session?.user?.solanaAddress && step !== 4) {
+  if (session?.user?.solanaAddress && step !== 3) {
     return (
       <div className="flex min-h-screen flex-col items-center justify-center p-4">
         <p>Redirecting to wallet...</p>
@@ -193,8 +171,9 @@ export default function WalletSetup() {
             <Button
               type="submit"
               className="w-full"
+              disabled={isLoading}
             >
-              Continue
+              {isLoading ? "Creating Wallet..." : "Create My Wallet"}
             </Button>
           </form>
 
@@ -209,103 +188,44 @@ export default function WalletSetup() {
     );
   }
 
-  // Step 2: View secret recovery phrase
+  // Step 2: Backup share information
   if (step === 2) {
     return (
       <div className="flex min-h-screen flex-col items-center justify-center p-4">
         <div className="w-full max-w-md p-8 space-y-8 bg-card rounded-lg border">
           <div className="text-center">
-            <h1 className="text-2xl font-bold">Save Your Recovery Phrase</h1>
+            <h1 className="text-2xl font-bold">Save Your Backup Share</h1>
             <p className="text-muted-foreground mt-2">
-              This secret recovery phrase is the only way to recover your wallet if you lose access.
+              This backup share is critical for recovering your wallet if you lose your passcode.
               Write it down and keep it in a secure location.
             </p>
           </div>
 
-          <div className="p-4 bg-muted/50 border rounded-md relative">
-            <div className={`absolute inset-0 bg-card/80 backdrop-blur-sm flex flex-col items-center justify-center ${isShowingMnemonic ? 'hidden' : ''}`}>
-              <p className="text-sm font-medium mb-3">Make sure no one can see your screen</p>
-              <Button
-                onClick={() => setIsShowingMnemonic(true)}
-                variant="outline"
-              >
-                Show Recovery Phrase
-              </Button>
-            </div>
-            <div className="font-mono text-center break-words text-sm p-3">
-              {mnemonic}
+          <div className="p-4 bg-muted/50 border rounded-md">
+            <p className="font-medium mb-2 text-sm">Your Backup Share:</p>
+            <div className="font-mono text-center break-words text-sm p-3 border bg-background">
+              {backupShare}
             </div>
           </div>
 
           <div className="p-4 border-l-4 border-amber-500 bg-amber-50 dark:bg-amber-950/20 rounded">
             <p className="text-sm text-amber-800 dark:text-amber-200">
-              <strong>IMPORTANT:</strong> Never share this phrase with anyone. Anyone with this phrase can access your wallet.
+              <strong>IMPORTANT:</strong> Never share this backup information with anyone. Anyone with this share and your passcode can access your wallet.
             </p>
           </div>
 
           <Button
-            onClick={handleMnemonicConfirm}
+            onClick={handleBackupConfirm}
             className="w-full"
-            disabled={!isShowingMnemonic}
           >
-            I've Saved My Recovery Phrase
+            I've Saved My Backup Share
           </Button>
         </div>
       </div>
     );
   }
 
-  // Step 3: Verify secret recovery phrase
-  if (step === 3) {
-    return (
-      <div className="flex min-h-screen flex-col items-center justify-center p-4">
-        <div className="w-full max-w-md p-8 space-y-8 bg-card rounded-lg border">
-          <div className="text-center">
-            <h1 className="text-2xl font-bold">Verify Your Recovery Phrase</h1>
-            <p className="text-muted-foreground mt-2">
-              Please enter your 12-word recovery phrase to confirm you've saved it correctly.
-            </p>
-          </div>
-
-          {error && (
-            <div className="p-3 rounded bg-destructive/10 text-destructive text-sm">
-              {error}
-            </div>
-          )}
-
-          <form onSubmit={handleVerifyMnemonic} className="space-y-6">
-            <div className="space-y-2">
-              <label
-                htmlFor="mnemonic-confirm"
-                className="text-sm font-medium"
-              >
-                Your Recovery Phrase
-              </label>
-              <textarea
-                id="mnemonic-confirm"
-                required
-                rows={3}
-                value={mnemonicConfirmation}
-                onChange={(e) => setMnemonicConfirmation(e.target.value)}
-                className="w-full p-3 rounded-md border border-input bg-background text-foreground focus:ring-2 focus:ring-primary font-mono text-sm resize-none"
-                placeholder="Enter all 12 or 24 words, separated by spaces"
-              />
-            </div>
-
-            <Button
-              type="submit"
-              className="w-full"
-              disabled={isLoading}
-            >
-              {isLoading ? "Creating Wallet..." : "Create My Wallet"}
-            </Button>
-          </form>
-        </div>
-      </div>
-    );
-  }
-
-  // Step 4: Success state
+  // Step 3: Success state
   return (
     <div className="flex min-h-screen flex-col items-center justify-center p-4">
       <div className="w-full max-w-md p-8 space-y-8 bg-card rounded-lg border">
@@ -328,7 +248,8 @@ export default function WalletSetup() {
 
         <div className="space-y-2">
           <p className="text-sm text-center">
-            Remember your recovery phrase and 6-digit passcode. You'll need the passcode to authorize transactions.
+            Remember your 6-digit passcode and keep your backup share in a secure location.
+            You'll need the passcode to authorize transactions.
           </p>
           <Button asChild className="w-full">
             <Link href="/wallet">Go to My Wallet</Link>

@@ -23,9 +23,15 @@ model User {
 
   // Account abstraction related fields
   solanaAddress    String?   @unique  // Public address (public key)
-  encryptedKeypair String?           // Encrypted keypair
+  encryptedKeypair String?           // Encrypted keypair (legacy field)
   hasPasscode      Boolean   @default(false)
   passcodeSetAt    DateTime?
+
+  // MPC related fields
+  mpcServerShare   String?            // Encrypted server share for MPC
+  mpcSalt          String?            // Salt used for passcode derivation
+  mpcBackupShare   String?            // Backup share for recovery (ideally stored elsewhere)
+  usesMPC          Boolean   @default(false) // Whether the user is using MPC
 
   // Relations
   accounts      Account[]

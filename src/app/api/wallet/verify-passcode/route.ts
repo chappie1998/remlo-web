@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth/next";
 import { PrismaClient } from "@prisma/client";
 import { decryptMnemonic } from "@/lib/crypto";
 import { isValidPasscode } from "@/lib/utils";
+import { verifyPasscodeForMPC } from "@/lib/mpc";
 
 const prisma = new PrismaClient();
 
@@ -28,27 +29,65 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Get the user's encrypted mnemonic (stored in encryptedKeypair field)
+    // Get the user's wallet information
     const user = await prisma.user.findUnique({
       where: { email: session.user.email },
-      select: { encryptedKeypair: true },
+      select: {
+        encryptedKeypair: true,
+        usesMPC: true,
+        mpcServerShare: true,
+        mpcSalt: true
+      },
     });
 
-    if (!user || !user.encryptedKeypair) {
+    if (!user) {
       return NextResponse.json(
-        { error: "Wallet not set up" },
+        { error: "User not found" },
         { status: 400 }
       );
     }
 
-    // Try to decrypt the mnemonic with the provided passcode
-    const mnemonic = await decryptMnemonic(user.encryptedKeypair, passcode);
+    // Check if the user has a wallet set up
+    if (user.usesMPC) {
+      // User is using MPC
+      if (!user.mpcServerShare || !user.mpcSalt) {
+        return NextResponse.json(
+          { error: "Wallet not set up properly" },
+          { status: 400 }
+        );
+      }
 
-    if (!mnemonic) {
-      return NextResponse.json(
-        { error: "Invalid passcode" },
-        { status: 401 }
+      // Verify the passcode using MPC
+      const isValid = await verifyPasscodeForMPC(
+        passcode,
+        user.mpcServerShare,
+        user.mpcSalt
       );
+
+      if (!isValid) {
+        return NextResponse.json(
+          { error: "Invalid passcode" },
+          { status: 401 }
+        );
+      }
+    } else {
+      // Legacy approach - using encrypted mnemonic
+      if (!user.encryptedKeypair) {
+        return NextResponse.json(
+          { error: "Wallet not set up" },
+          { status: 400 }
+        );
+      }
+
+      // Try to decrypt the mnemonic with the provided passcode
+      const mnemonic = await decryptMnemonic(user.encryptedKeypair, passcode);
+
+      if (!mnemonic) {
+        return NextResponse.json(
+          { error: "Invalid passcode" },
+          { status: 401 }
+        );
+      }
     }
 
     // If we get here, the passcode is valid
@@ -62,5 +101,7 @@ export async function POST(req: NextRequest) {
       { error: "Failed to verify passcode" },
       { status: 500 }
     );
+  } finally {
+    await prisma.$disconnect();
   }
 }

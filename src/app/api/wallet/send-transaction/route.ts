@@ -6,6 +6,7 @@ import { sendTransaction } from "@/lib/wallet";
 import { isValidPasscode } from "@/lib/utils";
 import { isValidSolanaAddress } from "@/lib/solana";
 import { decryptMnemonic, getKeypairFromMnemonic } from "@/lib/crypto";
+import { prepareMPCSigningKeypair } from "@/lib/mpc";
 
 const prisma = new PrismaClient();
 
@@ -48,28 +49,70 @@ export async function POST(req: NextRequest) {
     // Get the user's wallet information
     const user = await prisma.user.findUnique({
       where: { email: session.user.email },
-      select: { id: true, encryptedKeypair: true, solanaAddress: true },
+      select: {
+        id: true,
+        encryptedKeypair: true,
+        solanaAddress: true,
+        usesMPC: true,
+        mpcServerShare: true,
+        mpcSalt: true
+      },
     });
 
-    if (!user || !user.encryptedKeypair || !user.solanaAddress) {
+    if (!user || !user.solanaAddress) {
       return NextResponse.json(
         { error: "Wallet not set up" },
         { status: 400 }
       );
     }
 
-    // Decrypt the mnemonic with the provided passcode
-    const mnemonic = await decryptMnemonic(user.encryptedKeypair, passcode);
+    // Determine which type of wallet the user has (MPC or legacy)
+    let keypair;
 
-    if (!mnemonic) {
-      return NextResponse.json(
-        { error: "Invalid passcode" },
-        { status: 401 }
+    if (user.usesMPC) {
+      // MPC wallet approach
+      if (!user.mpcServerShare || !user.mpcSalt) {
+        return NextResponse.json(
+          { error: "Wallet not set up properly" },
+          { status: 400 }
+        );
+      }
+
+      // Prepare the keypair using MPC (in a real implementation, this would use proper MPC)
+      keypair = prepareMPCSigningKeypair(
+        passcode,
+        user.mpcServerShare,
+        user.mpcSalt
       );
-    }
 
-    // Derive the keypair from the mnemonic
-    const keypair = getKeypairFromMnemonic(mnemonic);
+      if (!keypair) {
+        return NextResponse.json(
+          { error: "Invalid passcode" },
+          { status: 401 }
+        );
+      }
+    } else {
+      // Legacy approach with encrypted mnemonic
+      if (!user.encryptedKeypair) {
+        return NextResponse.json(
+          { error: "Wallet not set up properly" },
+          { status: 400 }
+        );
+      }
+
+      // Decrypt the mnemonic with the provided passcode
+      const mnemonic = await decryptMnemonic(user.encryptedKeypair, passcode);
+
+      if (!mnemonic) {
+        return NextResponse.json(
+          { error: "Invalid passcode" },
+          { status: 401 }
+        );
+      }
+
+      // Derive the keypair from the mnemonic
+      keypair = getKeypairFromMnemonic(mnemonic);
+    }
 
     // Convert the amount from SOL to lamports
     const amountInLamports = Math.floor(Number.parseFloat(amount) * LAMPORTS_PER_SOL);
