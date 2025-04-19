@@ -1,25 +1,4 @@
-import {
-  PublicKey,
-  Connection,
-  Keypair,
-  Transaction,
-  SystemProgram,
-} from '@solana/web3.js';
-import {
-  TOKEN_PROGRAM_ID,
-  ASSOCIATED_TOKEN_PROGRAM_ID,
-  createAssociatedTokenAccountInstruction,
-  getAssociatedTokenAddress,
-  createTransferInstruction,
-  getAccount,
-  getOrCreateAssociatedTokenAccount,
-  getMint,
-} from '@solana/spl-token';
-import { getSolanaConnection } from './solana';
-
-/**
- * Interface for token information
- */
+// Define the TokenInfo interface
 export interface TokenInfo {
   address: string;
   symbol: string;
@@ -38,16 +17,23 @@ export const DEVNET_TEST_TOKENS: TokenInfo[] = [
     logoURI: 'https://raw.githubusercontent.com/solana-labs/token-list/main/assets/mainnet/So11111111111111111111111111111111111111112/logo.png',
   },
   {
-    address: 'Gh9ZwEmdLJ8DscKNTkTqPbNwLNNBjuSzaG9Vp2KGtKJr', // User's custom SPL token
-    symbol: 'CUSTOM',
-    name: 'Custom Token',
-    decimals: 9, // Adjust this to match your token's decimals (typically 9 for Solana tokens)
-    logoURI: 'https://cryptologos.cc/logos/solana-sol-logo.png', // Placeholder logo
+    address: 'Gh9ZwEmdLJ8DscKNTkTqPbNwLNNBjuSzaG9Vp2KGtKJr', // User's specific token
+    symbol: 'TEST',
+    name: 'Test Token',
+    decimals: 6, // Based on Solscan data for this token
+    logoURI: 'https://cryptologos.cc/logos/solana-sol-logo.png?v=029', // Placeholder logo
   },
 ];
 
+import { PublicKey, Connection } from "@solana/web3.js";
+import { getAssociatedTokenAddress, getAccount } from "@solana/spl-token";
+import { getSolanaConnection } from "./solana";
+
 /**
- * Get the balance of a specific SPL token for an address
+ * Get the balance of a specific token for a wallet using RPC method
+ * @param tokenMint The mint address of the token
+ * @param ownerAddress The wallet address to check
+ * @returns The token amount and formatted amount
  */
 export async function getTokenBalance(
   tokenMint: string,
@@ -57,203 +43,120 @@ export async function getTokenBalance(
   formattedAmount: string;
 }> {
   try {
-    const connection = getSolanaConnection();
-    const mintPubkey = new PublicKey(tokenMint);
-    const ownerPubkey = new PublicKey(ownerAddress);
+    console.log(`Fetching token balance for ${tokenMint} owned by ${ownerAddress}`);
 
-    // Get the associated token account
-    const tokenAccount = await getAssociatedTokenAddress(
-      mintPubkey,
-      ownerPubkey
+    // Find the token info to get decimals
+    const tokenInfo = DEVNET_TEST_TOKENS.find(token => token.address === tokenMint);
+    const decimals = tokenInfo?.decimals || 9; // Default to 9 if not found
+
+    const connection = getSolanaConnection();
+
+    // Use getTokenAccountsByOwner RPC method which is more reliable
+    const response = await connection.getTokenAccountsByOwner(
+      new PublicKey(ownerAddress),
+      {
+        mint: new PublicKey(tokenMint)
+      }
     );
 
-    try {
-      // Get the account info
-      const accountInfo = await getAccount(connection, tokenAccount);
+    console.log(`Got response with ${response.value.length} token accounts`);
 
-      // Get the token decimals for formatting
-      const mintInfo = await getMint(connection, mintPubkey);
-
-      // Calculate the formatted amount
-      const formattedAmount = (Number(accountInfo.amount) / Math.pow(10, mintInfo.decimals)).toFixed(mintInfo.decimals);
-
-      return {
-        tokenAmount: Number(accountInfo.amount),
-        formattedAmount,
-      };
-    } catch (error) {
-      // Account doesn't exist or has no balance
+    // If no accounts found, return zero balance
+    if (response.value.length === 0) {
+      console.log(`No token accounts found for ${tokenMint}`);
       return {
         tokenAmount: 0,
         formattedAmount: '0',
       };
     }
+
+    // Get the token amount from the first account found
+    const accountInfo = response.value[0].account.data.parsed.info.tokenAmount;
+    const tokenAmount = Number(accountInfo.amount);
+    const formattedAmount = accountInfo.uiAmountString;
+
+    console.log(`Token amount: ${tokenAmount}, Formatted: ${formattedAmount}`);
+
+    return {
+      tokenAmount,
+      formattedAmount,
+    };
   } catch (error) {
     console.error('Error getting token balance:', error);
-    throw error;
+    return {
+      tokenAmount: 0,
+      formattedAmount: '0',
+    };
   }
 }
 
 /**
- * Get multiple token balances for an address
+ * Get balances for multiple tokens at once
+ * @param tokenMints Array of token mint addresses
+ * @param ownerAddress Wallet address to check
+ * @returns Object mapping token addresses to their balances
  */
 export async function getMultipleTokenBalances(
   tokenMints: string[],
   ownerAddress: string
 ): Promise<Record<string, { tokenAmount: number; formattedAmount: string }>> {
-  try {
-    const balances: Record<string, { tokenAmount: number; formattedAmount: string }> = {};
+  console.log(`Fetching multiple token balances for wallet ${ownerAddress}`);
 
-    // Get balance for each token mint
-    for (const mint of tokenMints) {
+  const result: Record<string, { tokenAmount: number; formattedAmount: string }> = {};
+  const connection = getSolanaConnection();
+
+  try {
+    // Get all token accounts for the owner with a single RPC call
+    const response = await connection.getTokenAccountsByOwner(
+      new PublicKey(ownerAddress),
+      {
+        programId: new PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA') // SPL Token program ID
+      }
+    );
+
+    console.log(`Found ${response.value.length} token accounts for wallet`);
+
+    // Process each token account
+    for (const item of response.value) {
       try {
-        balances[mint] = await getTokenBalance(mint, ownerAddress);
-      } catch (error) {
-        console.error(`Error getting balance for token ${mint}:`, error);
-        balances[mint] = { tokenAmount: 0, formattedAmount: '0' };
+        const accountInfo = item.account.data.parsed.info;
+        const mint = accountInfo.mint;
+
+        // Only process tokens that are in our tokenMints list
+        if (tokenMints.includes(mint)) {
+          const tokenAmount = Number(accountInfo.tokenAmount.amount);
+          const formattedAmount = accountInfo.tokenAmount.uiAmountString;
+
+          result[mint] = {
+            tokenAmount,
+            formattedAmount,
+          };
+
+          console.log(`Token ${mint}: ${formattedAmount}`);
+        }
+      } catch (err) {
+        console.error('Error parsing token account:', err);
       }
     }
 
-    return balances;
+    // Add zero balances for any tokens that weren't found
+    for (const mint of tokenMints) {
+      if (!result[mint]) {
+        result[mint] = {
+          tokenAmount: 0,
+          formattedAmount: '0',
+        };
+      }
+    }
+
+    return result;
   } catch (error) {
     console.error('Error getting multiple token balances:', error);
-    throw error;
-  }
-}
 
-/**
- * Create a transaction to transfer SPL tokens
- */
-export async function createTokenTransferTransaction(
-  keypair: Keypair,
-  tokenMint: string,
-  toAddress: string,
-  amount: number,
-): Promise<Transaction> {
-  try {
-    const connection = getSolanaConnection();
-    const mintPubkey = new PublicKey(tokenMint);
-    const toPubkey = new PublicKey(toAddress);
-
-    // Get the associated token accounts for sender and receiver
-    const fromTokenAccount = await getAssociatedTokenAddress(
-      mintPubkey,
-      keypair.publicKey
-    );
-
-    const toTokenAccount = await getAssociatedTokenAddress(
-      mintPubkey,
-      toPubkey
-    );
-
-    // Create the transaction
-    const transaction = new Transaction();
-
-    // Check if the recipient's token account exists
-    let toTokenAccountInfo;
-    try {
-      toTokenAccountInfo = await getAccount(connection, toTokenAccount);
-    } catch (error) {
-      // Add instruction to create the associated token account if it doesn't exist
-      transaction.add(
-        createAssociatedTokenAccountInstruction(
-          keypair.publicKey, // fee payer
-          toTokenAccount,
-          toPubkey,
-          mintPubkey
-        )
-      );
-    }
-
-    // Add token transfer instruction
-    transaction.add(
-      createTransferInstruction(
-        fromTokenAccount,
-        toTokenAccount,
-        keypair.publicKey,
-        amount
-      )
-    );
-
-    // Get a fresh blockhash
-    const { blockhash } = await connection.getLatestBlockhash();
-    transaction.recentBlockhash = blockhash;
-    transaction.feePayer = keypair.publicKey;
-
-    return transaction;
-  } catch (error) {
-    console.error('Error creating token transfer transaction:', error);
-    throw error;
-  }
-}
-
-/**
- * Format token amount based on decimals
- */
-export function formatTokenAmount(amount: number, decimals: number): string {
-  return (amount / Math.pow(10, decimals)).toFixed(decimals);
-}
-
-/**
- * Parse token amount from user input based on decimals
- */
-export function parseTokenAmount(amount: string, decimals: number): number {
-  return Math.floor(parseFloat(amount) * Math.pow(10, decimals));
-}
-
-/**
- * Check if a token account exists for the given mint and owner
- */
-export async function doesTokenAccountExist(
-  tokenMint: string,
-  ownerAddress: string
-): Promise<boolean> {
-  try {
-    const connection = getSolanaConnection();
-    const mintPubkey = new PublicKey(tokenMint);
-    const ownerPubkey = new PublicKey(ownerAddress);
-
-    // Get the associated token account address
-    const tokenAccount = await getAssociatedTokenAddress(
-      mintPubkey,
-      ownerPubkey
-    );
-
-    // Try to get the account info
-    try {
-      await getAccount(connection, tokenAccount);
-      return true;
-    } catch (error) {
-      return false;
-    }
-  } catch (error) {
-    console.error('Error checking token account:', error);
-    return false;
-  }
-}
-
-/**
- * Fetch token details (mint info)
- */
-export async function getTokenDetails(tokenMint: string): Promise<{
-  address: string;
-  decimals: number;
-  supply: string;
-}> {
-  try {
-    const connection = getSolanaConnection();
-    const mintPubkey = new PublicKey(tokenMint);
-
-    // Get the mint info
-    const mintInfo = await getMint(connection, mintPubkey);
-
-    return {
-      address: tokenMint,
-      decimals: mintInfo.decimals,
-      supply: mintInfo.supply.toString(),
-    };
-  } catch (error) {
-    console.error('Error getting token details:', error);
-    throw error;
+    // Return zero balances for all requested tokens
+    return tokenMints.reduce((acc, mint) => {
+      acc[mint] = { tokenAmount: 0, formattedAmount: '0' };
+      return acc;
+    }, {} as Record<string, { tokenAmount: number; formattedAmount: string }>);
   }
 }
