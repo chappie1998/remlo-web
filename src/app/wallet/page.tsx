@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
@@ -37,31 +37,25 @@ export default function WalletDashboard() {
     formattedBalance: "0",
   });
 
-  // Add a new useEffect to handle redirects based on authentication state
+  // Handle authentication redirects
   useEffect(() => {
+    // Only run this effect once the authentication state is determined
+    if (status === "loading") return;
+
     if (status === "unauthenticated") {
-      console.log("User is not authenticated, redirecting to sign in page");
+      // Redirect unauthenticated users to sign in page
       router.push("/auth/signin");
     } else if (status === "authenticated" && !session?.user?.hasPasscode) {
-      console.log("User authenticated but no passcode, redirecting to setup page");
+      // Redirect authenticated users without passcode to setup page
       router.push("/wallet/setup");
-
-      // As a backup, force navigation if app router doesn't respond
-      setTimeout(() => {
-        window.location.href = "/wallet/setup";
-      }, 1000);
     }
-  }, [status, session, router]);
+  }, [status, session?.user?.hasPasscode, router]);
 
-  useEffect(() => {
-    if (session?.user?.solanaAddress) {
-      fetchBalance();
-      fetchTransactions();
-      checkRelayerStatus();
-    }
-  }, [session]);
+  // Define fetch functions with useCallback to prevent recreation on each render
+  const fetchBalance = useCallback(async () => {
+    // Don't fetch if user isn't authenticated or doesn't have a wallet
+    if (status !== "authenticated" || !session?.user?.solanaAddress) return;
 
-  const fetchBalance = async () => {
     try {
       setLoadingBalance(true);
       const response = await fetch("/api/wallet/balance");
@@ -76,9 +70,12 @@ export default function WalletDashboard() {
     } finally {
       setLoadingBalance(false);
     }
-  };
+  }, [status, session?.user?.solanaAddress]);
 
-  const fetchTransactions = async () => {
+  const fetchTransactions = useCallback(async () => {
+    // Don't fetch if user isn't authenticated or doesn't have a wallet
+    if (status !== "authenticated" || !session?.user?.solanaAddress) return;
+
     try {
       const response = await fetch("/api/wallet/transactions");
       if (response.ok) {
@@ -88,9 +85,12 @@ export default function WalletDashboard() {
     } catch (error) {
       console.error("Error fetching transactions:", error);
     }
-  };
+  }, [status, session?.user?.solanaAddress]);
 
-  const checkRelayerStatus = async () => {
+  const checkRelayerStatus = useCallback(async () => {
+    // Don't fetch if user isn't authenticated
+    if (status !== "authenticated") return;
+
     try {
       const response = await fetch("/api/relayer/status");
       if (response.ok) {
@@ -104,9 +104,26 @@ export default function WalletDashboard() {
     } catch (error) {
       console.error("Error checking relayer status:", error);
     }
-  };
+  }, [status]);
 
-  // Validate form inputs before proceeding
+  // Only fetch data when authenticated and has wallet
+  useEffect(() => {
+    if (status === "authenticated" && session?.user?.solanaAddress) {
+      // Fetch initial data
+      fetchBalance();
+      fetchTransactions();
+      checkRelayerStatus();
+
+      // Set up an interval to refresh balance every 30 seconds
+      const refreshInterval = setInterval(() => {
+        fetchBalance();
+      }, 30000);
+
+      // Clean up interval on unmount
+      return () => clearInterval(refreshInterval);
+    }
+  }, [status, session?.user?.solanaAddress, fetchBalance, fetchTransactions, checkRelayerStatus]);
+
   const validateSendForm = () => {
     if (!recipient) {
       setError("Recipient address is required");
@@ -126,7 +143,7 @@ export default function WalletDashboard() {
     return true;
   };
 
-  // If loading, show loading state
+  // If still loading authentication state, show a simple loading indicator
   if (status === "loading") {
     return (
       <div className="flex min-h-screen flex-col items-center justify-center p-4">
@@ -135,27 +152,12 @@ export default function WalletDashboard() {
     );
   }
 
-  // Return null if we're redirecting (handled in useEffect above)
+  // If not authenticated or missing passcode, render nothing (will be redirected)
   if (status === "unauthenticated" || (status === "authenticated" && !session?.user?.hasPasscode)) {
-    return (
-      <div className="flex min-h-screen flex-col items-center justify-center p-4">
-        <p>Redirecting to {status === "unauthenticated" ? "login" : "wallet setup"}...</p>
-        <Button
-          className="mt-4"
-          onClick={() => {
-            if (status === "unauthenticated") {
-              window.location.href = "/auth/signin";
-            } else {
-              window.location.href = "/wallet/setup";
-            }
-          }}
-        >
-          Click here if not redirected
-        </Button>
-      </div>
-    );
+    return null; // Return null since useEffect will handle the redirection
   }
 
+  // Handle send transaction
   const handleSendTransaction = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
@@ -225,12 +227,14 @@ export default function WalletDashboard() {
     }
   };
 
+  // Render wallet UI
   return (
     <div className="min-h-screen flex flex-col">
       <Header />
 
       {/* Main content */}
       <main className="flex-1 container mx-auto p-4 md:p-6">
+        {/* ... rest of the component UI ... */}
         <div className="mb-6 flex items-center justify-between">
           <h1 className="text-2xl font-bold">SOL Wallet</h1>
           <div className="flex gap-2">
@@ -254,6 +258,13 @@ export default function WalletDashboard() {
                   <p className="text-xl font-bold">
                     {loadingBalance ? "Loading..." : `${balance} SOL`}
                   </p>
+                  <button
+                    className="text-xs text-primary"
+                    onClick={fetchBalance}
+                    disabled={loadingBalance}
+                  >
+                    {loadingBalance ? "Refreshing..." : "Refresh"}
+                  </button>
                 </div>
               </div>
               <div className="bg-muted p-2 rounded break-all font-mono text-xs relative group">
@@ -279,6 +290,7 @@ export default function WalletDashboard() {
               </p>
             </div>
 
+            {/* ... Send SOL Form ... */}
             <div className="p-6 border rounded-lg">
               <h2 className="text-xl font-bold mb-4">Send SOL</h2>
               <form onSubmit={handleSendFormSubmit} className="space-y-4">

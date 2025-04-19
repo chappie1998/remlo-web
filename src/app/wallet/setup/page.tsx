@@ -21,34 +21,19 @@ export default function WalletSetup() {
   const router = useRouter();
   const { data: session, update, status } = useSession();
 
-  // Handle redirect if user already has wallet (in client-side only)
+  // Direct navigation based on authentication state
   useEffect(() => {
-    if (status === "loading") {
-      // Still loading, do nothing yet
-      return;
-    }
+    // Only run this effect once the authentication state is determined
+    if (status === "loading") return;
 
     if (status === "unauthenticated") {
-      console.log("User is not authenticated, redirecting to sign in page");
+      // Redirect unauthenticated users to sign in
       router.push("/auth/signin");
-
-      // Force redirect as fallback
-      setTimeout(() => {
-        window.location.href = "/auth/signin";
-      }, 1000);
-      return;
-    }
-
-    if (session?.user?.solanaAddress && session?.user?.hasPasscode && step !== 3) {
-      console.log("User already has wallet, redirecting to wallet page");
+    } else if (status === "authenticated" && session?.user?.solanaAddress && session?.user?.hasPasscode && step !== 3) {
+      // If user already has a wallet and we're not on the success step, redirect to wallet page
       router.push("/wallet");
-
-      // Force redirect as fallback
-      setTimeout(() => {
-        window.location.href = "/wallet";
-      }, 1000);
     }
-  }, [session, step, router, status]);
+  }, [status, session, step, router]);
 
   const handlePasscodeSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -118,7 +103,7 @@ export default function WalletSetup() {
     setStep(3);
   };
 
-  // If user already has a wallet, show loading until client-side redirect happens
+  // If still loading authentication state, show minimal loading state
   if (status === "loading") {
     return (
       <div className="flex min-h-screen flex-col items-center justify-center p-4">
@@ -127,36 +112,9 @@ export default function WalletSetup() {
     );
   }
 
-  if (status === "unauthenticated") {
-    return (
-      <div className="flex min-h-screen flex-col items-center justify-center p-4">
-        <p>Please sign in to set up your wallet</p>
-        <Button
-          className="mt-4"
-          onClick={() => {
-            window.location.href = "/auth/signin";
-          }}
-        >
-          Go to Sign In
-        </Button>
-      </div>
-    );
-  }
-
-  if (session?.user?.solanaAddress && session?.user?.hasPasscode && step !== 3) {
-    return (
-      <div className="flex min-h-screen flex-col items-center justify-center p-4">
-        <p>You already have a wallet. Redirecting to wallet dashboard...</p>
-        <Button
-          className="mt-4"
-          onClick={() => {
-            window.location.href = "/wallet";
-          }}
-        >
-          Go to Wallet
-        </Button>
-      </div>
-    );
+  // If not authenticated or already has wallet, render nothing (handled by useEffect)
+  if (status === "unauthenticated" || (status === "authenticated" && session?.user?.solanaAddress && session?.user?.hasPasscode && step !== 3)) {
+    return null;
   }
 
   // Step 1: Create passcode
