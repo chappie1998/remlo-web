@@ -17,6 +17,7 @@ export default function WalletSetup() {
   const [step, setStep] = useState(1); // 1 = create passcode, 2 = backup info, 3 = success
   const [solanaAddress, setSolanaAddress] = useState("");
   const [backupShare, setBackupShare] = useState("");
+  const [recoveryShare, setRecoveryShare] = useState(""); // New state for recovery share
   const router = useRouter();
   const { data: session, update } = useSession();
 
@@ -76,6 +77,7 @@ export default function WalletSetup() {
       // Store info for the success screen
       setSolanaAddress(data.solanaAddress);
       setBackupShare(data.backupShare);
+      setRecoveryShare(data.recoveryShare); // Store the recovery share
 
       // Move to backup share information
       setStep(2);
@@ -194,23 +196,33 @@ export default function WalletSetup() {
       <div className="flex min-h-screen flex-col items-center justify-center p-4">
         <div className="w-full max-w-md p-8 space-y-8 bg-card rounded-lg border">
           <div className="text-center">
-            <h1 className="text-2xl font-bold">Save Your Backup Share</h1>
+            <h1 className="text-2xl font-bold">Save Your Backup Shares</h1>
             <p className="text-muted-foreground mt-2">
-              This backup share is critical for recovering your wallet if you lose your passcode.
-              Write it down and keep it in a secure location.
+              These backup shares are critical for recovering your wallet if you lose your passcode.
+              Write them down and keep them in secure, separate locations.
             </p>
           </div>
 
-          <div className="p-4 bg-muted/50 border rounded-md">
-            <p className="font-medium mb-2 text-sm">Your Backup Share:</p>
-            <div className="font-mono text-center break-words text-sm p-3 border bg-background">
-              {backupShare}
+          <div className="space-y-6">
+            <div>
+              <p className="font-medium mb-2 text-sm">Primary Backup Share:</p>
+              <div className="p-3 font-mono text-center break-words text-sm border bg-background rounded-md">
+                {backupShare}
+              </div>
+            </div>
+
+            <div>
+              <p className="font-medium mb-2 text-sm">Recovery Share:</p>
+              <div className="p-3 font-mono text-center break-words text-sm border bg-background rounded-md">
+                {recoveryShare}
+              </div>
             </div>
           </div>
 
           <div className="p-4 border-l-4 border-amber-500 bg-amber-50 dark:bg-amber-950/20 rounded">
             <p className="text-sm text-amber-800 dark:text-amber-200">
-              <strong>IMPORTANT:</strong> Never share this backup information with anyone. Anyone with this share and your passcode can access your wallet.
+              <strong>IMPORTANT:</strong> Store these backup shares in different secure locations.
+              Anyone with your passcode and these shares can access your wallet.
             </p>
           </div>
 
@@ -218,7 +230,7 @@ export default function WalletSetup() {
             onClick={handleBackupConfirm}
             className="w-full"
           >
-            I've Saved My Backup Share
+            I've Saved My Backup Shares
           </Button>
         </div>
       </div>
@@ -248,7 +260,7 @@ export default function WalletSetup() {
 
         <div className="space-y-2">
           <p className="text-sm text-center">
-            Remember your 6-digit passcode and keep your backup share in a secure location.
+            Remember your 6-digit passcode and keep your backup shares in secure locations.
             You'll need the passcode to authorize transactions.
           </p>
           <Button asChild className="w-full">

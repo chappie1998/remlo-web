@@ -30,7 +30,6 @@ export async function POST(req: NextRequest) {
     }
 
     // Validate that the mnemonic is a valid BIP-39 phrase (if provided)
-    // In MPC mode, we can either generate a new keypair or use a provided mnemonic
     if (mnemonic && !validateMnemonic(mnemonic)) {
       return NextResponse.json(
         { error: "Invalid recovery phrase" },
@@ -38,9 +37,8 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Create a new MPC wallet
-    // This generates a keypair, splits it into shares, and encrypts the server share
-    const { publicKey, serverShare, backupShare, salt } = createMPCWallet(passcode);
+    // Create a new MPC wallet with 3-part secret sharing
+    const { publicKey, serverShare, backupShare, recoveryShare, salt } = createMPCWallet(passcode);
 
     // Update the user record with the wallet address and MPC information
     await prisma.user.update({
@@ -49,7 +47,7 @@ export async function POST(req: NextRequest) {
         solanaAddress: publicKey,
         mpcServerShare: serverShare,
         mpcSalt: salt,
-        mpcBackupShare: backupShare, // In production, this would be stored more securely
+        mpcBackupShare: backupShare, // In production, this would be stored more securely or given to user
         usesMPC: true,
         hasPasscode: true,
         passcodeSetAt: new Date(),
@@ -59,9 +57,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       success: true,
       solanaAddress: publicKey,
-      // Include the backup share in the response for the user to save securely
-      // In a production app, this would be handled more securely
+      // Include both backup shares in the response for the user to save securely
       backupShare,
+      recoveryShare, // Additional share for more recovery options
     });
   } catch (error) {
     console.error("Error setting up wallet:", error);

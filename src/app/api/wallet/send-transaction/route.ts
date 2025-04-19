@@ -23,7 +23,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Get transaction details and passcode from the request
-    const { to, amount, passcode } = await req.json();
+    const { to, amount, passcode, backupShare, recoveryShare } = await req.json();
 
     if (!to || !amount) {
       return NextResponse.json(
@@ -55,7 +55,8 @@ export async function POST(req: NextRequest) {
         solanaAddress: true,
         usesMPC: true,
         mpcServerShare: true,
-        mpcSalt: true
+        mpcSalt: true,
+        mpcBackupShare: true
       },
     });
 
@@ -78,16 +79,22 @@ export async function POST(req: NextRequest) {
         );
       }
 
-      // Prepare the keypair using MPC (in a real implementation, this would use proper MPC)
+      // If the client provided their own backup and recovery shares, use those
+      // Otherwise, use the server's stored backup share for 3-part reconstruction
+      const clientBackupShare = backupShare || user.mpcBackupShare;
+
+      // Prepare the keypair using MPC with 3 shares
       keypair = prepareMPCSigningKeypair(
         passcode,
         user.mpcServerShare,
-        user.mpcSalt
+        user.mpcSalt,
+        clientBackupShare,
+        recoveryShare // This might be undefined, which is fine
       );
 
       if (!keypair) {
         return NextResponse.json(
-          { error: "Invalid passcode" },
+          { error: "Invalid passcode or shares" },
           { status: 401 }
         );
       }
