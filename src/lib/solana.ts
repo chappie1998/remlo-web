@@ -5,6 +5,12 @@ import {
   PublicKey,
   clusterApiUrl,
 } from '@solana/web3.js';
+import {
+  getAssociatedTokenAddress,
+  getAccount,
+  TokenAccountNotFoundError,
+  TokenInvalidAccountOwnerError,
+} from '@solana/spl-token';
 
 // The network can be 'mainnet-beta', 'testnet', or 'devnet'
 export const SOLANA_NETWORK = 'devnet';
@@ -12,6 +18,12 @@ export const SOLANA_NETWORK = 'devnet';
 // RPC URL from environment or fallback to public endpoints
 export const SOLANA_RPC_URL =
   process.env.SOLANA_RPC_URL || clusterApiUrl(SOLANA_NETWORK);
+
+// SPL token address
+export const SPL_TOKEN_ADDRESS = 'Gh9ZwEmdLJ8DscKNTkTqPbNwLNNBjuSzaG9Vp2KGtKJr';
+
+// Relayer service URL
+export const RELAYER_URL = 'http://localhost:3001';
 
 /**
  * Creates a Connection for Solana
@@ -46,6 +58,73 @@ export async function fetchAccountBalance(address: string): Promise<{
   } catch (error) {
     console.error('Error fetching Solana account balance:', error);
     throw error;
+  }
+}
+
+/**
+ * Fetch the SPL token balance of a Solana address
+ */
+export async function fetchSplTokenBalance(address: string, tokenAddress = SPL_TOKEN_ADDRESS): Promise<{
+  balance: number;
+  formattedBalance: string;
+}> {
+  try {
+    // Validate the addresses
+    const publicKey = new PublicKey(address);
+    const tokenMint = new PublicKey(tokenAddress);
+
+    const connection = getSolanaConnection();
+
+    // Get the associated token account address
+    const associatedTokenAddress = await getAssociatedTokenAddress(tokenMint, publicKey);
+
+    try {
+      // Get token account info
+      const tokenAccount = await getAccount(connection, associatedTokenAddress);
+      const balance = Number(tokenAccount.amount);
+
+      // Convert to readable format (assuming 9 decimals like SOL)
+      const formattedBalance = (balance / 1_000_000_000).toFixed(9);
+
+      return {
+        balance,
+        formattedBalance,
+      };
+    } catch (error) {
+      // If the token account doesn't exist or is invalid, return zero balance
+      if (
+        error instanceof TokenAccountNotFoundError ||
+        error instanceof TokenInvalidAccountOwnerError
+      ) {
+        return {
+          balance: 0,
+          formattedBalance: '0.000000000',
+        };
+      }
+      throw error;
+    }
+  } catch (error) {
+    console.error('Error fetching SPL token balance:', error);
+
+    // Try fetching from relayer as a fallback
+    try {
+      const response = await fetch(`${RELAYER_URL}/api/token-balance/${address}`);
+      if (response.ok) {
+        const data = await response.json();
+        return {
+          balance: data.balance,
+          formattedBalance: data.formattedBalance,
+        };
+      }
+    } catch (relayerError) {
+      console.error('Error fetching from relayer:', relayerError);
+    }
+
+    // If all else fails, return zero
+    return {
+      balance: 0,
+      formattedBalance: '0.000000000',
+    };
   }
 }
 

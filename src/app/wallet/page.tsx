@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import Header from "@/components/header";
 import { shortenAddress, formatDate, isValidPasscode, copyToClipboard } from "@/lib/utils";
-import { isValidSolanaAddress } from "@/lib/solana";
+import { isValidSolanaAddress, SPL_TOKEN_ADDRESS } from "@/lib/solana";
 
 interface Transaction {
   id: string;
@@ -28,12 +28,16 @@ export default function WalletDashboard() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
   const [balance, setBalance] = useState("0.0");
+  const [tokenBalance, setTokenBalance] = useState("0.0");
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loadingBalance, setLoadingBalance] = useState(true);
+  const [isSendingToken, setIsSendingToken] = useState(false);
+  const [currentTxStatus, setCurrentTxStatus] = useState("");
 
   useEffect(() => {
     if (session?.user?.solanaAddress) {
       fetchBalance();
+      fetchTokenBalance();
       fetchTransactions();
     }
   }, [session]);
@@ -63,6 +67,24 @@ export default function WalletDashboard() {
       }
     } catch (error) {
       console.error("Error fetching balance:", error);
+    } finally {
+      setLoadingBalance(false);
+    }
+  };
+
+  const fetchTokenBalance = async () => {
+    try {
+      setLoadingBalance(true);
+      // Use our mock endpoint instead of the real one for now
+      const response = await fetch("/api/mock-relayer/token-balance");
+      const data = await response.json();
+      if (response.ok) {
+        setTokenBalance(data.formattedBalance);
+      } else {
+        console.error("Failed to fetch token balance:", data.error);
+      }
+    } catch (error) {
+      console.error("Error fetching token balance:", error);
     } finally {
       setLoadingBalance(false);
     }
@@ -128,9 +150,14 @@ export default function WalletDashboard() {
     }
 
     setIsLoading(true);
+    setCurrentTxStatus("Creating transaction...");
 
     try {
-      const response = await fetch("/api/wallet/send-transaction", {
+      const endpoint = isSendingToken
+        ? "/api/mock-relayer/send-token" // Use our mock endpoint for token transactions
+        : "/api/wallet/send-transaction";
+
+      const response = await fetch(endpoint, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -142,12 +169,14 @@ export default function WalletDashboard() {
         }),
       });
 
+      setCurrentTxStatus("Processing transaction...");
       const data = await response.json();
 
       if (!response.ok) {
         throw new Error(data.error || "Transaction failed");
       }
 
+      setCurrentTxStatus("Transaction completed!");
       toast.success("Transaction sent successfully!");
       setShowPasscodeModal(false);
       setPasscode("");
@@ -156,11 +185,13 @@ export default function WalletDashboard() {
 
       // Refresh balance and transactions
       fetchBalance();
+      fetchTokenBalance();
       fetchTransactions();
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : "Transaction failed";
       setError(errorMessage);
       toast.error(errorMessage);
+      setCurrentTxStatus("");
     } finally {
       setIsLoading(false);
     }
@@ -170,16 +201,23 @@ export default function WalletDashboard() {
   const formatTxData = (txDataString: string) => {
     try {
       const txData = JSON.parse(txDataString);
-      return `${txData.amount} SOL to ${shortenAddress(txData.to)}`;
+      if (txData.token) {
+        // This is a token transaction
+        return `${txData.amount} DEV to ${shortenAddress(txData.to)}`;
+      } else {
+        // This is a SOL transaction
+        return `${txData.amount} SOL to ${shortenAddress(txData.to)}`;
+      }
     } catch (e) {
       return "Unknown transaction";
     }
   };
 
   // Open passcode modal when submitting the send form
-  const handleSendFormSubmit = (e: React.FormEvent) => {
+  const handleSendFormSubmit = (e: React.FormEvent, isToken = false) => {
     e.preventDefault();
     setError("");
+    setIsSendingToken(isToken);
 
     if (validateSendForm()) {
       setShowPasscodeModal(true);
@@ -202,6 +240,10 @@ export default function WalletDashboard() {
                   <p className="text-sm text-muted-foreground">Balance</p>
                   <p className="text-xl font-bold">
                     {loadingBalance ? "Loading..." : `${balance} SOL`}
+                  </p>
+                  <p className="text-sm text-muted-foreground mt-2">DEV Token Balance</p>
+                  <p className="text-lg font-bold">
+                    {loadingBalance ? "Loading..." : `${tokenBalance} DEV`}
                   </p>
                 </div>
               </div>
@@ -228,44 +270,89 @@ export default function WalletDashboard() {
               </p>
             </div>
 
-            <div className="p-6 border rounded-lg">
-              <h2 className="text-xl font-bold mb-4">Send SOL</h2>
-              <form onSubmit={handleSendFormSubmit} className="space-y-4">
-                <div className="space-y-2">
-                  <label htmlFor="recipient" className="text-sm font-medium">
-                    Recipient Address
-                  </label>
-                  <input
-                    id="recipient"
-                    type="text"
-                    required
-                    placeholder="Solana address (e.g., 3Dru...y149)"
-                    value={recipient}
-                    onChange={(e) => setRecipient(e.target.value)}
-                    className="w-full p-2 rounded-md border border-input bg-background text-foreground focus:ring-2 focus:ring-primary"
-                  />
-                </div>
+            <div className="grid md:grid-cols-2 gap-6">
+              <div className="p-6 border rounded-lg">
+                <h2 className="text-xl font-bold mb-4">Send SOL</h2>
+                <form onSubmit={(e) => handleSendFormSubmit(e, false)} className="space-y-4">
+                  <div className="space-y-2">
+                    <label htmlFor="recipient-sol" className="text-sm font-medium">
+                      Recipient Address
+                    </label>
+                    <input
+                      id="recipient-sol"
+                      type="text"
+                      required
+                      placeholder="Solana address (e.g., 3Dru...y149)"
+                      value={recipient}
+                      onChange={(e) => setRecipient(e.target.value)}
+                      className="w-full p-2 rounded-md border border-input bg-background text-foreground focus:ring-2 focus:ring-primary"
+                    />
+                  </div>
 
-                <div className="space-y-2">
-                  <label htmlFor="amount" className="text-sm font-medium">
-                    Amount (SOL)
-                  </label>
-                  <input
-                    id="amount"
-                    type="text"
-                    inputMode="decimal"
-                    required
-                    placeholder="0.1"
-                    value={amount}
-                    onChange={(e) => setAmount(e.target.value)}
-                    className="w-full p-2 rounded-md border border-input bg-background text-foreground focus:ring-2 focus:ring-primary"
-                  />
-                </div>
+                  <div className="space-y-2">
+                    <label htmlFor="amount-sol" className="text-sm font-medium">
+                      Amount (SOL)
+                    </label>
+                    <input
+                      id="amount-sol"
+                      type="text"
+                      inputMode="decimal"
+                      required
+                      placeholder="0.1"
+                      value={amount}
+                      onChange={(e) => setAmount(e.target.value)}
+                      className="w-full p-2 rounded-md border border-input bg-background text-foreground focus:ring-2 focus:ring-primary"
+                    />
+                  </div>
 
-                <Button type="submit" className="w-full">
-                  Send Transaction
-                </Button>
-              </form>
+                  <Button type="submit" className="w-full">
+                    Send SOL
+                  </Button>
+                </form>
+              </div>
+
+              <div className="p-6 border rounded-lg">
+                <h2 className="text-xl font-bold mb-4">Send DEV Token</h2>
+                <form onSubmit={(e) => handleSendFormSubmit(e, true)} className="space-y-4">
+                  <div className="space-y-2">
+                    <label htmlFor="recipient-token" className="text-sm font-medium">
+                      Recipient Address
+                    </label>
+                    <input
+                      id="recipient-token"
+                      type="text"
+                      required
+                      placeholder="Solana address (e.g., 3Dru...y149)"
+                      value={recipient}
+                      onChange={(e) => setRecipient(e.target.value)}
+                      className="w-full p-2 rounded-md border border-input bg-background text-foreground focus:ring-2 focus:ring-primary"
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <label htmlFor="amount-token" className="text-sm font-medium">
+                      Amount (DEV)
+                    </label>
+                    <input
+                      id="amount-token"
+                      type="text"
+                      inputMode="decimal"
+                      required
+                      placeholder="10"
+                      value={amount}
+                      onChange={(e) => setAmount(e.target.value)}
+                      className="w-full p-2 rounded-md border border-input bg-background text-foreground focus:ring-2 focus:ring-primary"
+                    />
+                  </div>
+
+                  <Button type="submit" className="w-full bg-green-600 hover:bg-green-700">
+                    Send DEV (Gasless)
+                  </Button>
+                  <p className="text-xs text-muted-foreground text-center">
+                    No gas fees! Powered by relayer service.
+                  </p>
+                </form>
+              </div>
             </div>
           </div>
 
@@ -336,6 +423,12 @@ export default function WalletDashboard() {
               Enter your 6-digit passcode to authorize this transaction.
             </p>
 
+            {currentTxStatus && (
+              <div className="p-3 rounded bg-blue-100 text-blue-800 text-sm mb-4">
+                {currentTxStatus}
+              </div>
+            )}
+
             {error && (
               <div className="p-3 rounded bg-destructive/10 text-destructive text-sm mb-4">
                 {error}
@@ -364,6 +457,7 @@ export default function WalletDashboard() {
                     setShowPasscodeModal(false);
                     setPasscode("");
                     setError("");
+                    setCurrentTxStatus("");
                   }}
                   disabled={isLoading}
                 >
