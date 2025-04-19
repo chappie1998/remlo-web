@@ -83,8 +83,9 @@ export async function fetchSplTokenBalance(address: string, tokenAddress = SPL_T
       const tokenAccount = await getAccount(connection, associatedTokenAddress);
       const balance = Number(tokenAccount.amount);
 
-      // Convert to readable format (assuming 9 decimals like SOL)
-      const formattedBalance = (balance / 1_000_000_000).toFixed(9);
+      // Convert to readable format (using 6 decimals for SPL token)
+      const TOKEN_DECIMALS = 6;
+      const formattedBalance = (balance / (10 ** TOKEN_DECIMALS)).toFixed(TOKEN_DECIMALS);
 
       return {
         balance,
@@ -98,7 +99,7 @@ export async function fetchSplTokenBalance(address: string, tokenAddress = SPL_T
       ) {
         return {
           balance: 0,
-          formattedBalance: '0.000000000',
+          formattedBalance: '0.000000',
         };
       }
       throw error;
@@ -123,7 +124,7 @@ export async function fetchSplTokenBalance(address: string, tokenAddress = SPL_T
     // If all else fails, return zero
     return {
       balance: 0,
-      formattedBalance: '0.000000000',
+      formattedBalance: '0.000000',
     };
   }
 }

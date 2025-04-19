@@ -115,8 +115,11 @@ export async function POST(req: NextRequest) {
       },
     });
 
-    // Convert amount to token units (assuming 9 decimals like SOL)
-    const amountInUnits = Math.floor(Number(amount) * 1_000_000_000);
+    // Convert amount to token units (using 6 decimals for SPL token)
+    const TOKEN_DECIMALS = 6;
+    const amountInUnits = Math.floor(Number(amount) * (10 ** TOKEN_DECIMALS));
+
+    console.log(`Creating token transfer: ${amount} tokens (${amountInUnits} units with ${TOKEN_DECIMALS} decimals)`);
 
     // Step 2: Request the transaction data from the relayer
     const createTransferResponse = await fetch(`${RELAYER_URL}/api/create-transfer`, {
@@ -127,7 +130,8 @@ export async function POST(req: NextRequest) {
       body: JSON.stringify({
         fromAddress: user.solanaAddress,
         toAddress: to,
-        amount: amount,
+        amount: amount,  // This is the human-readable amount, e.g. "1.5"
+        amountInRawUnits: amountInUnits,  // Add the raw token units
       }),
     });
 
