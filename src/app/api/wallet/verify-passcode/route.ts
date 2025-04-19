@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { PrismaClient } from "@prisma/client";
-import { decryptKeypair } from "@/lib/wallet";
+import { decryptMnemonic } from "@/lib/crypto";
 import { isValidPasscode } from "@/lib/utils";
 
 const prisma = new PrismaClient();
@@ -28,7 +28,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Get the user's encrypted keypair
+    // Get the user's encrypted mnemonic (stored in encryptedKeypair field)
     const user = await prisma.user.findUnique({
       where: { email: session.user.email },
       select: { encryptedKeypair: true },
@@ -41,10 +41,10 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Try to decrypt the keypair with the provided passcode
-    const keypair = decryptKeypair(user.encryptedKeypair, passcode);
+    // Try to decrypt the mnemonic with the provided passcode
+    const mnemonic = await decryptMnemonic(user.encryptedKeypair, passcode);
 
-    if (!keypair) {
+    if (!mnemonic) {
       return NextResponse.json(
         { error: "Invalid passcode" },
         { status: 401 }

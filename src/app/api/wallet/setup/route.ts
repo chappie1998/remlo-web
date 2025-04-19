@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { PrismaClient } from "@prisma/client";
-import { generateKeypair, encryptKeypair } from "@/lib/wallet";
 import { isValidPasscode } from "@/lib/utils";
+import { getKeypairFromMnemonic, validateMnemonic, encryptMnemonic } from "@/lib/crypto";
 
 const prisma = new PrismaClient();
 
@@ -18,8 +18,8 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Get the passcode from the request
-    const { passcode } = await req.json();
+    // Get the passcode and mnemonic from the request
+    const { passcode, mnemonic } = await req.json();
 
     if (!isValidPasscode(passcode)) {
       return NextResponse.json(
@@ -28,21 +28,29 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Generate a keypair for the user based on their email
-    const keypair = generateKeypair(session.user.email);
+    // Validate that the mnemonic is a valid BIP-39 phrase
+    if (!mnemonic || !validateMnemonic(mnemonic)) {
+      return NextResponse.json(
+        { error: "Invalid recovery phrase" },
+        { status: 400 }
+      );
+    }
+
+    // Derive a keypair from the mnemonic using HD wallet standards
+    const keypair = getKeypairFromMnemonic(mnemonic);
 
     // Get the public key (address)
     const solanaAddress = keypair.publicKey.toString();
 
-    // Encrypt the keypair with the passcode
-    const encryptedKeypair = encryptKeypair(keypair, passcode);
+    // Encrypt the mnemonic with the passcode using secure methods
+    const encryptedMnemonic = await encryptMnemonic(mnemonic, passcode);
 
-    // Update the user record with the wallet address and encrypted keypair
+    // Update the user record with the wallet address and encrypted mnemonic
     await prisma.user.update({
       where: { email: session.user.email },
       data: {
         solanaAddress,
-        encryptedKeypair,
+        encryptedKeypair: encryptedMnemonic, // Store the encrypted mnemonic in the existing column
         hasPasscode: true,
         passcodeSetAt: new Date(),
       },

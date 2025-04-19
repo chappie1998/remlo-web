@@ -2,9 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { PrismaClient } from "@prisma/client";
 import { LAMPORTS_PER_SOL } from "@solana/web3.js";
-import { decryptKeypair, sendTransaction } from "@/lib/wallet";
+import { sendTransaction } from "@/lib/wallet";
 import { isValidPasscode } from "@/lib/utils";
 import { isValidSolanaAddress } from "@/lib/solana";
+import { decryptMnemonic, getKeypairFromMnemonic } from "@/lib/crypto";
 
 const prisma = new PrismaClient();
 
@@ -57,20 +58,23 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Try to decrypt the keypair with the provided passcode
-    const keypair = decryptKeypair(user.encryptedKeypair, passcode);
+    // Decrypt the mnemonic with the provided passcode
+    const mnemonic = await decryptMnemonic(user.encryptedKeypair, passcode);
 
-    if (!keypair) {
+    if (!mnemonic) {
       return NextResponse.json(
         { error: "Invalid passcode" },
         { status: 401 }
       );
     }
 
-    // Convert the amount from SOL to lamports
-    const amountInLamports = Math.floor(parseFloat(amount) * LAMPORTS_PER_SOL);
+    // Derive the keypair from the mnemonic
+    const keypair = getKeypairFromMnemonic(mnemonic);
 
-    if (isNaN(amountInLamports) || amountInLamports <= 0) {
+    // Convert the amount from SOL to lamports
+    const amountInLamports = Math.floor(Number.parseFloat(amount) * LAMPORTS_PER_SOL);
+
+    if (Number.isNaN(amountInLamports) || amountInLamports <= 0) {
       return NextResponse.json(
         { error: "Invalid amount" },
         { status: 400 }
