@@ -36,7 +36,8 @@ export async function POST(req: NextRequest) {
         encryptedKeypair: true,
         usesMPC: true,
         mpcServerShare: true,
-        mpcSalt: true
+        mpcSalt: true,
+        mpcBackupShare: true  // Include backup share for verification
       },
     });
 
@@ -57,11 +58,12 @@ export async function POST(req: NextRequest) {
         );
       }
 
-      // Verify the passcode using MPC
+      // Verify the passcode using MPC with backup share for more thorough verification
       const isValid = await verifyPasscodeForMPC(
         passcode,
         user.mpcServerShare,
-        user.mpcSalt
+        user.mpcSalt,
+        user.mpcBackupShare  // Include backup share for better verification
       );
 
       if (!isValid) {

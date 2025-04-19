@@ -39,7 +39,12 @@ export function splitSecretIntoThreeParts(secret: Uint8Array): {
   part2: Uint8Array; // Server part
   part3: Uint8Array; // Backup part
 } {
-  // Generate two random parts
+  // Ensure the secret has the correct length (64 bytes for Solana)
+  if (secret.length !== 64) {
+    throw new Error(`Invalid secret length for Solana key: ${secret.length}, expected 64 bytes`);
+  }
+
+  // Generate two random parts with the same length as the secret
   const part1 = randomBytes(secret.length);
   const part2 = randomBytes(secret.length);
 
@@ -47,6 +52,20 @@ export function splitSecretIntoThreeParts(secret: Uint8Array): {
   const part3 = new Uint8Array(secret.length);
   for (let i = 0; i < secret.length; i++) {
     part3[i] = secret[i] ^ part1[i] ^ part2[i];
+  }
+
+  // Verify our parts are the correct length
+  if (part1.length !== 64 || part2.length !== 64 || part3.length !== 64) {
+    throw new Error(`Invalid part lengths after split: ${part1.length}, ${part2.length}, ${part3.length}`);
+  }
+
+  // Test recombination to verify correctness
+  const recombined = new Uint8Array(secret.length);
+  for (let i = 0; i < secret.length; i++) {
+    recombined[i] = part1[i] ^ part2[i] ^ part3[i];
+    if (recombined[i] !== secret[i]) {
+      throw new Error(`Recombination test failed at index ${i}: original=${secret[i]}, recombined=${recombined[i]}`);
+    }
   }
 
   return { part1, part2, part3 };
@@ -79,11 +98,31 @@ export function splitPrivateKey(secretKey: Uint8Array): {
   backupShare: string;  // For recovery
   salt: string;         // For passcode derivation
 } {
+  // Ensure we have a valid Solana secret key length (64 bytes)
+  if (secretKey.length !== 64) {
+    throw new Error(`Invalid Solana secret key length: ${secretKey.length}, expected 64 bytes`);
+  }
+
   // Split the secret key into three parts
   const { part1, part2, part3 } = splitSecretIntoThreeParts(secretKey);
 
+  // Verify that our parts have the correct length
+  if (part1.length !== 64 || part2.length !== 64 || part3.length !== 64) {
+    throw new Error(`Invalid split parts length: ${part1.length}, ${part2.length}, ${part3.length}`);
+  }
+
   // Generate a salt for the passcode derivation
   const salt = generateSalt();
+
+  // Test recombination to ensure our parts can be recombined correctly
+  const recombined = combineThreeParts(part1, part2, part3);
+  let isValid = true;
+  for (let i = 0; i < secretKey.length; i++) {
+    if (secretKey[i] !== recombined[i]) {
+      isValid = false;
+      throw new Error(`Key recombination test failed at index ${i}: original=${secretKey[i]}, recombined=${recombined[i]}`);
+    }
+  }
 
   // Convert parts to base64 for storage
   return {
@@ -134,39 +173,84 @@ export function createMPCWallet(passcode: string): {
   recoveryShare: string; // Additional share for more recovery options
   salt: string;
 } {
-  // Generate a new Solana keypair
-  const keypair = Keypair.generate();
-  const publicKey = keypair.publicKey.toBase58();
+  try {
+    // Generate a new Solana keypair
+    const keypair = Keypair.generate();
+    const publicKey = keypair.publicKey.toBase58();
 
-  // Split the private key into three shares
-  const { userShare, serverShare, backupShare, salt } = splitPrivateKey(keypair.secretKey);
+    // Ensure the secret key has the correct length (64 bytes for Solana)
+    if (keypair.secretKey.length !== 64) {
+      throw new Error(`Invalid Solana keypair: secret key length is ${keypair.secretKey.length}, expected 64`);
+    }
 
-  // Derive an encryption key from the passcode
-  const saltBytes = base64Decode(salt);
-  const encryptionKey = deriveKeyFromPasscode(passcode, saltBytes);
+    console.log(`Creating MPC wallet with keypair secret key length: ${keypair.secretKey.length}`);
 
-  // Encrypt the server share
-  const encryptedServerShare = encryptData(base64Decode(serverShare), encryptionKey);
+    // Split the private key into three shares
+    const { userShare, serverShare, backupShare, salt } = splitPrivateKey(keypair.secretKey);
 
-  // Create an additional recovery share by XORing the user and backup shares
-  // This provides alternative recovery paths
-  const recoveryShareBytes = new Uint8Array(base64Decode(userShare).length);
-  const userShareBytes = base64Decode(userShare);
-  const backupShareBytes = base64Decode(backupShare);
+    // Derive an encryption key from the passcode
+    const saltBytes = base64Decode(salt);
+    const encryptionKey = deriveKeyFromPasscode(passcode, saltBytes);
 
-  for (let i = 0; i < recoveryShareBytes.length; i++) {
-    recoveryShareBytes[i] = userShareBytes[i] ^ backupShareBytes[i];
+    // Encrypt the server share
+    const encryptedServerShare = encryptData(base64Decode(serverShare), encryptionKey);
+
+    // Create an additional recovery share by XORing the user and backup shares
+    // This provides alternative recovery paths
+    const userShareBytes = base64Decode(userShare);
+    const backupShareBytes = base64Decode(backupShare);
+
+    // Verify that our shares have the correct length
+    if (userShareBytes.length !== 64 || backupShareBytes.length !== 64) {
+      throw new Error(`Invalid share lengths: user=${userShareBytes.length}, backup=${backupShareBytes.length}, expected 64`);
+    }
+
+    const recoveryShareBytes = new Uint8Array(userShareBytes.length);
+
+    for (let i = 0; i < recoveryShareBytes.length; i++) {
+      recoveryShareBytes[i] = userShareBytes[i] ^ backupShareBytes[i];
+    }
+
+    const recoveryShare = base64Encode(recoveryShareBytes);
+
+    // Test reconstruction to verify keypair validity
+    const derivedUserShare = deriveUserShare(passcode, salt, userShareBytes.length);
+    const serverShareBytes = base64Decode(serverShare);
+    const testPrivateKey = combineThreeParts(derivedUserShare, serverShareBytes, backupShareBytes);
+
+    // Verify the reconstructed key matches the original
+    let isValid = true;
+    for (let i = 0; i < keypair.secretKey.length; i++) {
+      if (keypair.secretKey[i] !== testPrivateKey[i]) {
+        isValid = false;
+        console.error(`Key mismatch at index ${i}: original=${keypair.secretKey[i]}, reconstructed=${testPrivateKey[i]}`);
+        break;
+      }
+    }
+
+    if (!isValid) {
+      throw new Error("Key reconstruction verification failed");
+    }
+
+    try {
+      // Final verification - attempt to create a keypair from reconstructed key
+      Keypair.fromSecretKey(testPrivateKey);
+    } catch (e) {
+      console.error("Failed verification:", e);
+      throw new Error("Failed to create keypair from reconstructed key");
+    }
+
+    return {
+      publicKey,
+      serverShare: encryptedServerShare,
+      backupShare,
+      recoveryShare, // This can be stored in a different location than backupShare
+      salt
+    };
+  } catch (error) {
+    console.error("Error creating MPC wallet:", error);
+    throw error;
   }
-
-  const recoveryShare = base64Encode(recoveryShareBytes);
-
-  return {
-    publicKey,
-    serverShare: encryptedServerShare,
-    backupShare,
-    recoveryShare, // This can be stored in a different location than backupShare
-    salt
-  };
 }
 
 /**
@@ -175,17 +259,37 @@ export function createMPCWallet(passcode: string): {
 export async function verifyPasscodeForMPC(
   passcode: string,
   encryptedServerShare: string,
-  salt: string
+  salt: string,
+  backupShare?: string
 ): Promise<boolean> {
   try {
+    // First verify we can decrypt the server share
     const saltBytes = base64Decode(salt);
     const encryptionKey = deriveKeyFromPasscode(passcode, saltBytes);
 
-    // Try to decrypt the server share - if successful, the passcode is valid
-    decryptData(encryptedServerShare, encryptionKey);
+    // Try to decrypt the server share
+    const serverShareBytes = decryptData(encryptedServerShare, encryptionKey);
+
+    // If we have a backup share, try to fully reconstruct the keypair
+    if (backupShare) {
+      // Derive user share from passcode
+      const userShareBytes = deriveUserShare(passcode, salt, serverShareBytes.length);
+      const backupShareBytes = base64Decode(backupShare);
+
+      // Try to create a keypair from the combined shares
+      try {
+        const privateKey = combineThreeParts(userShareBytes, serverShareBytes, backupShareBytes);
+        // This will throw if the key is invalid
+        Keypair.fromSecretKey(privateKey);
+      } catch (e) {
+        console.error("Key reconstruction failed during verification:", e);
+        return false;
+      }
+    }
 
     return true;
   } catch (error) {
+    console.error("Passcode verification failed:", error);
     return false;
   }
 }
@@ -193,16 +297,40 @@ export async function verifyPasscodeForMPC(
 /**
  * Derive the user share from the passcode
  */
-export function deriveUserShare(passcode: string, salt: string, length: number = 32): Uint8Array {
+export function deriveUserShare(passcode: string, salt: string, length: number = 64): Uint8Array {
   const saltBytes = base64Decode(salt);
   const baseKey = deriveKeyFromPasscode(passcode, saltBytes);
 
-  // Create a fixed-length user share from the derived key
+  // Fixed length of 64 bytes required for Solana keypairs
   const userShare = new Uint8Array(length);
 
-  // Stretch the derived key to fill the user share
-  for (let i = 0; i < length; i++) {
-    userShare[i] = baseKey[i % baseKey.length];
+  if (length != 64) {
+    console.warn(`Warning: deriveUserShare called with length ${length}, but Solana requires 64 bytes`);
+  }
+
+  // Fill the user share by repeatedly hashing the baseKey with different counters
+  // This ensures we can generate enough entropy for the entire 64-byte key
+  let currentIndex = 0;
+
+  // Generate segments of entropy by hashing with different counters
+  for (let counter = 0; currentIndex < length; counter++) {
+    // Create a buffer with the base key and counter
+    const buffer = new Uint8Array(baseKey.length + 4);
+    buffer.set(baseKey, 0);
+
+    // Set a 4-byte counter at the end
+    buffer[baseKey.length] = (counter >> 24) & 0xff;
+    buffer[baseKey.length + 1] = (counter >> 16) & 0xff;
+    buffer[baseKey.length + 2] = (counter >> 8) & 0xff;
+    buffer[baseKey.length + 3] = counter & 0xff;
+
+    // Hash the buffer
+    const segment = sha256(buffer);
+
+    // Copy as many bytes as needed from this segment
+    const bytesToCopy = Math.min(segment.length, length - currentIndex);
+    userShare.set(segment.slice(0, bytesToCopy), currentIndex);
+    currentIndex += bytesToCopy;
   }
 
   return userShare;
@@ -240,14 +368,33 @@ export function prepareMPCSigningKeypair(
       // Reconstruct the private key using all three shares
       const privateKey = combineThreeParts(backupShareBytes, serverShareBytes, recoveryShareBytes);
 
-      return Keypair.fromSecretKey(privateKey);
+      try {
+        // Validate that we have a proper Solana keypair length (64 bytes)
+        if (privateKey.length !== 64) {
+          throw new Error(`Invalid secret key length: ${privateKey.length}, expected 64`);
+        }
+        return Keypair.fromSecretKey(privateKey);
+      } catch (e) {
+        console.error("Failed to create keypair from reconstructed key:", e);
+        return null;
+      }
     }
 
     // Standard flow: combine user share and server share, plus backup if available
     if (backupShare) {
       const backupShareBytes = base64Decode(backupShare);
       const privateKey = combineThreeParts(userShareBytes, serverShareBytes, backupShareBytes);
-      return Keypair.fromSecretKey(privateKey);
+
+      try {
+        // Validate that we have a proper Solana keypair length (64 bytes)
+        if (privateKey.length !== 64) {
+          throw new Error(`Invalid secret key length: ${privateKey.length}, expected 64`);
+        }
+        return Keypair.fromSecretKey(privateKey);
+      } catch (e) {
+        console.error("Failed to create keypair from reconstructed key:", e);
+        return null;
+      }
     } else {
       // Without backup share, we'll use a third share derived from both user and server shares
       // This is less secure but allows for backward compatibility
@@ -266,7 +413,17 @@ export function prepareMPCSigningKeypair(
       }
 
       const privateKey = combineThreeParts(userShareBytes, serverShareBytes, thirdShareBytes);
-      return Keypair.fromSecretKey(privateKey);
+
+      try {
+        // Validate that we have a proper Solana keypair length (64 bytes)
+        if (privateKey.length !== 64) {
+          throw new Error(`Invalid secret key length: ${privateKey.length}, expected 64`);
+        }
+        return Keypair.fromSecretKey(privateKey);
+      } catch (e) {
+        console.error("Failed to create keypair from reconstructed key:", e);
+        return null;
+      }
     }
   } catch (error) {
     console.error("Error in MPC signing preparation:", error);

@@ -83,18 +83,39 @@ export async function POST(req: NextRequest) {
       // Otherwise, use the server's stored backup share for 3-part reconstruction
       const clientBackupShare = backupShare || user.mpcBackupShare;
 
-      // Prepare the keypair using MPC with 3 shares
-      keypair = prepareMPCSigningKeypair(
-        passcode,
-        user.mpcServerShare,
-        user.mpcSalt,
-        clientBackupShare,
-        recoveryShare // This might be undefined, which is fine
-      );
+      console.log(`Attempting MPC signing with ${clientBackupShare ? 'backup share' : 'no backup share'}`);
 
-      if (!keypair) {
+      // Prepare the keypair using MPC with 3 shares
+      try {
+        keypair = prepareMPCSigningKeypair(
+          passcode,
+          user.mpcServerShare,
+          user.mpcSalt,
+          clientBackupShare,
+          recoveryShare // This might be undefined, which is fine
+        );
+
+        if (!keypair) {
+          console.error("MPC signing preparation returned null");
+          return NextResponse.json(
+            { error: "Invalid passcode or shares" },
+            { status: 401 }
+          );
+        }
+
+        // Verify the keypair corresponds to the user's address
+        const keypairAddress = keypair.publicKey.toBase58();
+        if (keypairAddress !== user.solanaAddress) {
+          console.error(`Address mismatch: expected ${user.solanaAddress}, got ${keypairAddress}`);
+          return NextResponse.json(
+            { error: "Generated keypair does not match wallet address" },
+            { status: 401 }
+          );
+        }
+      } catch (mpError) {
+        console.error("Error in MPC signing preparation:", mpError);
         return NextResponse.json(
-          { error: "Invalid passcode or shares" },
+          { error: mpError instanceof Error ? mpError.message : "Failed to prepare MPC signing" },
           { status: 401 }
         );
       }
