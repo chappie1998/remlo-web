@@ -29,7 +29,8 @@ export const RELAYER_URL = process.env.NEXT_PUBLIC_RELAYER_URL || 'http://localh
  * Creates a Connection for Solana
  */
 export function getSolanaConnection(): Connection {
-  return new Connection(SOLANA_RPC_URL);
+  console.log(`Creating Solana connection to: ${SOLANA_RPC_URL}`);
+  return new Connection(SOLANA_RPC_URL, 'confirmed');
 }
 
 /**

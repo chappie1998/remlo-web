@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { PrismaClient } from "@prisma/client";
 import { PublicKey } from "@solana/web3.js";
-import { SPL_TOKEN_ADDRESS, RELAYER_URL, isValidSolanaAddress } from "@/lib/solana";
+import { SPL_TOKEN_ADDRESS, RELAYER_URL, isValidSolanaAddress, getSolanaConnection } from "@/lib/solana";
 import { isValidPasscode } from "@/lib/utils";
 import { prepareMPCSigningKeypair } from "@/lib/mpc";
 import { authOptions } from "@/lib/auth";
@@ -156,13 +156,47 @@ export async function POST(req: NextRequest) {
     const transactionBuffer = Buffer.from(serializedTransaction, 'base64');
     const unsignedTransaction = Transaction.from(transactionBuffer);
 
+    console.log("Received transaction for signing with following instructions:");
+    unsignedTransaction.instructions.forEach((instruction, i) => {
+      console.log(`- Instruction ${i}: Required signers:`,
+        instruction.keys
+          .filter(key => key.isSigner)
+          .map(key => key.pubkey.toString())
+      );
+    });
+
+    // Check if the transaction has a blockhash
+    if (!unsignedTransaction.recentBlockhash) {
+      console.log("Transaction missing blockhash, using a new one");
+      const connection = getSolanaConnection();
+      const { blockhash } = await connection.getLatestBlockhash('confirmed');
+      unsignedTransaction.recentBlockhash = blockhash;
+    }
+
+    // Make sure fee payer is set
+    if (!unsignedTransaction.feePayer) {
+      console.log("Transaction missing fee payer, using relayer");
+      // We'll assume the relayer is the fee payer
+    }
+
     // Step 4: User signs the transaction (only signing the transfer instruction)
+    console.log(`User signing transaction with address: ${keypair.publicKey.toString()}`);
     const messageToSign = unsignedTransaction.serializeMessage();
     const signature = sign.detached(messageToSign, keypair.secretKey);
 
     // Step 5: Serialize the signed transaction
     unsignedTransaction.addSignature(keypair.publicKey, Buffer.from(signature));
-    const serializedSignedTransaction = unsignedTransaction.serialize().toString('base64');
+
+    // Log transaction signatures after user signs
+    console.log("Transaction signatures after user signing:");
+    unsignedTransaction.signatures.forEach((sig, i) => {
+      console.log(`- Signature ${i}: ${sig.publicKey.toString()} - ${sig.signature ? 'signed' : 'not signed'}`);
+    });
+
+    const serializedSignedTransaction = unsignedTransaction.serialize({
+      verifySignatures: false,
+      requireAllSignatures: false
+    }).toString('base64');
 
     // Step 6: Submit the signed transaction to the relayer
     const submitResponse = await fetch(`${RELAYER_URL}/api/submit-transaction`, {
