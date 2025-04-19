@@ -37,6 +37,22 @@ export default function WalletDashboard() {
     formattedBalance: "0",
   });
 
+  // Add a new useEffect to handle redirects based on authentication state
+  useEffect(() => {
+    if (status === "unauthenticated") {
+      console.log("User is not authenticated, redirecting to sign in page");
+      router.push("/auth/signin");
+    } else if (status === "authenticated" && !session?.user?.hasPasscode) {
+      console.log("User authenticated but no passcode, redirecting to setup page");
+      router.push("/wallet/setup");
+
+      // As a backup, force navigation if app router doesn't respond
+      setTimeout(() => {
+        window.location.href = "/wallet/setup";
+      }, 1000);
+    }
+  }, [status, session, router]);
+
   useEffect(() => {
     if (session?.user?.solanaAddress) {
       fetchBalance();
@@ -123,7 +139,19 @@ export default function WalletDashboard() {
   if (status === "unauthenticated" || (status === "authenticated" && !session?.user?.hasPasscode)) {
     return (
       <div className="flex min-h-screen flex-col items-center justify-center p-4">
-        <p>Redirecting...</p>
+        <p>Redirecting to {status === "unauthenticated" ? "login" : "wallet setup"}...</p>
+        <Button
+          className="mt-4"
+          onClick={() => {
+            if (status === "unauthenticated") {
+              window.location.href = "/auth/signin";
+            } else {
+              window.location.href = "/wallet/setup";
+            }
+          }}
+        >
+          Click here if not redirected
+        </Button>
       </div>
     );
   }

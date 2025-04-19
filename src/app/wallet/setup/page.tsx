@@ -19,14 +19,36 @@ export default function WalletSetup() {
   const [backupShare, setBackupShare] = useState("");
   const [recoveryShare, setRecoveryShare] = useState(""); // New state for recovery share
   const router = useRouter();
-  const { data: session, update } = useSession();
+  const { data: session, update, status } = useSession();
 
   // Handle redirect if user already has wallet (in client-side only)
   useEffect(() => {
-    if (session?.user?.solanaAddress && step !== 3) {
-      router.push("/wallet");
+    if (status === "loading") {
+      // Still loading, do nothing yet
+      return;
     }
-  }, [session, step, router]);
+
+    if (status === "unauthenticated") {
+      console.log("User is not authenticated, redirecting to sign in page");
+      router.push("/auth/signin");
+
+      // Force redirect as fallback
+      setTimeout(() => {
+        window.location.href = "/auth/signin";
+      }, 1000);
+      return;
+    }
+
+    if (session?.user?.solanaAddress && session?.user?.hasPasscode && step !== 3) {
+      console.log("User already has wallet, redirecting to wallet page");
+      router.push("/wallet");
+
+      // Force redirect as fallback
+      setTimeout(() => {
+        window.location.href = "/wallet";
+      }, 1000);
+    }
+  }, [session, step, router, status]);
 
   const handlePasscodeSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -97,10 +119,42 @@ export default function WalletSetup() {
   };
 
   // If user already has a wallet, show loading until client-side redirect happens
-  if (session?.user?.solanaAddress && step !== 3) {
+  if (status === "loading") {
     return (
       <div className="flex min-h-screen flex-col items-center justify-center p-4">
-        <p>Redirecting to wallet...</p>
+        <p>Loading...</p>
+      </div>
+    );
+  }
+
+  if (status === "unauthenticated") {
+    return (
+      <div className="flex min-h-screen flex-col items-center justify-center p-4">
+        <p>Please sign in to set up your wallet</p>
+        <Button
+          className="mt-4"
+          onClick={() => {
+            window.location.href = "/auth/signin";
+          }}
+        >
+          Go to Sign In
+        </Button>
+      </div>
+    );
+  }
+
+  if (session?.user?.solanaAddress && session?.user?.hasPasscode && step !== 3) {
+    return (
+      <div className="flex min-h-screen flex-col items-center justify-center p-4">
+        <p>You already have a wallet. Redirecting to wallet dashboard...</p>
+        <Button
+          className="mt-4"
+          onClick={() => {
+            window.location.href = "/wallet";
+          }}
+        >
+          Go to Wallet
+        </Button>
       </div>
     );
   }
