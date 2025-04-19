@@ -3,13 +3,14 @@ import { getServerSession } from "next-auth/next";
 import { PrismaClient } from "@prisma/client";
 import { SPL_TOKEN_ADDRESS, isValidSolanaAddress } from "@/lib/solana";
 import { isValidPasscode } from "@/lib/utils";
+import { authOptions } from "@/lib/auth";
 
 const prisma = new PrismaClient();
 
 export async function POST(req: NextRequest) {
   try {
-    // Get the current session
-    const session = await getServerSession();
+    // Get the current session - pass in the auth options
+    const session = await getServerSession(authOptions);
 
     if (!session || !session.user || !session.user.email) {
       return NextResponse.json(

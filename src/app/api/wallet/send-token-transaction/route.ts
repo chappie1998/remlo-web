@@ -5,13 +5,14 @@ import { SPL_TOKEN_ADDRESS, RELAYER_URL, isValidSolanaAddress } from "@/lib/sola
 import { isValidPasscode } from "@/lib/utils";
 import { decryptMnemonic, getKeypairFromMnemonic } from "@/lib/crypto";
 import { prepareMPCSigningKeypair } from "@/lib/mpc";
+import { authOptions } from "@/lib/auth";
 
 const prisma = new PrismaClient();
 
 export async function POST(req: NextRequest) {
   try {
-    // Get the current session
-    const session = await getServerSession();
+    // Get the current session - pass in the auth options
+    const session = await getServerSession(authOptions);
 
     if (!session || !session.user || !session.user.email) {
       return NextResponse.json(

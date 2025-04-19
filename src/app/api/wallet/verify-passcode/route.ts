@@ -4,13 +4,14 @@ import { PrismaClient } from "@prisma/client";
 import { decryptMnemonic } from "@/lib/crypto";
 import { isValidPasscode } from "@/lib/utils";
 import { verifyPasscodeForMPC } from "@/lib/mpc";
+import { authOptions } from "@/lib/auth";
 
 const prisma = new PrismaClient();
 
 export async function POST(req: NextRequest) {
   try {
-    // Get the current session
-    const session = await getServerSession();
+    // Get the current session - pass in the auth options
+    const session = await getServerSession(authOptions);
 
     if (!session || !session.user || !session.user.email) {
       return NextResponse.json(
