@@ -153,20 +153,14 @@ export default function WalletDashboard() {
   const fetchTokenBalance = async () => {
     try {
       setLoadingBalance(true);
-      // Use our mock endpoint instead of the real one for now
-      // const response = await fetch("/api/mock-relayer/token-balance");
-      // const data = await response.json();
-      const balance = await getTokenBalanceRpc(
-        session?.user?.solanaAddress ?? "",
-        "Gh9ZwEmdLJ8DscKNTkTqPbNwLNNBjuSzaG9Vp2KGtKJr"
-      );
-
-      console.log("Token balance:", balance);
-      setTokenBalance(balance / 10 ** 6 ?? 0.0); // Using nullish coalescing
-      // if (response.ok) {
-      // } else {
-      //   console.error("Failed to fetch token balance:", data.error);
-      // }
+      // Use our real endpoint for token balance
+      const response = await fetch("/api/wallet/token-balance");
+      const data = await response.json();
+      if (response.ok) {
+        setTokenBalance(data.formattedBalance);
+      } else {
+        console.error("Failed to fetch token balance:", data.error);
+      }
     } catch (error) {
       console.error("Error fetching token balance:", error);
     } finally {
@@ -241,7 +235,7 @@ export default function WalletDashboard() {
 
     try {
       const endpoint = isSendingToken
-        ? "/api/mock-relayer/send-token" // Use our mock endpoint for token transactions
+        ? "/api/wallet/send-token-transaction" // Use the real endpoint for token transactions
         : "/api/wallet/send-transaction";
 
       const response = await fetch(endpoint, {

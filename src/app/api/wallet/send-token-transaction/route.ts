@@ -1,17 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { PrismaClient } from "@prisma/client";
+import { PublicKey } from "@solana/web3.js";
 import { SPL_TOKEN_ADDRESS, RELAYER_URL, isValidSolanaAddress } from "@/lib/solana";
 import { isValidPasscode } from "@/lib/utils";
-import { decryptMnemonic, getKeypairFromMnemonic } from "@/lib/crypto";
 import { prepareMPCSigningKeypair } from "@/lib/mpc";
 import { authOptions } from "@/lib/auth";
+import { Transaction } from "@solana/web3.js";
+import { sign } from "tweetnacl";
 
 const prisma = new PrismaClient();
 
 export async function POST(req: NextRequest) {
   try {
-    // Get the current session - pass in the auth options
+    // Get the current session
     const session = await getServerSession(authOptions);
 
     if (!session || !session.user || !session.user.email) {
@@ -50,7 +52,6 @@ export async function POST(req: NextRequest) {
       where: { email: session.user.email },
       select: {
         id: true,
-        encryptedKeypair: true,
         solanaAddress: true,
         usesMPC: true,
         mpcServerShare: true,
@@ -66,7 +67,44 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Create a record of the transaction request
+    // Validate MPC wallet setup
+    if (!user.usesMPC || !user.mpcServerShare || !user.mpcSalt) {
+      return NextResponse.json(
+        { error: "Wallet not set up properly" },
+        { status: 400 }
+      );
+    }
+
+    // If the client provided their own backup and recovery shares, use those
+    // Otherwise, use the server's stored backup share for 3-part reconstruction
+    const clientBackupShare = backupShare || user.mpcBackupShare;
+
+    // Prepare the keypair using MPC with 3 shares
+    const keypair = prepareMPCSigningKeypair(
+      passcode,
+      user.mpcServerShare,
+      user.mpcSalt,
+      clientBackupShare,
+      recoveryShare
+    );
+
+    if (!keypair) {
+      return NextResponse.json(
+        { error: "Invalid passcode or shares" },
+        { status: 401 }
+      );
+    }
+
+    // Verify the keypair corresponds to the user's address
+    const keypairAddress = keypair.publicKey.toBase58();
+    if (keypairAddress !== user.solanaAddress) {
+      return NextResponse.json(
+        { error: "Generated keypair does not match wallet address" },
+        { status: 401 }
+      );
+    }
+
+    // Step 1: Create a record of the transaction request
     const transaction = await prisma.transaction.create({
       data: {
         txData: JSON.stringify({ to, amount, token: SPL_TOKEN_ADDRESS }),
@@ -77,90 +115,101 @@ export async function POST(req: NextRequest) {
       },
     });
 
-    try {
-      // Step 1: Create a transaction through the relayer
-      const createTxResponse = await fetch(`${RELAYER_URL}/api/create-transfer`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          fromAddress: user.solanaAddress,
-          toAddress: to,
-          amount: amount,
-        }),
-      });
+    // Convert amount to token units (assuming 9 decimals like SOL)
+    const amountInUnits = Math.floor(Number(amount) * 1_000_000_000);
 
-      if (!createTxResponse.ok) {
-        const errorData = await createTxResponse.json();
-        throw new Error(errorData.error || "Failed to create transaction via relayer");
-      }
+    // Step 2: Request the transaction data from the relayer
+    const createTransferResponse = await fetch(`${RELAYER_URL}/api/create-transfer`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        fromAddress: user.solanaAddress,
+        toAddress: to,
+        amount: amount,
+      }),
+    });
 
-      const { transactionData } = await createTxResponse.json();
-
-      // Step 2: Sign the transaction with the user's keypair
-      // Need to implement the signing logic here
-      let signature;
-
-      // Step 3: Submit the signed transaction via the relayer
-      const submitTxResponse = await fetch(`${RELAYER_URL}/api/submit-transaction`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          signedTransaction: transactionData, // Ideally, this should be signed first
-        }),
-      });
-
-      if (!submitTxResponse.ok) {
-        const errorData = await submitTxResponse.json();
-        throw new Error(errorData.error || "Failed to submit transaction via relayer");
-      }
-
-      const submitResult = await submitTxResponse.json();
-      signature = submitResult.signature;
-
-      // Update the transaction record with the executed status and signature
-      await prisma.transaction.update({
-        where: { id: transaction.id },
-        data: {
-          status: "executed",
-          signature,
-          executedAt: new Date(),
-        },
-      });
-
-      return NextResponse.json({
-        success: true,
-        signature,
-        message: "Transaction sent successfully via relayer",
-      });
-    } catch (txError) {
-      // Update the transaction record with the rejected status
-      await prisma.transaction.update({
-        where: { id: transaction.id },
-        data: {
-          status: "rejected",
-        },
-      });
-
-      console.error("Transaction failed:", txError);
-      const errorMessage = txError instanceof Error ? txError.message : "Transaction failed to execute";
-      return NextResponse.json(
-        { error: errorMessage },
-        { status: 500 }
-      );
+    if (!createTransferResponse.ok) {
+      const errorData = await createTransferResponse.json();
+      throw new Error(errorData.error || "Failed to create transfer with relayer");
     }
+
+    const createTransferData = await createTransferResponse.json();
+    const serializedTransaction = createTransferData.transactionData;
+
+    // Step 3: Deserialize the transaction to sign it
+    const transactionBuffer = Buffer.from(serializedTransaction, 'base64');
+    const unsignedTransaction = Transaction.from(transactionBuffer);
+
+    // Step 4: User signs the transaction (only signing the transfer instruction)
+    const messageToSign = unsignedTransaction.serializeMessage();
+    const signature = sign.detached(messageToSign, keypair.secretKey);
+
+    // Step 5: Serialize the signed transaction
+    unsignedTransaction.addSignature(keypair.publicKey, Buffer.from(signature));
+    const serializedSignedTransaction = unsignedTransaction.serialize().toString('base64');
+
+    // Step 6: Submit the signed transaction to the relayer
+    const submitResponse = await fetch(`${RELAYER_URL}/api/submit-transaction`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        signedTransaction: serializedSignedTransaction,
+      }),
+    });
+
+    if (!submitResponse.ok) {
+      const errorData = await submitResponse.json();
+      throw new Error(errorData.error || "Failed to submit transaction to relayer");
+    }
+
+    const submitData = await submitResponse.json();
+    const { signature: txSignature } = submitData;
+
+    // Step 7: Update the transaction record with the executed status and signature
+    await prisma.transaction.update({
+      where: { id: transaction.id },
+      data: {
+        status: "executed",
+        signature: txSignature,
+        executedAt: new Date(),
+      },
+    });
+
+    return NextResponse.json({
+      success: true,
+      signature: txSignature,
+      message: "Token transaction sent successfully via relayer",
+    });
   } catch (error) {
     console.error("Error sending token transaction:", error);
+
+    // Update transaction record if it exists
+    if (error instanceof Error && error.stack?.includes("transaction.id")) {
+      try {
+        const match = error.stack.match(/transaction\.id: ([a-zA-Z0-9-]+)/);
+        if (match && match[1]) {
+          const txId = match[1];
+          await prisma.transaction.update({
+            where: { id: txId },
+            data: { status: "rejected" },
+          });
+        }
+      } catch (updateError) {
+        console.error("Failed to update transaction status:", updateError);
+      }
+    }
+
     const errorMessage = error instanceof Error ? error.message : "Failed to send token transaction";
     return NextResponse.json(
       { error: errorMessage },
       { status: 500 }
     );
   } finally {
-    // Close the Prisma client connection
     await prisma.$disconnect();
   }
 }

@@ -23,7 +23,7 @@ export const SOLANA_RPC_URL =
 export const SPL_TOKEN_ADDRESS = 'Gh9ZwEmdLJ8DscKNTkTqPbNwLNNBjuSzaG9Vp2KGtKJr';
 
 // Relayer service URL
-export const RELAYER_URL = 'http://localhost:3001';
+export const RELAYER_URL = process.env.NEXT_PUBLIC_RELAYER_URL || 'http://localhost:3001';
 
 /**
  * Creates a Connection for Solana
