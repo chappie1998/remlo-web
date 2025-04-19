@@ -13,6 +13,7 @@ export default function SignIn() {
   const [isLoading, setIsLoading] = useState(false);
   const [step, setStep] = useState<"email" | "otp">("email");
   const [simulatedOtp, setSimulatedOtp] = useState<string | null>(null);
+  const [signInResult, setSignInResult] = useState<any>(null); // Store sign-in result for debugging
   const router = useRouter();
   const searchParams = useSearchParams();
   const callbackUrl = searchParams.get("callbackUrl") || "/wallet";
@@ -51,6 +52,19 @@ export default function SignIn() {
 
     return () => clearInterval(interval);
   }, [email, step, isDevelopment]);
+
+  // Add a debugging effect to check sign-in result
+  useEffect(() => {
+    if (signInResult) {
+      console.log("Sign-in result:", signInResult);
+      if (signInResult.ok) {
+        // Force navigation and avoid showing the "redirecting" message for too long
+        setTimeout(() => {
+          window.location.href = callbackUrl;
+        }, 1500);
+      }
+    }
+  }, [signInResult, callbackUrl]);
 
   const handleRequestOTP = async (e: FormEvent) => {
     e.preventDefault();
@@ -92,6 +106,9 @@ export default function SignIn() {
     setIsLoading(true);
 
     try {
+      // Display message to user that we're signing in
+      toast.info("Signing in...");
+
       const result = await signIn("otp-login", {
         email,
         otp,
@@ -99,13 +116,22 @@ export default function SignIn() {
         callbackUrl,
       });
 
+      setSignInResult(result); // Store the result for debugging
+
       if (result?.error) {
         throw new Error(result.error || "Invalid OTP");
       }
 
-      // Redirect to the callback URL or wallet page
-      toast.success("Successfully signed in");
+      // Show success message
+      toast.success("Successfully signed in. Redirecting...");
+
+      // Attempt redirection with both methods
       router.push(callbackUrl);
+
+      // As a fallback, use direct navigation after a short delay
+      setTimeout(() => {
+        window.location.href = callbackUrl;
+      }, 1000);
     } catch (error) {
       console.error("Error verifying OTP:", error);
       toast.error(error instanceof Error ? error.message : "Invalid OTP");
