@@ -135,9 +135,18 @@ export async function POST(req: NextRequest) {
       }),
     });
 
+    console.log(`Relayer response status: ${createTransferResponse.status}`);
+
     if (!createTransferResponse.ok) {
-      const errorData = await createTransferResponse.json();
-      throw new Error(errorData.error || "Failed to create transfer with relayer");
+      let errorMessage = "Failed to create transfer with relayer";
+      try {
+        const errorData = await createTransferResponse.json();
+        errorMessage = errorData.error || errorMessage;
+        console.error("Relayer error details:", errorData);
+      } catch (parseError) {
+        console.error("Could not parse relayer error response:", parseError);
+      }
+      throw new Error(errorMessage);
     }
 
     const createTransferData = await createTransferResponse.json();
@@ -166,9 +175,18 @@ export async function POST(req: NextRequest) {
       }),
     });
 
+    console.log(`Relayer submit response status: ${submitResponse.status}`);
+
     if (!submitResponse.ok) {
-      const errorData = await submitResponse.json();
-      throw new Error(errorData.error || "Failed to submit transaction to relayer");
+      let errorMessage = "Failed to submit transaction to relayer";
+      try {
+        const errorData = await submitResponse.json();
+        errorMessage = errorData.error || errorMessage;
+        console.error("Relayer submit error details:", errorData);
+      } catch (parseError) {
+        console.error("Could not parse relayer submit error response:", parseError);
+      }
+      throw new Error(errorMessage);
     }
 
     const submitData = await submitResponse.json();
