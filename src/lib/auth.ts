@@ -8,7 +8,7 @@ import type { Adapter } from "next-auth/adapters";
 const prisma = new PrismaClient();
 
 // List of admin email addresses
-const ADMIN_EMAILS = ['admin@example.com']; // Add actual admin emails here
+const ADMIN_EMAILS = ['admin@example.com', 'your-email@example.com']; // Replace with your actual email
 
 export const authOptions: NextAuthOptions = {
   adapter: PrismaAdapter(prisma) as Adapter,

@@ -37,6 +37,13 @@ export const DEVNET_TEST_TOKENS: TokenInfo[] = [
     decimals: 9,
     logoURI: 'https://raw.githubusercontent.com/solana-labs/token-list/main/assets/mainnet/So11111111111111111111111111111111111111112/logo.png',
   },
+  {
+    address: 'Gh9ZwEmdLJ8DscKNTkTqPbNwLNNBjuSzaG9Vp2KGtKJr', // User's custom SPL token
+    symbol: 'CUSTOM',
+    name: 'Custom Token',
+    decimals: 9, // Adjust this to match your token's decimals (typically 9 for Solana tokens)
+    logoURI: 'https://cryptologos.cc/logos/solana-sol-logo.png', // Placeholder logo
+  },
 ];
 
 /**
