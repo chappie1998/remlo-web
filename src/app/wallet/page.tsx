@@ -7,7 +7,12 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import Header from "@/components/header";
-import { shortenAddress, formatDate, isValidPasscode, copyToClipboard } from "@/lib/utils";
+import {
+  shortenAddress,
+  formatDate,
+  isValidPasscode,
+  copyToClipboard,
+} from "@/lib/utils";
 import { isValidSolanaAddress, SPL_TOKEN_ADDRESS } from "@/lib/solana";
 
 interface Transaction {
@@ -28,7 +33,7 @@ export default function WalletDashboard() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
   const [balance, setBalance] = useState("0.0");
-  const [tokenBalance, setTokenBalance] = useState("0.0");
+  const [tokenBalance, setTokenBalance] = useState<number | undefined>();
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loadingBalance, setLoadingBalance] = useState(true);
   const [isSendingToken, setIsSendingToken] = useState(false);
@@ -41,6 +46,79 @@ export default function WalletDashboard() {
       fetchTransactions();
     }
   }, [session]);
+
+  interface TokenAccountResponse {
+    jsonrpc: string;
+    result: {
+      value: {
+        account: {
+          data: {
+            parsed: {
+              info: {
+                tokenAmount: {
+                  amount: string;
+                  decimals: number;
+                  uiAmount: number;
+                  uiAmountString: string;
+                };
+              };
+            };
+          };
+        };
+        pubkey: string;
+      }[];
+    };
+    id: number;
+  }
+
+  async function getTokenBalanceRpc(
+    ownerAddress: string,
+    tokenMint: string,
+    url: string = "https://solana-devnet.g.alchemy.com/v2/Qbh6Ej7kDKwVwB1vkbBC8KUAtWvmS3rP"
+  ): Promise<number | undefined> {
+    try {
+      const requestBody = {
+        jsonrpc: "2.0",
+        id: 1,
+        method: "getTokenAccountsByOwner",
+        params: [
+          ownerAddress,
+          {
+            mint: tokenMint,
+          },
+          {
+            encoding: "jsonParsed",
+          },
+        ],
+      };
+
+      const response = await fetch(url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(requestBody),
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const data = (await response.json()) as TokenAccountResponse;
+
+      if (!data.result?.value?.length) {
+        return undefined; // No token accounts found
+      }
+
+      // Return the token amount as a number
+      return Number(
+        data.result.value[0].account.data.parsed.info.tokenAmount.amount
+      );
+    } catch (error) {
+      console.error("Error fetching token balance:", error);
+      throw error;
+    }
+  }
 
   // Handle authentication redirects using useEffect for client-side only execution
   useEffect(() => {
@@ -76,13 +154,19 @@ export default function WalletDashboard() {
     try {
       setLoadingBalance(true);
       // Use our mock endpoint instead of the real one for now
-      const response = await fetch("/api/mock-relayer/token-balance");
-      const data = await response.json();
-      if (response.ok) {
-        setTokenBalance(data.formattedBalance);
-      } else {
-        console.error("Failed to fetch token balance:", data.error);
-      }
+      // const response = await fetch("/api/mock-relayer/token-balance");
+      // const data = await response.json();
+      const balance = await getTokenBalanceRpc(
+        session?.user?.solanaAddress ?? "",
+        "Gh9ZwEmdLJ8DscKNTkTqPbNwLNNBjuSzaG9Vp2KGtKJr"
+      );
+
+      console.log("Token balance:", balance);
+      setTokenBalance(balance / 10 ** 6 ?? 0.0); // Using nullish coalescing
+      // if (response.ok) {
+      // } else {
+      //   console.error("Failed to fetch token balance:", data.error);
+      // }
     } catch (error) {
       console.error("Error fetching token balance:", error);
     } finally {
@@ -132,7 +216,10 @@ export default function WalletDashboard() {
   }
 
   // Return null if we're redirecting (handled in useEffect above)
-  if (status === "unauthenticated" || (status === "authenticated" && !session?.user?.hasPasscode)) {
+  if (
+    status === "unauthenticated" ||
+    (status === "authenticated" && !session?.user?.hasPasscode)
+  ) {
     return (
       <div className="flex min-h-screen flex-col items-center justify-center p-4">
         <p>Redirecting...</p>
@@ -188,7 +275,8 @@ export default function WalletDashboard() {
       fetchTokenBalance();
       fetchTransactions();
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : "Transaction failed";
+      const errorMessage =
+        err instanceof Error ? err.message : "Transaction failed";
       setError(errorMessage);
       toast.error(errorMessage);
       setCurrentTxStatus("");
@@ -241,7 +329,9 @@ export default function WalletDashboard() {
                   <p className="text-xl font-bold">
                     {loadingBalance ? "Loading..." : `${balance} SOL`}
                   </p>
-                  <p className="text-sm text-muted-foreground mt-2">DEV Token Balance</p>
+                  <p className="text-sm text-muted-foreground mt-2">
+                    DEV Token Balance
+                  </p>
                   <p className="text-lg font-bold">
                     {loadingBalance ? "Loading..." : `${tokenBalance} DEV`}
                   </p>
@@ -253,7 +343,9 @@ export default function WalletDashboard() {
                   className="absolute right-2 top-2 text-xs bg-primary/10 text-primary px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity"
                   onClick={async () => {
                     if (session?.user?.solanaAddress) {
-                      const success = await copyToClipboard(session.user.solanaAddress);
+                      const success = await copyToClipboard(
+                        session.user.solanaAddress
+                      );
                       if (success) {
                         toast.success("Address copied to clipboard");
                       } else {
@@ -266,16 +358,23 @@ export default function WalletDashboard() {
                 </button>
               </div>
               <p className="text-sm text-muted-foreground mt-2">
-                This is your Solana wallet address on {process.env.NEXT_PUBLIC_SOLANA_NETWORK || 'devnet'}.
+                This is your Solana wallet address on{" "}
+                {process.env.NEXT_PUBLIC_SOLANA_NETWORK || "devnet"}.
               </p>
             </div>
 
             <div className="grid md:grid-cols-2 gap-6">
               <div className="p-6 border rounded-lg">
                 <h2 className="text-xl font-bold mb-4">Send SOL</h2>
-                <form onSubmit={(e) => handleSendFormSubmit(e, false)} className="space-y-4">
+                <form
+                  onSubmit={(e) => handleSendFormSubmit(e, false)}
+                  className="space-y-4"
+                >
                   <div className="space-y-2">
-                    <label htmlFor="recipient-sol" className="text-sm font-medium">
+                    <label
+                      htmlFor="recipient-sol"
+                      className="text-sm font-medium"
+                    >
                       Recipient Address
                     </label>
                     <input
@@ -313,9 +412,15 @@ export default function WalletDashboard() {
 
               <div className="p-6 border rounded-lg">
                 <h2 className="text-xl font-bold mb-4">Send DEV Token</h2>
-                <form onSubmit={(e) => handleSendFormSubmit(e, true)} className="space-y-4">
+                <form
+                  onSubmit={(e) => handleSendFormSubmit(e, true)}
+                  className="space-y-4"
+                >
                   <div className="space-y-2">
-                    <label htmlFor="recipient-token" className="text-sm font-medium">
+                    <label
+                      htmlFor="recipient-token"
+                      className="text-sm font-medium"
+                    >
                       Recipient Address
                     </label>
                     <input
@@ -330,7 +435,10 @@ export default function WalletDashboard() {
                   </div>
 
                   <div className="space-y-2">
-                    <label htmlFor="amount-token" className="text-sm font-medium">
+                    <label
+                      htmlFor="amount-token"
+                      className="text-sm font-medium"
+                    >
                       Amount (DEV)
                     </label>
                     <input
@@ -345,7 +453,10 @@ export default function WalletDashboard() {
                     />
                   </div>
 
-                  <Button type="submit" className="w-full bg-green-600 hover:bg-green-700">
+                  <Button
+                    type="submit"
+                    className="w-full bg-green-600 hover:bg-green-700"
+                  >
                     Send DEV (Gasless)
                   </Button>
                   <p className="text-xs text-muted-foreground text-center">
@@ -367,11 +478,11 @@ export default function WalletDashboard() {
                       <div className="flex justify-between items-start">
                         <span
                           className={`text-xs px-2 py-0.5 rounded-full ${
-                            tx.status === 'executed'
-                              ? 'bg-green-100 text-green-800'
-                              : tx.status === 'pending'
-                                ? 'bg-yellow-100 text-yellow-800'
-                                : 'bg-red-100 text-red-800'
+                            tx.status === "executed"
+                              ? "bg-green-100 text-green-800"
+                              : tx.status === "pending"
+                              ? "bg-yellow-100 text-yellow-800"
+                              : "bg-red-100 text-red-800"
                           }`}
                         >
                           {tx.status}
@@ -384,7 +495,11 @@ export default function WalletDashboard() {
                       {tx.signature && (
                         <div className="flex flex-col space-y-1 mt-1">
                           <a
-                            href={`https://solscan.io/tx/${tx.signature}?cluster=${process.env.NEXT_PUBLIC_SOLANA_NETWORK || 'devnet'}`}
+                            href={`https://solscan.io/tx/${
+                              tx.signature
+                            }?cluster=${
+                              process.env.NEXT_PUBLIC_SOLANA_NETWORK || "devnet"
+                            }`}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="text-xs bg-primary/10 text-primary px-2 py-1 rounded hover:bg-primary/20 inline-flex items-center w-fit"
@@ -392,7 +507,11 @@ export default function WalletDashboard() {
                             View on Solscan
                           </a>
                           <a
-                            href={`https://explorer.solana.com/tx/${tx.signature}?cluster=${process.env.NEXT_PUBLIC_SOLANA_NETWORK || 'devnet'}`}
+                            href={`https://explorer.solana.com/tx/${
+                              tx.signature
+                            }?cluster=${
+                              process.env.NEXT_PUBLIC_SOLANA_NETWORK || "devnet"
+                            }`}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="text-xs text-primary hover:underline inline-block"
@@ -442,7 +561,9 @@ export default function WalletDashboard() {
                 maxLength={6}
                 required
                 value={passcode}
-                onChange={(e) => setPasscode(e.target.value.replace(/[^0-9]/g, '').slice(0, 6))}
+                onChange={(e) =>
+                  setPasscode(e.target.value.replace(/[^0-9]/g, "").slice(0, 6))
+                }
                 className="w-full p-2 rounded-md border border-input bg-background text-foreground focus:ring-2 focus:ring-primary text-center text-xl tracking-widest"
                 placeholder="******"
                 autoFocus
@@ -463,11 +584,7 @@ export default function WalletDashboard() {
                 >
                   Cancel
                 </Button>
-                <Button
-                  type="submit"
-                  className="flex-1"
-                  disabled={isLoading}
-                >
+                <Button type="submit" className="flex-1" disabled={isLoading}>
                   {isLoading ? "Sending..." : "Confirm"}
                 </Button>
               </div>
