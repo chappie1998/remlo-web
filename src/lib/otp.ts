@@ -1,6 +1,5 @@
-import { PrismaClient } from "@prisma/client";
-
-const prisma = new PrismaClient();
+import { VerificationToken } from "./mongodb";
+import { connectToDatabase } from "./mongodb";
 
 // Store OTPs in memory for simulation (this will be lost on server restart)
 const otpSimulationStore: Record<string, { otp: string; email: string; createdAt: Date }> = {};
@@ -50,6 +49,9 @@ export function getSimulatedOTP(email: string): string | null {
 
 // Create a new OTP in the database
 export async function createOTP(email: string): Promise<string> {
+  // Connect to the database
+  await connectToDatabase();
+
   // Generate OTP
   const otp = generateOTP();
 
@@ -58,17 +60,15 @@ export async function createOTP(email: string): Promise<string> {
   expiryDate.setMinutes(expiryDate.getMinutes() + 10);
 
   // Delete any existing OTP for this email
-  await prisma.verificationToken.deleteMany({
-    where: { identifier: email },
+  await VerificationToken.deleteMany({
+    identifier: email,
   });
 
   // Save the OTP in the database
-  await prisma.verificationToken.create({
-    data: {
-      identifier: email,
-      token: otp,
-      expires: expiryDate,
-    },
+  await VerificationToken.create({
+    identifier: email,
+    token: otp,
+    expires: expiryDate,
   });
 
   return otp;
@@ -76,13 +76,14 @@ export async function createOTP(email: string): Promise<string> {
 
 // Verify an OTP
 export async function verifyOTP(email: string, otp: string): Promise<boolean> {
-  const otpRecord = await prisma.verificationToken.findFirst({
-    where: {
-      identifier: email,
-      token: otp,
-      expires: {
-        gt: new Date(),
-      },
+  // Connect to the database
+  await connectToDatabase();
+
+  const otpRecord = await VerificationToken.findOne({
+    identifier: email,
+    token: otp,
+    expires: {
+      $gt: new Date(),
     },
   });
 
@@ -91,13 +92,9 @@ export async function verifyOTP(email: string, otp: string): Promise<boolean> {
   }
 
   // Delete the OTP record to prevent reuse
-  await prisma.verificationToken.delete({
-    where: {
-      identifier_token: {
-        identifier: email,
-        token: otp,
-      },
-    },
+  await VerificationToken.findOneAndDelete({
+    identifier: email,
+    token: otp,
   });
 
   return true;

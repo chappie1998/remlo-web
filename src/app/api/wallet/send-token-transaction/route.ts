@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
-import { PrismaClient } from "@prisma/client";
 import { PublicKey } from "@solana/web3.js";
 import { SPL_TOKEN_ADDRESS, RELAYER_URL, isValidSolanaAddress, getSolanaConnection } from "@/lib/solana";
 import { isValidPasscode } from "@/lib/utils";
@@ -8,8 +7,8 @@ import { prepareMPCSigningKeypair } from "@/lib/mpc";
 import { authOptions } from "@/lib/auth";
 import { Transaction } from "@solana/web3.js";
 import { sign } from "tweetnacl";
-
-const prisma = new PrismaClient();
+import { User, Transaction as DbTransaction } from "@/lib/mongodb";
+import { connectToDatabase } from "@/lib/mongodb";
 
 export async function POST(req: NextRequest) {
   try {
@@ -22,6 +21,9 @@ export async function POST(req: NextRequest) {
         { status: 401 }
       );
     }
+
+    // Connect to the database
+    await connectToDatabase();
 
     // Get transaction details and passcode from the request
     const { to, amount, passcode, backupShare, recoveryShare } = await req.json();
@@ -48,17 +50,17 @@ export async function POST(req: NextRequest) {
     }
 
     // Get the user's wallet information
-    const user = await prisma.user.findUnique({
-      where: { email: session.user.email },
-      select: {
-        id: true,
-        solanaAddress: true,
-        usesMPC: true,
-        mpcServerShare: true,
-        mpcSalt: true,
-        mpcBackupShare: true
-      },
-    });
+    const user = await User.findOne(
+      { email: session.user.email },
+      {
+        _id: 1,
+        solanaAddress: 1,
+        usesMPC: 1,
+        mpcServerShare: 1,
+        mpcSalt: 1,
+        mpcBackupShare: 1
+      }
+    );
 
     if (!user || !user.solanaAddress) {
       return NextResponse.json(
@@ -105,14 +107,10 @@ export async function POST(req: NextRequest) {
     }
 
     // Step 1: Create a record of the transaction request
-    const transaction = await prisma.transaction.create({
-      data: {
-        txData: JSON.stringify({ to, amount, token: SPL_TOKEN_ADDRESS }),
-        status: "pending",
-        user: {
-          connect: { id: user.id }
-        }
-      },
+    const transaction = await DbTransaction.create({
+      txData: JSON.stringify({ to, amount, token: SPL_TOKEN_ADDRESS }),
+      status: "pending",
+      userId: user._id
     });
 
     // Convert amount to token units (using 6 decimals for SPL token)
@@ -227,14 +225,14 @@ export async function POST(req: NextRequest) {
     const { signature: txSignature } = submitData;
 
     // Step 7: Update the transaction record with the executed status and signature
-    await prisma.transaction.update({
-      where: { id: transaction.id },
-      data: {
+    await DbTransaction.findByIdAndUpdate(
+      transaction._id,
+      {
         status: "executed",
         signature: txSignature,
         executedAt: new Date(),
-      },
-    });
+      }
+    );
 
     return NextResponse.json({
       success: true,
@@ -245,15 +243,15 @@ export async function POST(req: NextRequest) {
     console.error("Error sending token transaction:", error);
 
     // Update transaction record if it exists
-    if (error instanceof Error && error.stack?.includes("transaction.id")) {
+    if (error instanceof Error && error.stack?.includes("transaction._id")) {
       try {
-        const match = error.stack.match(/transaction\.id: ([a-zA-Z0-9-]+)/);
+        const match = error.stack.match(/transaction\._id: ([a-zA-Z0-9-]+)/);
         if (match && match[1]) {
           const txId = match[1];
-          await prisma.transaction.update({
-            where: { id: txId },
-            data: { status: "rejected" },
-          });
+          await DbTransaction.findByIdAndUpdate(
+            txId,
+            { status: "rejected" }
+          );
         }
       } catch (updateError) {
         console.error("Failed to update transaction status:", updateError);
@@ -265,7 +263,5 @@ export async function POST(req: NextRequest) {
       { error: errorMessage },
       { status: 500 }
     );
-  } finally {
-    await prisma.$disconnect();
   }
 }

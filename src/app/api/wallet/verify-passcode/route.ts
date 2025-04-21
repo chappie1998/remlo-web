@@ -1,12 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
-import { PrismaClient } from "@prisma/client";
 import { decryptMnemonic } from "@/lib/crypto";
 import { isValidPasscode } from "@/lib/utils";
 import { verifyPasscodeForMPC } from "@/lib/mpc";
 import { authOptions } from "@/lib/auth";
-
-const prisma = new PrismaClient();
+import { User } from "@/lib/mongodb";
+import { connectToDatabase } from "@/lib/mongodb";
 
 export async function POST(req: NextRequest) {
   try {
@@ -20,6 +19,9 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // Connect to the database
+    await connectToDatabase();
+
     // Get the passcode from the request
     const { passcode } = await req.json();
 
@@ -31,16 +33,16 @@ export async function POST(req: NextRequest) {
     }
 
     // Get the user's wallet information
-    const user = await prisma.user.findUnique({
-      where: { email: session.user.email },
-      select: {
-        encryptedKeypair: true,
-        usesMPC: true,
-        mpcServerShare: true,
-        mpcSalt: true,
-        mpcBackupShare: true  // Include backup share for verification
-      },
-    });
+    const user = await User.findOne(
+      { email: session.user.email },
+      {
+        encryptedKeypair: 1,
+        usesMPC: 1,
+        mpcServerShare: 1,
+        mpcSalt: 1,
+        mpcBackupShare: 1  // Include backup share for verification
+      }
+    );
 
     if (!user) {
       return NextResponse.json(
@@ -104,7 +106,5 @@ export async function POST(req: NextRequest) {
       { error: "Failed to verify passcode" },
       { status: 500 }
     );
-  } finally {
-    await prisma.$disconnect();
   }
 }

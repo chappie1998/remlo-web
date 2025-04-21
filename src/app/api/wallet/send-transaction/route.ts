@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
-import { PrismaClient } from "@prisma/client";
 import { LAMPORTS_PER_SOL } from "@solana/web3.js";
 import { sendTransaction } from "@/lib/wallet";
 import { isValidPasscode } from "@/lib/utils";
@@ -8,8 +7,8 @@ import { isValidSolanaAddress } from "@/lib/solana";
 import { decryptMnemonic, getKeypairFromMnemonic } from "@/lib/crypto";
 import { prepareMPCSigningKeypair } from "@/lib/mpc";
 import { authOptions } from "@/lib/auth";
-
-const prisma = new PrismaClient();
+import { User, Transaction } from "@/lib/mongodb";
+import { connectToDatabase } from "@/lib/mongodb";
 
 export async function POST(req: NextRequest) {
   try {
@@ -22,6 +21,9 @@ export async function POST(req: NextRequest) {
         { status: 401 }
       );
     }
+
+    // Connect to the database
+    await connectToDatabase();
 
     // Get transaction details and passcode from the request
     const { to, amount, passcode, backupShare, recoveryShare } = await req.json();
@@ -48,18 +50,18 @@ export async function POST(req: NextRequest) {
     }
 
     // Get the user's wallet information
-    const user = await prisma.user.findUnique({
-      where: { email: session.user.email },
-      select: {
-        id: true,
-        encryptedKeypair: true,
-        solanaAddress: true,
-        usesMPC: true,
-        mpcServerShare: true,
-        mpcSalt: true,
-        mpcBackupShare: true
-      },
-    });
+    const user = await User.findOne(
+      { email: session.user.email },
+      {
+        _id: 1,
+        encryptedKeypair: 1,
+        solanaAddress: 1,
+        usesMPC: 1,
+        mpcServerShare: 1,
+        mpcSalt: 1,
+        mpcBackupShare: 1
+      }
+    );
 
     if (!user || !user.solanaAddress) {
       return NextResponse.json(
@@ -154,14 +156,10 @@ export async function POST(req: NextRequest) {
     }
 
     // Create a record of the transaction request
-    const transaction = await prisma.transaction.create({
-      data: {
-        txData: JSON.stringify({ to, amount }),
-        status: "pending",
-        user: {
-          connect: { id: user.id }
-        }
-      },
+    const transaction = await Transaction.create({
+      txData: JSON.stringify({ to, amount }),
+      status: "pending",
+      userId: user._id
     });
 
     // Send the transaction
@@ -169,14 +167,14 @@ export async function POST(req: NextRequest) {
       const { signature } = await sendTransaction(keypair, to, amountInLamports);
 
       // Update the transaction record with the executed status and signature
-      await prisma.transaction.update({
-        where: { id: transaction.id },
-        data: {
+      await Transaction.findByIdAndUpdate(
+        transaction._id,
+        {
           status: "executed",
           signature,
           executedAt: new Date(),
-        },
-      });
+        }
+      );
 
       return NextResponse.json({
         success: true,
@@ -185,12 +183,12 @@ export async function POST(req: NextRequest) {
       });
     } catch (txError) {
       // Update the transaction record with the rejected status
-      await prisma.transaction.update({
-        where: { id: transaction.id },
-        data: {
+      await Transaction.findByIdAndUpdate(
+        transaction._id,
+        {
           status: "rejected",
-        },
-      });
+        }
+      );
 
       console.error("Transaction failed:", txError);
       const errorMessage = txError instanceof Error ? txError.message : "Transaction failed to execute";
@@ -206,8 +204,5 @@ export async function POST(req: NextRequest) {
       { error: errorMessage },
       { status: 500 }
     );
-  } finally {
-    // Close the Prisma client connection
-    await prisma.$disconnect();
   }
 }

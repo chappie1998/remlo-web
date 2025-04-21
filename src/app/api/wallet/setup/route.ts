@@ -1,12 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
-import { PrismaClient } from "@prisma/client";
 import { isValidPasscode } from "@/lib/utils";
 import { validateMnemonic } from "@/lib/crypto";
 import { createMPCWallet } from "@/lib/mpc";
 import { authOptions } from "@/lib/auth";
-
-const prisma = new PrismaClient();
+import { User } from "@/lib/mongodb";
+import { connectToDatabase } from "@/lib/mongodb";
 
 export async function POST(req: NextRequest) {
   try {
@@ -19,6 +18,9 @@ export async function POST(req: NextRequest) {
         { status: 401 }
       );
     }
+
+    // Connect to the database
+    await connectToDatabase();
 
     // Get the passcode and mnemonic from the request
     const { passcode, mnemonic } = await req.json();
@@ -42,18 +44,20 @@ export async function POST(req: NextRequest) {
     const { publicKey, serverShare, backupShare, recoveryShare, salt } = createMPCWallet(passcode);
 
     // Update the user record with the wallet address and MPC information
-    await prisma.user.update({
-      where: { email: session.user.email },
-      data: {
-        solanaAddress: publicKey,
-        mpcServerShare: serverShare,
-        mpcSalt: salt,
-        mpcBackupShare: backupShare, // In production, this would be stored more securely or given to user
-        usesMPC: true,
-        hasPasscode: true,
-        passcodeSetAt: new Date(),
-      },
-    });
+    await User.findOneAndUpdate(
+      { email: session.user.email },
+      {
+        $set: {
+          solanaAddress: publicKey,
+          mpcServerShare: serverShare,
+          mpcSalt: salt,
+          mpcBackupShare: backupShare, // In production, this would be stored more securely or given to user
+          usesMPC: true,
+          hasPasscode: true,
+          passcodeSetAt: new Date(),
+        }
+      }
+    );
 
     return NextResponse.json({
       success: true,
@@ -68,7 +72,5 @@ export async function POST(req: NextRequest) {
       { error: "Failed to set up wallet" },
       { status: 500 }
     );
-  } finally {
-    await prisma.$disconnect();
   }
 }

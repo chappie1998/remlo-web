@@ -1,10 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
-import { PrismaClient } from "@prisma/client";
 import { fetchAccountBalance } from "@/lib/solana";
 import { authOptions } from "@/lib/auth";
-
-const prisma = new PrismaClient();
+import { User } from "@/lib/mongodb";
+import { connectToDatabase } from "@/lib/mongodb";
 
 export async function GET(req: NextRequest) {
   try {
@@ -18,11 +17,14 @@ export async function GET(req: NextRequest) {
       );
     }
 
+    // Connect to the database
+    await connectToDatabase();
+
     // Get the user's wallet address
-    const user = await prisma.user.findUnique({
-      where: { email: session.user.email },
-      select: { solanaAddress: true },
-    });
+    const user = await User.findOne(
+      { email: session.user.email },
+      { solanaAddress: 1 }
+    );
 
     if (!user || !user.solanaAddress) {
       return NextResponse.json(

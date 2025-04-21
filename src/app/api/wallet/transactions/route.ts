@@ -1,9 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
-import { PrismaClient } from "@prisma/client";
 import { authOptions } from "@/lib/auth";
-
-const prisma = new PrismaClient();
+import { User, Transaction } from "@/lib/mongodb";
+import { connectToDatabase } from "@/lib/mongodb";
 
 export async function GET(req: NextRequest) {
   try {
@@ -17,11 +16,14 @@ export async function GET(req: NextRequest) {
       );
     }
 
+    // Connect to the database
+    await connectToDatabase();
+
     // Get the user's ID
-    const user = await prisma.user.findUnique({
-      where: { email: session.user.email },
-      select: { id: true },
-    });
+    const user = await User.findOne(
+      { email: session.user.email },
+      { _id: 1 }
+    );
 
     if (!user) {
       return NextResponse.json(
@@ -31,22 +33,31 @@ export async function GET(req: NextRequest) {
     }
 
     // Get the user's transactions
-    const transactions = await prisma.transaction.findMany({
-      where: { userId: user.id },
-      orderBy: { createdAt: "desc" },
-      select: {
-        id: true,
-        txData: true,
-        status: true,
-        signature: true,
-        createdAt: true,
-        executedAt: true,
-      },
-    });
+    const transactions = await Transaction.find(
+      { userId: user._id },
+      {
+        _id: 1,
+        txData: 1,
+        status: 1,
+        signature: 1,
+        createdAt: 1,
+        executedAt: 1,
+      }
+    ).sort({ createdAt: -1 });  // desc order
+
+    // Transform transactions to match expected format
+    const formattedTransactions = transactions.map(tx => ({
+      id: tx._id.toString(),
+      txData: tx.txData,
+      status: tx.status,
+      signature: tx.signature,
+      createdAt: tx.createdAt,
+      executedAt: tx.executedAt,
+    }));
 
     return NextResponse.json({
       success: true,
-      transactions,
+      transactions: formattedTransactions,
     });
   } catch (error) {
     console.error("Error fetching transactions:", error);
@@ -54,8 +65,5 @@ export async function GET(req: NextRequest) {
       { error: "Failed to fetch transactions" },
       { status: 500 }
     );
-  } finally {
-    // Close the Prisma client connection
-    await prisma.$disconnect();
   }
 }

@@ -1,11 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
-import { PrismaClient } from "@prisma/client";
 import { RELAYER_URL } from "@/lib/solana";
 import { authOptions } from "@/lib/auth";
 import { fetchSplTokenBalance } from "@/lib/solana";
-
-const prisma = new PrismaClient();
+import { User } from "@/lib/mongodb";
+import { connectToDatabase } from "@/lib/mongodb";
 
 export async function GET(req: NextRequest) {
   try {
@@ -19,13 +18,14 @@ export async function GET(req: NextRequest) {
       );
     }
 
+    // Connect to the database
+    await connectToDatabase();
+
     // Get the user's wallet address
-    const user = await prisma.user.findUnique({
-      where: { email: session.user.email },
-      select: {
-        solanaAddress: true,
-      },
-    });
+    const user = await User.findOne(
+      { email: session.user.email },
+      { solanaAddress: 1 }
+    );
 
     if (!user || !user.solanaAddress) {
       return NextResponse.json(
@@ -79,7 +79,5 @@ export async function GET(req: NextRequest) {
       { error: "Failed to fetch token balance" },
       { status: 500 }
     );
-  } finally {
-    await prisma.$disconnect();
   }
 }

@@ -1,12 +1,11 @@
 import { NextAuthOptions } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
-import { PrismaAdapter } from "@auth/prisma-adapter";
-import { PrismaClient } from "@prisma/client";
-
-const prisma = new PrismaClient();
+import { MongooseAdapter } from "./mongodb-adapter";
+import { User, VerificationToken } from "./mongodb";
+import { connectToDatabase } from "./mongodb";
 
 export const authOptions: NextAuthOptions = {
-  adapter: PrismaAdapter(prisma),
+  adapter: MongooseAdapter(),
   providers: [
     CredentialsProvider({
       id: "otp-login",
@@ -21,14 +20,14 @@ export const authOptions: NextAuthOptions = {
         }
 
         try {
+          await connectToDatabase();
+
           // Find the OTP in the database
-          const otpRecord = await prisma.verificationToken.findFirst({
-            where: {
-              identifier: credentials.email,
-              token: credentials.otp,
-              expires: {
-                gt: new Date(),
-              },
+          const otpRecord = await VerificationToken.findOne({
+            identifier: credentials.email,
+            token: credentials.otp,
+            expires: {
+              $gt: new Date(),
             },
           });
 
@@ -37,29 +36,29 @@ export const authOptions: NextAuthOptions = {
           }
 
           // Delete the OTP record to prevent reuse
-          await prisma.verificationToken.delete({
-            where: {
-              identifier_token: {
-                identifier: credentials.email,
-                token: credentials.otp,
-              },
-            },
+          await VerificationToken.findOneAndDelete({
+            identifier: credentials.email,
+            token: credentials.otp,
           });
 
           // Get or create user
-          const user = await prisma.user.upsert({
-            where: { email: credentials.email },
-            update: {
-              emailVerified: new Date(),
-            },
-            create: {
+          let user = await User.findOne({ email: credentials.email });
+
+          if (!user) {
+            user = await User.create({
               email: credentials.email,
               emailVerified: new Date(),
-            },
-          });
+            });
+          } else {
+            user = await User.findOneAndUpdate(
+              { email: credentials.email },
+              { emailVerified: new Date() },
+              { new: true }
+            );
+          }
 
           return {
-            id: user.id,
+            id: user._id.toString(),
             email: user.email,
             name: user.name,
           };
@@ -79,23 +78,19 @@ export const authOptions: NextAuthOptions = {
     },
     session: async ({ session, token }) => {
       if (token?.userId) {
-        // Fetch additional user data for the session
-        const userData = await prisma.user.findUnique({
-          where: { id: token.userId as string },
-          select: {
-            id: true,
-            email: true,
-            solanaAddress: true,
-            hasPasscode: true,
-          },
-        });
+        await connectToDatabase();
 
-        session.user = {
-          ...session.user,
-          id: token.userId as string,
-          solanaAddress: userData?.solanaAddress || null,
-          hasPasscode: userData?.hasPasscode || false,
-        };
+        // Fetch additional user data for the session
+        const userData = await User.findById(token.userId);
+
+        if (userData) {
+          session.user = {
+            ...session.user,
+            id: token.userId as string,
+            solanaAddress: userData.solanaAddress || null,
+            hasPasscode: userData.hasPasscode || false,
+          };
+        }
       }
       return session;
     },
