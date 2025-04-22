@@ -1,17 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { PrismaClient } from "@prisma/client";
+import { generateKeypair, encryptKeypair } from "@/lib/wallet";
 import { isValidPasscode } from "@/lib/utils";
-import { validateMnemonic } from "@/lib/crypto";
-import { createMPCWallet } from "@/lib/mpc";
-import { authOptions } from "@/lib/auth";
 
 const prisma = new PrismaClient();
 
 export async function POST(req: NextRequest) {
   try {
-    // Get the current session - pass in the auth options
-    const session = await getServerSession(authOptions);
+    // Get the current session
+    const session = await getServerSession();
 
     if (!session || !session.user || !session.user.email) {
       return NextResponse.json(
@@ -20,8 +18,8 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Get the passcode and mnemonic from the request
-    const { passcode, mnemonic } = await req.json();
+    // Get the passcode from the request
+    const { passcode } = await req.json();
 
     if (!isValidPasscode(passcode)) {
       return NextResponse.json(
@@ -30,26 +28,21 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Validate that the mnemonic is a valid BIP-39 phrase (if provided)
-    if (mnemonic && !validateMnemonic(mnemonic)) {
-      return NextResponse.json(
-        { error: "Invalid recovery phrase" },
-        { status: 400 }
-      );
-    }
+    // Generate a keypair for the user based on their email
+    const keypair = generateKeypair(session.user.email);
 
-    // Create a new MPC wallet with 3-part secret sharing
-    const { publicKey, serverShare, backupShare, recoveryShare, salt } = createMPCWallet(passcode);
+    // Get the public key (address)
+    const solanaAddress = keypair.publicKey.toString();
 
-    // Update the user record with the wallet address and MPC information
+    // Encrypt the keypair with the passcode
+    const encryptedKeypair = encryptKeypair(keypair, passcode);
+
+    // Update the user record with the wallet address and encrypted keypair
     await prisma.user.update({
       where: { email: session.user.email },
       data: {
-        solanaAddress: publicKey,
-        mpcServerShare: serverShare,
-        mpcSalt: salt,
-        mpcBackupShare: backupShare, // In production, this would be stored more securely or given to user
-        usesMPC: true,
+        solanaAddress,
+        encryptedKeypair,
         hasPasscode: true,
         passcodeSetAt: new Date(),
       },
@@ -57,10 +50,7 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      solanaAddress: publicKey,
-      // Include both backup shares in the response for the user to save securely
-      backupShare,
-      recoveryShare, // Additional share for more recovery options
+      solanaAddress,
     });
   } catch (error) {
     console.error("Error setting up wallet:", error);
@@ -68,7 +58,5 @@ export async function POST(req: NextRequest) {
       { error: "Failed to set up wallet" },
       { status: 500 }
     );
-  } finally {
-    await prisma.$disconnect();
   }
 }

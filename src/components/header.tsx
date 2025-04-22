@@ -1,71 +1,53 @@
 "use client";
 
-import { signOut, useSession } from "next-auth/react";
 import Link from "next/link";
-import { Button } from "./ui/button";
-import { CircleDollarSign, LogOut, Shield, ExternalLink } from "lucide-react";
+import { useSession, signOut } from "next-auth/react";
+import { Button } from "@/components/ui/button";
+import { ThemeToggle } from "@/components/theme-toggle";
 
 export default function Header() {
-  const { data: session, status } = useSession();
+  const { data: session } = useSession();
 
   return (
-    <header className="py-4 px-6 border-b bg-background/95 backdrop-blur-sm sticky top-0 z-10">
-      <div className="container mx-auto flex justify-between items-center">
-        <div className="flex items-center space-x-2">
-          <CircleDollarSign className="w-6 h-6 text-primary" />
-          <Link href="/" className="text-xl font-bold">
-            StableFi
+    <header className="border-b bg-card shadow-sm">
+      <div className="container mx-auto px-4 py-4 flex items-center justify-between">
+        <div className="flex items-center space-x-4">
+          <Link href="/" className="text-xl font-bold text-primary">
+            Solana Passcode Wallet
           </Link>
-        </div>
 
-        <nav className="hidden md:flex items-center space-x-8">
-          {session?.user && (
-            <>
-              <Link
-                href="/wallet"
-                className="text-sm font-medium hover:text-primary transition-colors"
-              >
-                Dashboard
+          {session && (
+            <nav className="hidden md:flex items-center space-x-4 text-sm">
+              <Link href="/wallet" className="hover:text-primary transition-colors">
+                My Wallet
               </Link>
-              <Link
-                href="/about"
-                className="text-sm font-medium hover:text-primary transition-colors"
-              >
+              <Link href="/about" className="hover:text-primary transition-colors">
                 About
               </Link>
-              <a
-                href="https://solscan.io"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-sm font-medium hover:text-primary transition-colors flex items-center"
-              >
-                Explorer <ExternalLink className="ml-1 w-3 h-3" />
-              </a>
-            </>
+            </nav>
           )}
-        </nav>
+        </div>
 
-        <div className="flex items-center space-x-4">
-          {status === "authenticated" ? (
+        <div className="flex items-center space-x-2">
+          <ThemeToggle />
+          {session ? (
             <>
-              <span className="hidden md:inline-block text-xs px-2 py-1 bg-green-100 text-green-800 rounded-full">
-                <Shield className="w-3 h-3 inline mr-1" /> Protected
+              <span className="text-sm text-muted-foreground hidden md:inline-block ml-2 mr-2">
+                {session.user?.email || ""}
               </span>
               <Button
-                variant="ghost"
+                variant="outline"
                 size="sm"
-                onClick={() => signOut({ callbackUrl: "/auth/signin" })}
-                className="text-sm"
+                onClick={() => signOut({ callbackUrl: "/" })}
+                className="border-primary/40 hover:border-primary hover:bg-primary/10"
               >
-                <LogOut className="w-4 h-4 mr-1" /> Sign Out
+                Sign Out
               </Button>
             </>
           ) : (
-            <Link href="/auth/signin">
-              <Button size="sm" className="text-sm">
-                Sign In
-              </Button>
-            </Link>
+            <Button asChild size="sm" className="ml-2">
+              <Link href="/auth/signin">Sign In</Link>
+            </Button>
           )}
         </div>
       </div>

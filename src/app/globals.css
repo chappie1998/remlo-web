@@ -29,33 +29,34 @@
     --chart-3: 197 37% 24%;
     --chart-4: 43 74% 66%;
     --chart-5: 27 87% 67%;
+    --transition-duration: 0.5s;
   }
 
   .dark {
-    --background: 240 10% 3.9%;
+    --background: 222 47% 11%;
     --foreground: 0 0% 98%;
-    --card: 240 10% 3.9%;
+    --card: 222 47% 9%;
     --card-foreground: 0 0% 98%;
-    --popover: 240 10% 3.9%;
+    --popover: 222 47% 11%;
     --popover-foreground: 0 0% 98%;
-    --primary: 0 0% 98%;
-    --primary-foreground: 240 5.9% 10%;
-    --secondary: 240 3.7% 15.9%;
+    --primary: 142 76% 46%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 222 47% 15%;
     --secondary-foreground: 0 0% 98%;
-    --muted: 240 3.7% 15.9%;
+    --muted: 222 47% 15%;
     --muted-foreground: 240 5% 64.9%;
-    --accent: 240 3.7% 15.9%;
+    --accent: 142 76% 46%;
     --accent-foreground: 0 0% 98%;
     --destructive: 0 62.8% 30.6%;
     --destructive-foreground: 0 0% 98%;
-    --border: 240 3.7% 15.9%;
-    --input: 240 3.7% 15.9%;
-    --ring: 240 4.9% 83.9%;
-    --chart-1: 220 70% 50%;
+    --border: 222 47% 20%;
+    --input: 222 47% 20%;
+    --ring: 142 76% 46%;
+    --chart-1: 142 70% 50%;
     --chart-2: 160 60% 45%;
-    --chart-3: 30 80% 55%;
-    --chart-4: 280 65% 60%;
-    --chart-5: 340 75% 55%;
+    --chart-3: 100 80% 55%;
+    --chart-4: 120 65% 60%;
+    --chart-5: 170 75% 55%;
   }
 }
 
@@ -65,5 +66,17 @@
   }
   body {
     @apply bg-background text-foreground;
+  }
+
+  body, .bg-background, .bg-card, .bg-popover,
+  .text-foreground, .text-primary, .text-muted-foreground,
+  .border, .border-border {
+    transition: background-color var(--transition-duration) ease-in-out,
+                color var(--transition-duration) ease-in-out,
+                border-color var(--transition-duration) ease-in-out;
+  }
+
+  .transition-none * {
+    transition: none !important;
   }
 }
