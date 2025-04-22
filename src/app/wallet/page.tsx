@@ -19,7 +19,10 @@ import {
   ArrowLeftRight,
   ArrowDown,
   Info,
-  ChevronDown
+  ChevronDown,
+  PiggyBank,
+  Percent,
+  TrendingUp
 } from "lucide-react";
 import { USDsIcon, USDCIcon, SwapIcon, ReceiveIcon, SendIcon, SolanaIcon } from "@/components/icons";
 
@@ -305,7 +308,6 @@ export default function WalletDashboard() {
     }
   };
 
-  // Token balances for display
   const tokenBalances: TokenBalance[] = [
     {
       tokenSymbol: "USDs",
@@ -390,12 +392,17 @@ export default function WalletDashboard() {
           {tokenBalances.map((token) => (
             <div
               key={token.tokenSymbol}
-              className={`p-5 border rounded-xl flex items-center gap-4 ${
+              className={`p-5 border rounded-xl flex items-center gap-4 relative ${
                 token.tokenSymbol === 'USDs'
                   ? 'bg-emerald-900/20 border-emerald-800'
                   : 'bg-blue-900/20 border-blue-800'
               }`}
             >
+              {token.tokenSymbol === 'USDs' && (
+                <div className="absolute -top-3 -right-2 bg-emerald-600 text-white text-xs px-2 py-1 rounded-full font-bold flex items-center shadow-lg">
+                  <Percent size={12} className="mr-1" /> 4.2% APY
+                </div>
+              )}
               <div className={`p-3 rounded-full ${
                 token.tokenSymbol === 'USDs' ? 'bg-emerald-900/30' : 'bg-blue-900/30'
               }`}>
@@ -405,6 +412,13 @@ export default function WalletDashboard() {
                 <p className="text-sm text-gray-400">{token.tokenSymbol}</p>
                 <p className="text-xl font-bold text-white">{token.balance}</p>
                 <p className="text-xs text-gray-400">{token.usdValue}</p>
+                {token.tokenSymbol === 'USDs' && (
+                  <div className="flex items-center mt-1">
+                    <span className="text-xs text-emerald-400 flex items-center">
+                      <TrendingUp size={12} className="mr-1" /> Earning 4.2% APY
+                    </span>
+                  </div>
+                )}
               </div>
             </div>
           ))}
@@ -466,92 +480,121 @@ export default function WalletDashboard() {
 
         {/* Overview Tab */}
         {activeTab === "overview" && (
-          <div className="grid md:grid-cols-2 gap-6">
-            {/* Quick Actions */}
-            <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-6 shadow-sm">
-              <h2 className="text-xl font-semibold mb-4 text-white">Quick Actions</h2>
-              <div className="grid grid-cols-2 gap-4">
-                <button
-                  onClick={() => setActiveTab("send")}
-                  className="flex flex-col items-center justify-center p-4 bg-zinc-800 hover:bg-zinc-700 rounded-lg transition group"
-                >
-                  <div className="p-3 rounded-full bg-emerald-900/50 text-emerald-400 mb-3 group-hover:bg-emerald-900/60 transition">
-                    <SendIcon size={24} />
-                  </div>
-                  <span className="font-medium text-white">Send</span>
-                </button>
-
-                <button
-                  onClick={() => setActiveTab("receive")}
-                  className="flex flex-col items-center justify-center p-4 bg-zinc-800 hover:bg-zinc-700 rounded-lg transition group"
-                >
-                  <div className="p-3 rounded-full bg-emerald-900/50 text-emerald-400 mb-3 group-hover:bg-emerald-900/60 transition">
-                    <ReceiveIcon size={24} />
-                  </div>
-                  <span className="font-medium text-white">Receive</span>
-                </button>
-
-                <button
+          <div className="space-y-6">
+            {/* New APY Highlight Banner */}
+            <div className="bg-gradient-to-r from-emerald-800/70 to-emerald-900/70 border border-emerald-700 rounded-xl p-6 shadow-md">
+              <div className="flex flex-col md:flex-row items-start md:items-center gap-4">
+                <div className="p-3 bg-emerald-800/70 rounded-full text-emerald-300">
+                  <PiggyBank size={30} />
+                </div>
+                <div className="flex-1">
+                  <h3 className="text-xl md:text-2xl font-bold text-emerald-100 flex items-center gap-2">
+                    Earn 4.2% APY
+                    <span className="bg-emerald-700/70 text-emerald-300 text-xs px-2 py-0.5 rounded-full">
+                      <Percent size={12} className="inline mr-1" /> Highest rate
+                    </span>
+                  </h3>
+                  <p className="text-emerald-200 mt-1">
+                    Convert your USDC to USDs and start earning 4.2% APY automatically. No lock-up period, no minimum deposit.
+                  </p>
+                </div>
+                <Button
                   onClick={() => setActiveTab("swap")}
-                  className="flex flex-col items-center justify-center p-4 bg-zinc-800 hover:bg-zinc-700 rounded-lg border-emerald-800 border transition group"
+                  className="bg-emerald-600 hover:bg-emerald-500 text-white border-emerald-500 flex items-center gap-2 whitespace-nowrap"
                 >
-                  <div className="p-3 rounded-full bg-emerald-900/50 text-emerald-400 mb-3 group-hover:bg-emerald-900/60 transition">
-                    <SwapIcon size={24} />
-                  </div>
-                  <span className="font-medium text-white">Swap</span>
-                </button>
-
-                <Link href="/about" className="flex flex-col items-center justify-center p-4 bg-zinc-800 hover:bg-zinc-700 rounded-lg transition group">
-                  <div className="p-3 rounded-full bg-zinc-700 text-gray-300 mb-3 group-hover:bg-zinc-600 transition">
-                    <Info size={24} />
-                  </div>
-                  <span className="font-medium text-white">About</span>
-                </Link>
+                  <TrendingUp size={16} />
+                  Swap Now
+                </Button>
               </div>
             </div>
 
-            {/* Recent Transactions */}
-            <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-6 shadow-sm">
-              <div className="flex justify-between items-center mb-4">
-                <h2 className="text-xl font-semibold text-white">Recent Transactions</h2>
-                <button
-                  className="text-xs text-emerald-400 hover:underline flex items-center gap-1"
-                  onClick={() => setActiveTab("transactions")}
-                >
-                  View all <ArrowLeftRight size={12} />
-                </button>
+            <div className="grid md:grid-cols-2 gap-6">
+              {/* Quick Actions */}
+              <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-6 shadow-sm">
+                <h2 className="text-xl font-semibold mb-4 text-white">Quick Actions</h2>
+                <div className="grid grid-cols-2 gap-4">
+                  <button
+                    onClick={() => setActiveTab("send")}
+                    className="flex flex-col items-center justify-center p-4 bg-zinc-800 hover:bg-zinc-700 rounded-lg transition group"
+                  >
+                    <div className="p-3 rounded-full bg-emerald-900/50 text-emerald-400 mb-3 group-hover:bg-emerald-900/60 transition">
+                      <SendIcon size={24} />
+                    </div>
+                    <span className="font-medium text-white">Send</span>
+                  </button>
+
+                  <button
+                    onClick={() => setActiveTab("receive")}
+                    className="flex flex-col items-center justify-center p-4 bg-zinc-800 hover:bg-zinc-700 rounded-lg transition group"
+                  >
+                    <div className="p-3 rounded-full bg-emerald-900/50 text-emerald-400 mb-3 group-hover:bg-emerald-900/60 transition">
+                      <ReceiveIcon size={24} />
+                    </div>
+                    <span className="font-medium text-white">Receive</span>
+                  </button>
+
+                  <button
+                    onClick={() => setActiveTab("swap")}
+                    className="flex flex-col items-center justify-center p-4 bg-zinc-800 hover:bg-zinc-700 rounded-lg border-emerald-800 border transition group"
+                  >
+                    <div className="p-3 rounded-full bg-emerald-900/50 text-emerald-400 mb-3 group-hover:bg-emerald-900/60 transition">
+                      <SwapIcon size={24} />
+                    </div>
+                    <span className="font-medium text-white">Swap</span>
+                  </button>
+
+                  <Link href="/about" className="flex flex-col items-center justify-center p-4 bg-zinc-800 hover:bg-zinc-700 rounded-lg transition group">
+                    <div className="p-3 rounded-full bg-zinc-700 text-gray-300 mb-3 group-hover:bg-zinc-600 transition">
+                      <Info size={24} />
+                    </div>
+                    <span className="font-medium text-white">About</span>
+                  </Link>
+                </div>
               </div>
 
-              <div className="space-y-3">
-                {transactions.length > 0 ? (
-                  transactions.slice(0, 3).map((tx) => (
-                    <div key={tx.id} className="flex items-center p-3 border border-zinc-800 rounded-lg hover:bg-zinc-800/50 transition">
-                      <div className="mr-3">
-                        {getStatusIcon(tx.status)}
+              {/* Recent Transactions */}
+              <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-6 shadow-sm">
+                <div className="flex justify-between items-center mb-4">
+                  <h2 className="text-xl font-semibold text-white">Recent Transactions</h2>
+                  <button
+                    className="text-xs text-emerald-400 hover:underline flex items-center gap-1"
+                    onClick={() => setActiveTab("transactions")}
+                  >
+                    View all <ArrowLeftRight size={12} />
+                  </button>
+                </div>
+
+                <div className="space-y-3">
+                  {transactions.length > 0 ? (
+                    transactions.slice(0, 3).map((tx) => (
+                      <div key={tx.id} className="flex items-center p-3 border border-zinc-800 rounded-lg hover:bg-zinc-800/50 transition">
+                        <div className="mr-3">
+                          {getStatusIcon(tx.status)}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium truncate text-gray-200">{formatTxData(tx.txData)}</p>
+                          <p className="text-xs text-gray-500">{formatDate(tx.createdAt)}</p>
+                        </div>
+                        {tx.signature && (
+                          <a
+                            href={`https://solscan.io/tx/${tx.signature}?cluster=${process.env.NEXT_PUBLIC_SOLANA_NETWORK || 'devnet'}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-xs text-emerald-400 hover:underline ml-2"
+                          >
+                            <ExternalLink size={14} />
+                          </a>
+                        )}
                       </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium truncate text-gray-200">{formatTxData(tx.txData)}</p>
-                        <p className="text-xs text-gray-500">{formatDate(tx.createdAt)}</p>
-                      </div>
-                      {tx.signature && (
-                        <a
-                          href={`https://solscan.io/tx/${tx.signature}?cluster=${process.env.NEXT_PUBLIC_SOLANA_NETWORK || 'devnet'}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-xs text-emerald-400 hover:underline ml-2"
-                        >
-                          <ExternalLink size={14} />
-                        </a>
-                      )}
+                    ))
+                  ) : (
+                    <div className="flex flex-col items-center justify-center py-8 text-center">
+                      <ArrowLeftRight size={24} className="text-gray-600 mb-2" />
+                      <p className="text-sm text-gray-400">No transactions yet</p>
+                      <p className="text-xs text-gray-500">Your transaction history will appear here</p>
                     </div>
-                  ))
-                ) : (
-                  <div className="flex flex-col items-center justify-center py-8 text-center">
-                    <ArrowLeftRight size={24} className="text-gray-600 mb-2" />
-                    <p className="text-sm text-gray-400">No transactions yet</p>
-                    <p className="text-xs text-gray-500">Your transaction history will appear here</p>
-                  </div>
-                )}
+                  )}
+                </div>
               </div>
             </div>
           </div>
@@ -722,13 +765,30 @@ export default function WalletDashboard() {
         {/* Swap Tab */}
         {activeTab === "swap" && (
           <div className="max-w-lg mx-auto bg-zinc-900 border border-zinc-800 rounded-xl p-6 shadow-sm">
-            <div className="flex items-center mb-6">
+            <div className="flex items-center mb-4">
               <div className="p-3 rounded-full bg-emerald-900/50 text-emerald-400 mr-3">
                 <SwapIcon size={20} />
               </div>
               <div>
                 <h2 className="text-xl font-semibold text-white">Swap USDC to USDs</h2>
-                <p className="text-xs text-emerald-400">Earn 4.2% APY by swapping</p>
+                <p className="text-xs text-emerald-400 flex items-center">
+                  <TrendingUp size={12} className="mr-1" /> Earn 4.2% APY on your stablecoins
+                </p>
+              </div>
+            </div>
+
+            {/* New APY highlight banner for swap tab */}
+            <div className="bg-gradient-to-r from-emerald-900/30 to-emerald-800/30 border border-emerald-800/50 rounded-lg p-4 mb-6">
+              <div className="flex items-start gap-3">
+                <div className="p-2 rounded-full bg-emerald-800/50 text-emerald-300">
+                  <PiggyBank size={20} />
+                </div>
+                <div>
+                  <h3 className="font-bold text-emerald-300 text-sm">4.2% Annual Yield</h3>
+                  <p className="text-xs text-emerald-200/80">
+                    USDs automatically earns interest - no staking or locking required. Interest accrues daily.
+                  </p>
+                </div>
               </div>
             </div>
 
