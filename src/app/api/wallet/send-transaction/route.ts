@@ -2,19 +2,16 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { PrismaClient } from "@prisma/client";
 import { LAMPORTS_PER_SOL } from "@solana/web3.js";
-import { sendTransaction } from "@/lib/wallet";
+import { decryptKeypair, sendTransaction } from "@/lib/wallet";
 import { isValidPasscode } from "@/lib/utils";
 import { isValidSolanaAddress } from "@/lib/solana";
-import { decryptMnemonic, getKeypairFromMnemonic } from "@/lib/crypto";
-import { prepareMPCSigningKeypair } from "@/lib/mpc";
-import { authOptions } from "@/lib/auth";
 
 const prisma = new PrismaClient();
 
 export async function POST(req: NextRequest) {
   try {
-    // Get the current session - pass in the auth options
-    const session = await getServerSession(authOptions);
+    // Get the current session
+    const session = await getServerSession();
 
     if (!session || !session.user || !session.user.email) {
       return NextResponse.json(
@@ -24,7 +21,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Get transaction details and passcode from the request
-    const { to, amount, passcode, backupShare, recoveryShare } = await req.json();
+    const { to, amount, passcode } = await req.json();
 
     if (!to || !amount) {
       return NextResponse.json(
@@ -50,103 +47,30 @@ export async function POST(req: NextRequest) {
     // Get the user's wallet information
     const user = await prisma.user.findUnique({
       where: { email: session.user.email },
-      select: {
-        id: true,
-        encryptedKeypair: true,
-        solanaAddress: true,
-        usesMPC: true,
-        mpcServerShare: true,
-        mpcSalt: true,
-        mpcBackupShare: true
-      },
+      select: { id: true, encryptedKeypair: true, solanaAddress: true },
     });
 
-    if (!user || !user.solanaAddress) {
+    if (!user || !user.encryptedKeypair || !user.solanaAddress) {
       return NextResponse.json(
         { error: "Wallet not set up" },
         { status: 400 }
       );
     }
 
-    // Determine which type of wallet the user has (MPC or legacy)
-    let keypair;
+    // Try to decrypt the keypair with the provided passcode
+    const keypair = decryptKeypair(user.encryptedKeypair, passcode);
 
-    if (user.usesMPC) {
-      // MPC wallet approach
-      if (!user.mpcServerShare || !user.mpcSalt) {
-        return NextResponse.json(
-          { error: "Wallet not set up properly" },
-          { status: 400 }
-        );
-      }
-
-      // If the client provided their own backup and recovery shares, use those
-      // Otherwise, use the server's stored backup share for 3-part reconstruction
-      const clientBackupShare = backupShare || user.mpcBackupShare;
-
-      console.log(`Attempting MPC signing with ${clientBackupShare ? 'backup share' : 'no backup share'}`);
-
-      // Prepare the keypair using MPC with 3 shares
-      try {
-        keypair = prepareMPCSigningKeypair(
-          passcode,
-          user.mpcServerShare,
-          user.mpcSalt,
-          clientBackupShare,
-          recoveryShare // This might be undefined, which is fine
-        );
-
-        if (!keypair) {
-          console.error("MPC signing preparation returned null");
-          return NextResponse.json(
-            { error: "Invalid passcode or shares" },
-            { status: 401 }
-          );
-        }
-
-        // Verify the keypair corresponds to the user's address
-        const keypairAddress = keypair.publicKey.toBase58();
-        if (keypairAddress !== user.solanaAddress) {
-          console.error(`Address mismatch: expected ${user.solanaAddress}, got ${keypairAddress}`);
-          return NextResponse.json(
-            { error: "Generated keypair does not match wallet address" },
-            { status: 401 }
-          );
-        }
-      } catch (mpError) {
-        console.error("Error in MPC signing preparation:", mpError);
-        return NextResponse.json(
-          { error: mpError instanceof Error ? mpError.message : "Failed to prepare MPC signing" },
-          { status: 401 }
-        );
-      }
-    } else {
-      // Legacy approach with encrypted mnemonic
-      if (!user.encryptedKeypair) {
-        return NextResponse.json(
-          { error: "Wallet not set up properly" },
-          { status: 400 }
-        );
-      }
-
-      // Decrypt the mnemonic with the provided passcode
-      const mnemonic = await decryptMnemonic(user.encryptedKeypair, passcode);
-
-      if (!mnemonic) {
-        return NextResponse.json(
-          { error: "Invalid passcode" },
-          { status: 401 }
-        );
-      }
-
-      // Derive the keypair from the mnemonic
-      keypair = getKeypairFromMnemonic(mnemonic);
+    if (!keypair) {
+      return NextResponse.json(
+        { error: "Invalid passcode" },
+        { status: 401 }
+      );
     }
 
     // Convert the amount from SOL to lamports
-    const amountInLamports = Math.floor(Number.parseFloat(amount) * LAMPORTS_PER_SOL);
+    const amountInLamports = Math.floor(parseFloat(amount) * LAMPORTS_PER_SOL);
 
-    if (Number.isNaN(amountInLamports) || amountInLamports <= 0) {
+    if (isNaN(amountInLamports) || amountInLamports <= 0) {
       return NextResponse.json(
         { error: "Invalid amount" },
         { status: 400 }
