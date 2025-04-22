@@ -1,27 +1,27 @@
+import "./globals.css";
+import AuthProvider from "@/components/providers/AuthProvider";
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
-import "./globals.css";
 import { Toaster } from "sonner";
-import AuthProvider from "@/components/providers/AuthProvider";
 
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "Solana Passcode Wallet",
-  description: "A wallet using passcode authentication for Solana",
+  title: "StableFi - Earn 4.2% APY on Solana",
+  description: "The easiest way to earn yield on your stablecoins. Deposit USDC, earn interest, withdraw anytime.",
 };
 
 export default function RootLayout({
   children,
-}: Readonly<{
+}: {
   children: React.ReactNode;
-}>) {
+}) {
   return (
-    <html lang="en" className="dark">
-      <body className={`${inter.className} bg-background text-foreground`}>
+    <html lang="en">
+      <body className={inter.className}>
         <AuthProvider>
           {children}
-          <Toaster position="top-right" richColors theme="dark" />
+          <Toaster position="bottom-right" />
         </AuthProvider>
       </body>
     </html>

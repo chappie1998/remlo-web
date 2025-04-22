@@ -2,11 +2,14 @@ import { NextAuthOptions } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
 import { PrismaAdapter } from "@auth/prisma-adapter";
 import { PrismaClient } from "@prisma/client";
+import { createHash } from "crypto";
+import { verifyOTP } from "./otp";
 
-const prisma = new PrismaClient();
+// Create a Prisma client instance
+export const db = new PrismaClient();
 
 export const authOptions: NextAuthOptions = {
-  adapter: PrismaAdapter(prisma),
+  adapter: PrismaAdapter(db),
   providers: [
     CredentialsProvider({
       id: "otp-login",
@@ -21,33 +24,22 @@ export const authOptions: NextAuthOptions = {
         }
 
         try {
-          // Find the OTP in the database
-          const otpRecord = await prisma.verificationToken.findFirst({
-            where: {
-              identifier: credentials.email,
-              token: credentials.otp,
-              expires: {
-                gt: new Date(),
-              },
-            },
-          });
-
-          if (!otpRecord) {
+          // Verify OTP using external helper function
+          const isValidOTP = await verifyOTP(credentials.email, credentials.otp);
+          if (!isValidOTP) {
             return null;
           }
 
           // Delete the OTP record to prevent reuse
-          await prisma.verificationToken.delete({
+          await db.verificationToken.deleteMany({
             where: {
-              identifier_token: {
-                identifier: credentials.email,
-                token: credentials.otp,
-              },
+              identifier: credentials.email,
+              token: credentials.otp,
             },
           });
 
           // Get or create user
-          const user = await prisma.user.upsert({
+          const user = await db.user.upsert({
             where: { email: credentials.email },
             update: {
               emailVerified: new Date(),
@@ -80,7 +72,7 @@ export const authOptions: NextAuthOptions = {
     session: async ({ session, token }) => {
       if (token?.userId) {
         // Fetch additional user data for the session
-        const userData = await prisma.user.findUnique({
+        const userData = await db.user.findUnique({
           where: { id: token.userId as string },
           select: {
             id: true,
