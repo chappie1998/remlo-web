@@ -7,14 +7,23 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import Header from "@/components/header";
+import { shortenAddress, formatDate, isValidPasscode, copyToClipboard } from "@/lib/utils";
+import { isValidSolanaAddress } from "@/lib/solana";
 import {
-  shortenAddress,
-  formatDate,
-  isValidPasscode,
-  copyToClipboard,
-} from "@/lib/utils";
-import { isValidSolanaAddress, SPL_TOKEN_ADDRESS } from "@/lib/solana";
+  Copy,
+  Clock,
+  CheckCircle2,
+  XCircle,
+  ExternalLink,
+  RefreshCw,
+  ArrowLeftRight,
+  ArrowDown,
+  Info,
+  ChevronDown
+} from "lucide-react";
+import { USDsIcon, USDCIcon, SwapIcon, ReceiveIcon, SendIcon, SolanaIcon } from "@/components/icons";
 
+// Define interfaces
 interface Transaction {
   id: string;
   status: string;
@@ -23,153 +32,78 @@ interface Transaction {
   createdAt: string;
 }
 
+interface TokenBalance {
+  tokenSymbol: string;
+  balance: string;
+  usdValue: string;
+  icon: React.ReactNode;
+}
+
 export default function WalletDashboard() {
   const { data: session, status } = useSession();
   const router = useRouter();
   const [showPasscodeModal, setShowPasscodeModal] = useState(false);
   const [passcode, setPasscode] = useState("");
-
-  // Separate state for SOL transfers
-  const [solRecipient, setSolRecipient] = useState("");
-  const [solAmount, setSolAmount] = useState("");
-
-  // Separate state for token transfers
-  const [tokenRecipient, setTokenRecipient] = useState("");
-  const [tokenAmount, setTokenAmount] = useState("");
-
+  const [recipient, setRecipient] = useState("");
+  const [amount, setAmount] = useState("");
+  const [tokenType, setTokenType] = useState("usds"); // "usds" or "usdc"
+  const [swapAmount, setSwapAmount] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
-  const [balance, setBalance] = useState("0.0");
-  const [tokenBalance, setTokenBalance] = useState<number | undefined>();
+
+  // Balance states
+  const [solBalance, setSolBalance] = useState("0.0");
+  const [usdsBalance, setUsdsBalance] = useState("0.0");
+  const [usdcBalance, setUsdcBalance] = useState("0.0");
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loadingBalance, setLoadingBalance] = useState(true);
-  const [isSendingToken, setIsSendingToken] = useState(false);
-  const [currentTxStatus, setCurrentTxStatus] = useState("");
+  const [activeTab, setActiveTab] = useState("overview");
+  const [refreshing, setRefreshing] = useState(false);
+
+  // Calculate the total balance in USD (assuming 1 USDC = 1 USDs = $1)
+  const totalUsdBalance = parseFloat(usdsBalance) + parseFloat(usdcBalance);
 
   useEffect(() => {
     if (session?.user?.solanaAddress) {
-      fetchBalance();
-      fetchTokenBalance();
+      fetchBalances();
       fetchTransactions();
     }
   }, [session]);
 
-  interface TokenAccountResponse {
-    jsonrpc: string;
-    result: {
-      value: {
-        account: {
-          data: {
-            parsed: {
-              info: {
-                tokenAmount: {
-                  amount: string;
-                  decimals: number;
-                  uiAmount: number;
-                  uiAmountString: string;
-                };
-              };
-            };
-          };
-        };
-        pubkey: string;
-      }[];
-    };
-    id: number;
-  }
-
-  async function getTokenBalanceRpc(
-    ownerAddress: string,
-    tokenMint: string,
-    url: string = "https://solana-devnet.g.alchemy.com/v2/Qbh6Ej7kDKwVwB1vkbBC8KUAtWvmS3rP"
-  ): Promise<number | undefined> {
-    try {
-      const requestBody = {
-        jsonrpc: "2.0",
-        id: 1,
-        method: "getTokenAccountsByOwner",
-        params: [
-          ownerAddress,
-          {
-            mint: tokenMint,
-          },
-          {
-            encoding: "jsonParsed",
-          },
-        ],
-      };
-
-      const response = await fetch(url, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(requestBody),
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
-      const data = (await response.json()) as TokenAccountResponse;
-
-      if (!data.result?.value?.length) {
-        return undefined; // No token accounts found
-      }
-
-      // Return the token amount as a number
-      return Number(
-        data.result.value[0].account.data.parsed.info.tokenAmount.amount
-      );
-    } catch (error) {
-      console.error("Error fetching token balance:", error);
-      throw error;
-    }
-  }
-
-  // Handle authentication redirects using useEffect for client-side only execution
+  // Handle authentication redirects
   useEffect(() => {
-    // If not authenticated, redirect to login
     if (status === "unauthenticated") {
       router.push("/auth/signin");
     }
 
-    // If user doesn't have a wallet yet, redirect to setup
     if (status === "authenticated" && !session?.user?.hasPasscode) {
       router.push("/wallet/setup");
     }
   }, [status, session, router]);
 
-  const fetchBalance = async () => {
+  const fetchBalances = async () => {
     try {
       setLoadingBalance(true);
-      const response = await fetch("/api/wallet/balance");
-      const data = await response.json();
-      if (response.ok) {
-        setBalance(data.formattedBalance);
-      } else {
-        console.error("Failed to fetch balance:", data.error);
+      // Fetch SOL balance
+      const solResponse = await fetch("/api/wallet/balance");
+      if (solResponse.ok) {
+        const solData = await solResponse.json();
+        setSolBalance(solData.formattedBalance);
       }
-    } catch (error) {
-      console.error("Error fetching balance:", error);
-    } finally {
-      setLoadingBalance(false);
-    }
-  };
 
-  const fetchTokenBalance = async () => {
-    try {
-      setLoadingBalance(true);
-      // Use our real endpoint for token balance
-      const response = await fetch("/api/wallet/token-balance");
-      const data = await response.json();
-      if (response.ok) {
-        setTokenBalance(data.formattedBalance);
-      } else {
-        console.error("Failed to fetch token balance:", data.error);
+      // Fetch token balance (treat this as USDC for demonstration)
+      const tokenResponse = await fetch("/api/wallet/token-balance");
+      if (tokenResponse.ok) {
+        const tokenData = await tokenResponse.json();
+        setUsdcBalance(tokenData.formattedBalance);
+
+        // For demonstration, show a simulated USDs balance (normally this would be fetched separately)
+        // We'll simulate that users have more USDs than USDC as if they have already swapped
+        const usdsFactor = 2.5; // Show 2.5x of USDC balance as USDs
+        setUsdsBalance((parseFloat(tokenData.formattedBalance) * usdsFactor).toFixed(6));
       }
     } catch (error) {
-      console.error("Error fetching token balance:", error);
+      console.error("Error fetching balances:", error);
     } finally {
       setLoadingBalance(false);
     }
@@ -187,13 +121,17 @@ export default function WalletDashboard() {
     }
   };
 
-  // Validate form inputs before proceeding
-  const validateSendForm = (isToken = false) => {
-    const recipient = isToken ? tokenRecipient : solRecipient;
-    const amount = isToken ? tokenAmount : solAmount;
+  const refreshData = async () => {
+    setRefreshing(true);
+    await Promise.all([fetchBalances(), fetchTransactions()]);
+    toast.success("Wallet data refreshed");
+    setRefreshing(false);
+  };
 
+  // Validate form inputs before proceeding
+  const validateSendForm = () => {
     if (!recipient) {
-      setError(`Recipient address is required for ${isToken ? 'token' : 'SOL'} transfer`);
+      setError("Recipient address is required");
       return false;
     }
 
@@ -203,30 +141,52 @@ export default function WalletDashboard() {
     }
 
     if (!amount || isNaN(parseFloat(amount)) || parseFloat(amount) <= 0) {
-      setError(`Enter a valid amount for ${isToken ? 'token' : 'SOL'} transfer`);
+      setError("Enter a valid amount");
+      return false;
+    }
+
+    // Check if there are sufficient funds
+    if (tokenType === "usds" && parseFloat(amount) > parseFloat(usdsBalance)) {
+      setError("Insufficient USDs balance");
+      return false;
+    } else if (tokenType === "usdc" && parseFloat(amount) > parseFloat(usdcBalance)) {
+      setError("Insufficient USDC balance");
       return false;
     }
 
     return true;
   };
 
-  // If loading, show loading state
+  // Loading state
   if (status === "loading") {
     return (
-      <div className="flex min-h-screen flex-col items-center justify-center p-4">
-        <p>Loading wallet...</p>
+      <div className="min-h-screen flex flex-col bg-black text-white">
+        <Header />
+        <div className="flex-1 flex items-center justify-center">
+          <div className="flex flex-col items-center space-y-4">
+            <div className="animate-spin">
+              <RefreshCw size={32} className="text-emerald-400" />
+            </div>
+            <p className="text-lg text-gray-300">Loading your wallet...</p>
+          </div>
+        </div>
       </div>
     );
   }
 
-  // Return null if we're redirecting (handled in useEffect above)
-  if (
-    status === "unauthenticated" ||
-    (status === "authenticated" && !session?.user?.hasPasscode)
-  ) {
+  // Redirecting state
+  if (status === "unauthenticated" || (status === "authenticated" && !session?.user?.hasPasscode)) {
     return (
-      <div className="flex min-h-screen flex-col items-center justify-center p-4">
-        <p>Redirecting...</p>
+      <div className="min-h-screen flex flex-col bg-black text-white">
+        <Header />
+        <div className="flex-1 flex items-center justify-center">
+          <div className="flex flex-col items-center space-y-4">
+            <div className="animate-pulse">
+              <ArrowLeftRight size={32} className="text-emerald-400" />
+            </div>
+            <p className="text-lg text-gray-300">Redirecting...</p>
+          </div>
+        </div>
       </div>
     );
   }
@@ -241,12 +201,12 @@ export default function WalletDashboard() {
     }
 
     setIsLoading(true);
-    setCurrentTxStatus("Creating transaction...");
 
     try {
-      const endpoint = isSendingToken
-        ? "/api/wallet/send-token-transaction" // Use the real endpoint for token transactions
-        : "/api/wallet/send-transaction";
+      // Determine which endpoint to use based on token type
+      const endpoint = tokenType === "usdc"
+        ? "/api/wallet/send-token-transaction"
+        : "/api/wallet/send-transaction"; // Assuming USDs use the regular SOL transaction endpoint for now
 
       const response = await fetch(endpoint, {
         method: "POST",
@@ -254,104 +214,460 @@ export default function WalletDashboard() {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          to: isSendingToken ? tokenRecipient : solRecipient,
-          amount: isSendingToken ? tokenAmount : solAmount,
+          to: recipient,
+          amount,
           passcode,
         }),
       });
 
-      setCurrentTxStatus("Processing transaction...");
       const data = await response.json();
 
       if (!response.ok) {
         throw new Error(data.error || "Transaction failed");
       }
 
-      setCurrentTxStatus("Transaction completed!");
       toast.success("Transaction sent successfully!");
       setShowPasscodeModal(false);
       setPasscode("");
-      setSolRecipient("");
-      setSolAmount("");
-      setTokenRecipient("");
-      setTokenAmount("");
+      setRecipient("");
+      setAmount("");
 
       // Refresh balance and transactions
-      fetchBalance();
-      fetchTokenBalance();
+      fetchBalances();
       fetchTransactions();
     } catch (err) {
-      const errorMessage =
-        err instanceof Error ? err.message : "Transaction failed";
+      const errorMessage = err instanceof Error ? err.message : "Transaction failed";
       setError(errorMessage);
       toast.error(errorMessage);
-      setCurrentTxStatus("");
     } finally {
       setIsLoading(false);
     }
+  };
+
+  // Simulate a swap from USDC to USDs
+  const handleSwap = () => {
+    if (!swapAmount || isNaN(parseFloat(swapAmount)) || parseFloat(swapAmount) <= 0) {
+      setError("Enter a valid amount to swap");
+      return;
+    }
+
+    if (parseFloat(swapAmount) > parseFloat(usdcBalance)) {
+      setError("Insufficient USDC balance for swap");
+      return;
+    }
+
+    setIsLoading(true);
+
+    // Simulate a swap with a delay
+    setTimeout(() => {
+      const swapAmountNum = parseFloat(swapAmount);
+      setUsdcBalance((parseFloat(usdcBalance) - swapAmountNum).toFixed(6));
+
+      // Add swapped amount to USDs with 4.2% bonus
+      const bonusRate = 1.042; // 4.2% bonus
+      setUsdsBalance((parseFloat(usdsBalance) + (swapAmountNum * bonusRate)).toFixed(6));
+
+      setSwapAmount("");
+      setIsLoading(false);
+      toast.success(`Successfully swapped ${swapAmount} USDC to USDs with 4.2% bonus!`);
+    }, 1500);
   };
 
   // Format transaction data for display
   const formatTxData = (txDataString: string) => {
     try {
       const txData = JSON.parse(txDataString);
-      if (txData.token) {
-        // This is a token transaction
-        return `${txData.amount} DEV to ${shortenAddress(txData.to)}`;
-      } else {
-        // This is a SOL transaction
-        return `${txData.amount} SOL to ${shortenAddress(txData.to)}`;
-      }
+      return `${txData.amount} ${txData.token ? 'USDC' : 'SOL'} to ${shortenAddress(txData.to)}`;
     } catch (e) {
       return "Unknown transaction";
     }
   };
 
   // Open passcode modal when submitting the send form
-  const handleSendFormSubmit = (e: React.FormEvent, isToken = false) => {
+  const handleSendFormSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
-    setIsSendingToken(isToken);
 
-    if (validateSendForm(isToken)) {
+    if (validateSendForm()) {
       setShowPasscodeModal(true);
     }
   };
 
+  // Get transaction status icon
+  const getStatusIcon = (status: string) => {
+    switch(status) {
+      case 'executed':
+        return <CheckCircle2 className="text-green-500" size={16} />;
+      case 'pending':
+        return <Clock className="text-yellow-500" size={16} />;
+      default:
+        return <XCircle className="text-red-500" size={16} />;
+    }
+  };
+
+  // Token balances for display
+  const tokenBalances: TokenBalance[] = [
+    {
+      tokenSymbol: "USDs",
+      balance: usdsBalance,
+      usdValue: `$${parseFloat(usdsBalance).toFixed(2)}`,
+      icon: <USDsIcon className="text-emerald-400" />
+    },
+    {
+      tokenSymbol: "USDC",
+      balance: usdcBalance,
+      usdValue: `$${parseFloat(usdcBalance).toFixed(2)}`,
+      icon: <USDCIcon className="text-blue-400" />
+    }
+  ];
+
   return (
-    <div className="min-h-screen flex flex-col">
+    <div className="min-h-screen flex flex-col bg-black text-white">
       <Header />
 
       {/* Main content */}
-      <main className="flex-1 container mx-auto p-4 md:p-6">
-        <div className="grid md:grid-cols-3 gap-6">
-          {/* Wallet info */}
-          <div className="md:col-span-2 space-y-6">
-            <div className="p-6 border rounded-lg">
-              <div className="flex justify-between items-start mb-4">
-                <h2 className="text-xl font-bold">Wallet Address</h2>
-                <div className="flex flex-col items-end">
-                  <p className="text-sm text-muted-foreground">Balance</p>
-                  <p className="text-xl font-bold">
-                    {loadingBalance ? "Loading..." : `${balance} SOL`}
-                  </p>
-                  <p className="text-sm text-muted-foreground mt-2">
-                    DEV Token Balance
-                  </p>
-                  <p className="text-lg font-bold">
-                    {loadingBalance ? "Loading..." : `${tokenBalance} DEV`}
-                  </p>
+      <main className="flex-1 container mx-auto p-4 md:p-6 max-w-6xl">
+        {/* Dashboard Header with Balance */}
+        <div className="mb-8 p-6 rounded-xl bg-zinc-900 border border-zinc-800 shadow-sm relative overflow-hidden">
+          <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-900/20 rounded-bl-full -mt-4 -mr-4"></div>
+          <div className="relative z-10">
+            <div className="flex flex-col md:flex-row md:items-end justify-between mb-8">
+              <div>
+                <h1 className="text-2xl font-bold mb-1 text-white">Your Wallet</h1>
+                <p className="text-gray-400 text-sm flex items-center gap-1">
+                  <span className="bg-emerald-900/50 text-emerald-400 text-xs px-2 py-0.5 rounded">
+                    {process.env.NEXT_PUBLIC_SOLANA_NETWORK || 'devnet'}
+                  </span>
+                  <span>•</span>
+                  <span
+                    className="hover:text-emerald-400 transition cursor-pointer flex items-center gap-1"
+                    onClick={refreshData}
+                  >
+                    {refreshing ? 'Refreshing...' : 'Refresh'}
+                    <RefreshCw size={14} className={refreshing ? "animate-spin" : ""} />
+                  </span>
+                </p>
+              </div>
+              <div className="mt-4 md:mt-0 md:text-right">
+                <p className="text-gray-400 text-sm">Total Balance</p>
+                <div className="flex items-end gap-2 md:justify-end">
+                  <h2 className="text-3xl md:text-4xl font-bold text-white">
+                    ${loadingBalance ? "..." : totalUsdBalance.toFixed(2)}
+                  </h2>
+                  <span className="text-xl font-medium text-gray-400">USD</span>
                 </div>
               </div>
-              <div className="bg-muted p-2 rounded break-all font-mono text-xs relative group">
+            </div>
+
+            <div className="bg-zinc-800/80 backdrop-blur border border-zinc-700 p-3 rounded-lg flex flex-col sm:flex-row items-start sm:items-center gap-2 group relative">
+              <div className="p-1 bg-emerald-900/30 rounded text-emerald-400">
+                <SolanaIcon className="h-5 w-5" />
+              </div>
+              <div className="font-mono text-xs sm:text-sm break-all flex-1 max-w-full overflow-hidden text-gray-300">
                 {session?.user?.solanaAddress || "Loading..."}
+              </div>
+              <button
+                className="text-xs bg-emerald-700 text-white px-3 py-1.5 rounded-md font-medium flex items-center gap-1 hover:bg-emerald-600 transition"
+                onClick={async () => {
+                  if (session?.user?.solanaAddress) {
+                    const success = await copyToClipboard(session.user.solanaAddress);
+                    if (success) {
+                      toast.success("Address copied to clipboard");
+                    } else {
+                      toast.error("Failed to copy address");
+                    }
+                  }
+                }}
+              >
+                <Copy size={14} /> Copy
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* Token Balance Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
+          {tokenBalances.map((token) => (
+            <div
+              key={token.tokenSymbol}
+              className={`p-5 border rounded-xl flex items-center gap-4 ${
+                token.tokenSymbol === 'USDs'
+                  ? 'bg-emerald-900/20 border-emerald-800'
+                  : 'bg-blue-900/20 border-blue-800'
+              }`}
+            >
+              <div className={`p-3 rounded-full ${
+                token.tokenSymbol === 'USDs' ? 'bg-emerald-900/30' : 'bg-blue-900/30'
+              }`}>
+                {token.icon}
+              </div>
+              <div className="flex-1">
+                <p className="text-sm text-gray-400">{token.tokenSymbol}</p>
+                <p className="text-xl font-bold text-white">{token.balance}</p>
+                <p className="text-xs text-gray-400">{token.usdValue}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Tabs for different sections */}
+        <div className="flex border-b border-zinc-800 mb-6 overflow-x-auto">
+          <button
+            className={`px-4 py-2 font-medium text-sm relative whitespace-nowrap ${
+              activeTab === "overview"
+                ? "text-emerald-400 border-b-2 border-emerald-400"
+                : "text-gray-400 hover:text-gray-300"
+            }`}
+            onClick={() => setActiveTab("overview")}
+          >
+            Overview
+          </button>
+          <button
+            className={`px-4 py-2 font-medium text-sm relative whitespace-nowrap ${
+              activeTab === "send"
+                ? "text-emerald-400 border-b-2 border-emerald-400"
+                : "text-gray-400 hover:text-gray-300"
+            }`}
+            onClick={() => setActiveTab("send")}
+          >
+            Send
+          </button>
+          <button
+            className={`px-4 py-2 font-medium text-sm relative whitespace-nowrap ${
+              activeTab === "receive"
+                ? "text-emerald-400 border-b-2 border-emerald-400"
+                : "text-gray-400 hover:text-gray-300"
+            }`}
+            onClick={() => setActiveTab("receive")}
+          >
+            Receive
+          </button>
+          <button
+            className={`px-4 py-2 font-medium text-sm relative whitespace-nowrap ${
+              activeTab === "swap"
+                ? "text-emerald-400 border-b-2 border-emerald-400"
+                : "text-gray-400 hover:text-gray-300"
+            }`}
+            onClick={() => setActiveTab("swap")}
+          >
+            Swap
+          </button>
+          <button
+            className={`px-4 py-2 font-medium text-sm relative whitespace-nowrap ${
+              activeTab === "transactions"
+                ? "text-emerald-400 border-b-2 border-emerald-400"
+                : "text-gray-400 hover:text-gray-300"
+            }`}
+            onClick={() => setActiveTab("transactions")}
+          >
+            Transactions
+          </button>
+        </div>
+
+        {/* Overview Tab */}
+        {activeTab === "overview" && (
+          <div className="grid md:grid-cols-2 gap-6">
+            {/* Quick Actions */}
+            <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-6 shadow-sm">
+              <h2 className="text-xl font-semibold mb-4 text-white">Quick Actions</h2>
+              <div className="grid grid-cols-2 gap-4">
                 <button
-                  className="absolute right-2 top-2 text-xs bg-primary/10 text-primary px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity"
+                  onClick={() => setActiveTab("send")}
+                  className="flex flex-col items-center justify-center p-4 bg-zinc-800 hover:bg-zinc-700 rounded-lg transition group"
+                >
+                  <div className="p-3 rounded-full bg-emerald-900/50 text-emerald-400 mb-3 group-hover:bg-emerald-900/60 transition">
+                    <SendIcon size={24} />
+                  </div>
+                  <span className="font-medium text-white">Send</span>
+                </button>
+
+                <button
+                  onClick={() => setActiveTab("receive")}
+                  className="flex flex-col items-center justify-center p-4 bg-zinc-800 hover:bg-zinc-700 rounded-lg transition group"
+                >
+                  <div className="p-3 rounded-full bg-emerald-900/50 text-emerald-400 mb-3 group-hover:bg-emerald-900/60 transition">
+                    <ReceiveIcon size={24} />
+                  </div>
+                  <span className="font-medium text-white">Receive</span>
+                </button>
+
+                <button
+                  onClick={() => setActiveTab("swap")}
+                  className="flex flex-col items-center justify-center p-4 bg-zinc-800 hover:bg-zinc-700 rounded-lg border-emerald-800 border transition group"
+                >
+                  <div className="p-3 rounded-full bg-emerald-900/50 text-emerald-400 mb-3 group-hover:bg-emerald-900/60 transition">
+                    <SwapIcon size={24} />
+                  </div>
+                  <span className="font-medium text-white">Swap</span>
+                </button>
+
+                <Link href="/about" className="flex flex-col items-center justify-center p-4 bg-zinc-800 hover:bg-zinc-700 rounded-lg transition group">
+                  <div className="p-3 rounded-full bg-zinc-700 text-gray-300 mb-3 group-hover:bg-zinc-600 transition">
+                    <Info size={24} />
+                  </div>
+                  <span className="font-medium text-white">About</span>
+                </Link>
+              </div>
+            </div>
+
+            {/* Recent Transactions */}
+            <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-6 shadow-sm">
+              <div className="flex justify-between items-center mb-4">
+                <h2 className="text-xl font-semibold text-white">Recent Transactions</h2>
+                <button
+                  className="text-xs text-emerald-400 hover:underline flex items-center gap-1"
+                  onClick={() => setActiveTab("transactions")}
+                >
+                  View all <ArrowLeftRight size={12} />
+                </button>
+              </div>
+
+              <div className="space-y-3">
+                {transactions.length > 0 ? (
+                  transactions.slice(0, 3).map((tx) => (
+                    <div key={tx.id} className="flex items-center p-3 border border-zinc-800 rounded-lg hover:bg-zinc-800/50 transition">
+                      <div className="mr-3">
+                        {getStatusIcon(tx.status)}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium truncate text-gray-200">{formatTxData(tx.txData)}</p>
+                        <p className="text-xs text-gray-500">{formatDate(tx.createdAt)}</p>
+                      </div>
+                      {tx.signature && (
+                        <a
+                          href={`https://solscan.io/tx/${tx.signature}?cluster=${process.env.NEXT_PUBLIC_SOLANA_NETWORK || 'devnet'}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-xs text-emerald-400 hover:underline ml-2"
+                        >
+                          <ExternalLink size={14} />
+                        </a>
+                      )}
+                    </div>
+                  ))
+                ) : (
+                  <div className="flex flex-col items-center justify-center py-8 text-center">
+                    <ArrowLeftRight size={24} className="text-gray-600 mb-2" />
+                    <p className="text-sm text-gray-400">No transactions yet</p>
+                    <p className="text-xs text-gray-500">Your transaction history will appear here</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Send Tab */}
+        {activeTab === "send" && (
+          <div className="max-w-lg mx-auto bg-zinc-900 border border-zinc-800 rounded-xl p-6 shadow-sm">
+            <div className="flex items-center mb-6">
+              <div className="p-3 rounded-full bg-emerald-900/50 text-emerald-400 mr-3">
+                <SendIcon size={20} />
+              </div>
+              <h2 className="text-xl font-semibold text-white">Send</h2>
+            </div>
+
+            {error && (
+              <div className="p-3 rounded-lg bg-red-900/20 text-red-400 text-sm mb-4 flex items-start">
+                <XCircle size={16} className="mr-2 mt-0.5 flex-shrink-0" />
+                <p>{error}</p>
+              </div>
+            )}
+
+            <form onSubmit={handleSendFormSubmit} className="space-y-4">
+              <div className="space-y-2">
+                <label htmlFor="token-selector" className="text-sm font-medium flex items-center text-gray-300">
+                  Token <span className="text-red-400 ml-1">*</span>
+                </label>
+                <div className="relative">
+                  <select
+                    id="token-selector"
+                    value={tokenType}
+                    onChange={(e) => setTokenType(e.target.value)}
+                    className="w-full p-3 rounded-md border border-zinc-700 bg-zinc-800 text-gray-200 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 appearance-none"
+                  >
+                    <option value="usds">USDs</option>
+                    <option value="usdc">USDC</option>
+                  </select>
+                  <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
+                    <ChevronDown size={18} className="text-gray-400" />
+                  </div>
+                </div>
+                <p className="text-xs text-gray-500 flex justify-between">
+                  <span>Selected token to send</span>
+                  <span>Balance: {tokenType === "usds" ? usdsBalance : usdcBalance}</span>
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <label htmlFor="recipient" className="text-sm font-medium flex items-center text-gray-300">
+                  Recipient Address <span className="text-red-400 ml-1">*</span>
+                </label>
+                <div className="relative">
+                  <input
+                    id="recipient"
+                    type="text"
+                    required
+                    placeholder="Enter Solana address"
+                    value={recipient}
+                    onChange={(e) => setRecipient(e.target.value)}
+                    className="w-full p-3 rounded-md border border-zinc-700 bg-zinc-800 text-gray-200 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                  />
+                </div>
+                <p className="text-xs text-gray-500">Enter a valid Solana wallet address</p>
+              </div>
+
+              <div className="space-y-2">
+                <label htmlFor="amount" className="text-sm font-medium flex items-center text-gray-300">
+                  Amount <span className="text-red-400 ml-1">*</span>
+                </label>
+                <div className="relative">
+                  <input
+                    id="amount"
+                    type="text"
+                    inputMode="decimal"
+                    required
+                    placeholder="0.00"
+                    value={amount}
+                    onChange={(e) => setAmount(e.target.value)}
+                    className="w-full p-3 rounded-md border border-zinc-700 bg-zinc-800 text-gray-200 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 pr-16"
+                  />
+                  <div className="absolute right-3 top-1/2 transform -translate-y-1/2 font-medium text-gray-400 text-sm">
+                    {tokenType.toUpperCase()}
+                  </div>
+                </div>
+              </div>
+
+              <Button
+                type="submit"
+                size="lg"
+                className="w-full mt-4 bg-emerald-600 hover:bg-emerald-700 text-white"
+              >
+                Continue to Confirm
+              </Button>
+            </form>
+          </div>
+        )}
+
+        {/* Receive Tab */}
+        {activeTab === "receive" && (
+          <div className="max-w-lg mx-auto bg-zinc-900 border border-zinc-800 rounded-xl p-6 shadow-sm">
+            <div className="flex items-center mb-6">
+              <div className="p-3 rounded-full bg-emerald-900/50 text-emerald-400 mr-3">
+                <ReceiveIcon size={20} />
+              </div>
+              <h2 className="text-xl font-semibold text-white">Receive</h2>
+            </div>
+
+            <div className="bg-zinc-800 p-6 rounded-lg border border-zinc-700 text-center mb-6">
+              <p className="text-sm text-gray-400 mb-2">Your wallet address</p>
+              <p className="font-mono text-sm text-gray-200 break-all mb-4">{session?.user?.solanaAddress}</p>
+              <div className="flex justify-center">
+                <button
+                  className="bg-emerald-700 hover:bg-emerald-600 text-white px-4 py-2 rounded flex items-center gap-2 text-sm font-medium transition"
                   onClick={async () => {
                     if (session?.user?.solanaAddress) {
-                      const success = await copyToClipboard(
-                        session.user.solanaAddress
-                      );
+                      const success = await copyToClipboard(session.user.solanaAddress);
                       if (success) {
                         toast.success("Address copied to clipboard");
                       } else {
@@ -360,244 +676,287 @@ export default function WalletDashboard() {
                     }
                   }}
                 >
-                  Copy
+                  <Copy size={16} />
+                  Copy Address
                 </button>
               </div>
-              <p className="text-sm text-muted-foreground mt-2">
-                This is your Solana wallet address on{" "}
-                {process.env.NEXT_PUBLIC_SOLANA_NETWORK || "devnet"}.
-              </p>
             </div>
 
-            <div className="grid md:grid-cols-2 gap-6">
-              <div className="p-6 border rounded-lg">
-                <h2 className="text-xl font-bold mb-4">Send SOL</h2>
-                <form
-                  onSubmit={(e) => handleSendFormSubmit(e, false)}
-                  className="space-y-4"
-                >
-                  <div className="space-y-2">
-                    <label
-                      htmlFor="recipient-sol"
-                      className="text-sm font-medium"
-                    >
-                      Recipient Address
-                    </label>
-                    <input
-                      id="recipient-sol"
-                      type="text"
-                      required
-                      placeholder="Solana address (e.g., 3Dru...y149)"
-                      value={solRecipient}
-                      onChange={(e) => setSolRecipient(e.target.value)}
-                      className="w-full p-2 rounded-md border border-input bg-background text-foreground focus:ring-2 focus:ring-primary"
-                    />
+            <div className="space-y-4">
+              <h3 className="text-lg font-medium text-white">Supported Assets</h3>
+              <div className="grid gap-3">
+                <div className="flex items-center p-3 border border-zinc-800 rounded-lg bg-zinc-800/30">
+                  <div className="p-2 rounded-full bg-emerald-900/30 mr-3">
+                    <USDsIcon className="text-emerald-400" size={20} />
                   </div>
-
-                  <div className="space-y-2">
-                    <label htmlFor="amount-sol" className="text-sm font-medium">
-                      Amount (SOL)
-                    </label>
-                    <input
-                      id="amount-sol"
-                      type="text"
-                      inputMode="decimal"
-                      required
-                      placeholder="0.1"
-                      value={solAmount}
-                      onChange={(e) => setSolAmount(e.target.value)}
-                      className="w-full p-2 rounded-md border border-input bg-background text-foreground focus:ring-2 focus:ring-primary"
-                    />
+                  <div>
+                    <p className="font-medium text-gray-200">USDs</p>
+                    <p className="text-xs text-gray-400">Stable token with 4.2% APY</p>
                   </div>
+                </div>
 
-                  <Button type="submit" className="w-full">
-                    Send SOL
-                  </Button>
-                </form>
-              </div>
-
-              <div className="p-6 border rounded-lg">
-                <h2 className="text-xl font-bold mb-4">Send DEV Token</h2>
-                <form
-                  onSubmit={(e) => handleSendFormSubmit(e, true)}
-                  className="space-y-4"
-                >
-                  <div className="space-y-2">
-                    <label
-                      htmlFor="recipient-token"
-                      className="text-sm font-medium"
-                    >
-                      Recipient Address
-                    </label>
-                    <input
-                      id="recipient-token"
-                      type="text"
-                      required
-                      placeholder="Solana address (e.g., 3Dru...y149)"
-                      value={tokenRecipient}
-                      onChange={(e) => setTokenRecipient(e.target.value)}
-                      className="w-full p-2 rounded-md border border-input bg-background text-foreground focus:ring-2 focus:ring-primary"
-                    />
+                <div className="flex items-center p-3 border border-zinc-800 rounded-lg bg-zinc-800/30">
+                  <div className="p-2 rounded-full bg-blue-900/30 mr-3">
+                    <USDCIcon className="text-blue-400" size={20} />
                   </div>
-
-                  <div className="space-y-2">
-                    <label
-                      htmlFor="amount-token"
-                      className="text-sm font-medium"
-                    >
-                      Amount (DEV)
-                    </label>
-                    <input
-                      id="amount-token"
-                      type="text"
-                      inputMode="decimal"
-                      required
-                      placeholder="10"
-                      value={tokenAmount}
-                      onChange={(e) => setTokenAmount(e.target.value)}
-                      className="w-full p-2 rounded-md border border-input bg-background text-foreground focus:ring-2 focus:ring-primary"
-                    />
+                  <div>
+                    <p className="font-medium text-gray-200">USDC</p>
+                    <p className="text-xs text-gray-400">USD Coin stablecoin</p>
                   </div>
+                </div>
 
-                  <Button
-                    type="submit"
-                    className="w-full bg-green-600 hover:bg-green-700"
-                  >
-                    Send DEV (Gasless)
-                  </Button>
-                  <p className="text-xs text-muted-foreground text-center">
-                    No gas fees! Powered by relayer service.
-                  </p>
-                </form>
+                <div className="flex items-center p-3 border border-zinc-800 rounded-lg bg-zinc-800/30">
+                  <div className="p-2 rounded-full bg-purple-900/30 mr-3">
+                    <SolanaIcon className="text-purple-400" size={20} />
+                  </div>
+                  <div>
+                    <p className="font-medium text-gray-200">SOL</p>
+                    <p className="text-xs text-gray-400">Solana native token</p>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
+        )}
 
-          {/* Transaction history */}
-          <div className="md:col-span-1">
-            <div className="p-6 border rounded-lg h-full">
-              <h2 className="text-xl font-bold mb-4">Transaction History</h2>
-              <div className="space-y-3">
-                {transactions.length > 0 ? (
-                  transactions.map((tx) => (
-                    <div key={tx.id} className="p-3 border rounded">
-                      <div className="flex justify-between items-start">
-                        <span
-                          className={`text-xs px-2 py-0.5 rounded-full ${
-                            tx.status === "executed"
-                              ? "bg-green-100 text-green-800"
-                              : tx.status === "pending"
-                              ? "bg-yellow-100 text-yellow-800"
-                              : "bg-red-100 text-red-800"
-                          }`}
-                        >
-                          {tx.status}
-                        </span>
-                        <span className="text-xs text-muted-foreground">
-                          {formatDate(tx.createdAt)}
-                        </span>
-                      </div>
-                      <p className="text-sm mt-1">{formatTxData(tx.txData)}</p>
-                      {tx.signature && (
-                        <div className="flex flex-col space-y-1 mt-1">
-                          <a
-                            href={`https://solscan.io/tx/${
-                              tx.signature
-                            }?cluster=${
-                              process.env.NEXT_PUBLIC_SOLANA_NETWORK || "devnet"
-                            }`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-xs bg-primary/10 text-primary px-2 py-1 rounded hover:bg-primary/20 inline-flex items-center w-fit"
-                          >
-                            View on Solscan
-                          </a>
-                          <a
-                            href={`https://explorer.solana.com/tx/${
-                              tx.signature
-                            }?cluster=${
-                              process.env.NEXT_PUBLIC_SOLANA_NETWORK || "devnet"
-                            }`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-xs text-primary hover:underline inline-block"
-                          >
-                            View on Explorer
-                          </a>
-                        </div>
-                      )}
-                    </div>
-                  ))
-                ) : (
-                  <p className="text-sm text-muted-foreground">
-                    No transactions yet.
-                  </p>
-                )}
+        {/* Swap Tab */}
+        {activeTab === "swap" && (
+          <div className="max-w-lg mx-auto bg-zinc-900 border border-zinc-800 rounded-xl p-6 shadow-sm">
+            <div className="flex items-center mb-6">
+              <div className="p-3 rounded-full bg-emerald-900/50 text-emerald-400 mr-3">
+                <SwapIcon size={20} />
+              </div>
+              <div>
+                <h2 className="text-xl font-semibold text-white">Swap USDC to USDs</h2>
+                <p className="text-xs text-emerald-400">Earn 4.2% APY by swapping</p>
               </div>
             </div>
-          </div>
-        </div>
-      </main>
-
-      {/* Passcode modal */}
-      {showPasscodeModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-          <div className="bg-background rounded-lg p-6 w-full max-w-md">
-            <h2 className="text-xl font-bold mb-4">Enter your passcode</h2>
-            <p className="text-sm text-muted-foreground mb-4">
-              Enter your 6-digit passcode to authorize this transaction.
-            </p>
-
-            {currentTxStatus && (
-              <div className="p-3 rounded bg-blue-100 text-blue-800 text-sm mb-4">
-                {currentTxStatus}
-              </div>
-            )}
 
             {error && (
-              <div className="p-3 rounded bg-destructive/10 text-destructive text-sm mb-4">
-                {error}
+              <div className="p-3 rounded-lg bg-red-900/20 text-red-400 text-sm mb-4 flex items-start">
+                <XCircle size={16} className="mr-2 mt-0.5 flex-shrink-0" />
+                <p>{error}</p>
               </div>
             )}
 
-            <form onSubmit={handleSendTransaction} className="space-y-4">
-              <input
-                type="password"
-                inputMode="numeric"
-                maxLength={6}
-                required
-                value={passcode}
-                onChange={(e) =>
-                  setPasscode(e.target.value.replace(/[^0-9]/g, "").slice(0, 6))
-                }
-                className="w-full p-2 rounded-md border border-input bg-background text-foreground focus:ring-2 focus:ring-primary text-center text-xl tracking-widest"
-                placeholder="******"
-                autoFocus
-              />
-
-              <div className="flex space-x-3">
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="flex-1"
-                  onClick={() => {
-                    setShowPasscodeModal(false);
-                    setPasscode("");
-                    setError("");
-                    setCurrentTxStatus("");
-                  }}
-                  disabled={isLoading}
-                >
-                  Cancel
-                </Button>
-                <Button type="submit" className="flex-1" disabled={isLoading}>
-                  {isLoading ? "Sending..." : "Confirm"}
-                </Button>
+            <div className="bg-zinc-800 rounded-lg border border-zinc-700 p-4 mb-6">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-sm text-gray-400">From</span>
+                <span className="text-xs text-gray-500">Balance: {usdcBalance} USDC</span>
               </div>
-            </form>
+              <div className="flex items-center bg-zinc-900 rounded-md p-3 border border-zinc-700">
+                <div className="pr-3 border-r border-zinc-700">
+                  <div className="flex items-center gap-2">
+                    <USDCIcon className="text-blue-400" size={24} />
+                    <span className="font-medium text-gray-200">USDC</span>
+                  </div>
+                </div>
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  placeholder="0.00"
+                  value={swapAmount}
+                  onChange={(e) => setSwapAmount(e.target.value)}
+                  className="flex-1 bg-transparent border-0 text-right text-lg focus:outline-none text-gray-200 px-3"
+                />
+              </div>
+            </div>
+
+            <div className="flex justify-center my-2">
+              <div className="p-2 rounded-full bg-emerald-900/20 border border-emerald-900/30">
+                <ArrowDown className="text-emerald-400" size={20} />
+              </div>
+            </div>
+
+            <div className="bg-zinc-800 rounded-lg border border-zinc-700 p-4 mb-6">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-sm text-gray-400">To</span>
+                <span className="text-xs text-gray-500">Balance: {usdsBalance} USDs</span>
+              </div>
+              <div className="flex items-center bg-zinc-900 rounded-md p-3 border border-zinc-700">
+                <div className="pr-3 border-r border-zinc-700">
+                  <div className="flex items-center gap-2">
+                    <USDsIcon className="text-emerald-400" size={24} />
+                    <span className="font-medium text-gray-200">USDs</span>
+                  </div>
+                </div>
+                <div className="flex-1 text-right text-lg text-gray-200 px-3">
+                  {swapAmount ? (parseFloat(swapAmount) * 1.042).toFixed(6) : "0.00"}
+                </div>
+              </div>
+              <div className="mt-2 text-xs text-emerald-400 text-right">+4.2% bonus applied</div>
+            </div>
+
+            <Button
+              onClick={handleSwap}
+              disabled={isLoading || !swapAmount}
+              className="w-full bg-emerald-600 hover:bg-emerald-700 text-white py-3 rounded-md font-medium flex justify-center items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {isLoading ? (
+                <>
+                  <RefreshCw size={16} className="animate-spin" />
+                  Swapping...
+                </>
+              ) : (
+                "Swap USDC to USDs"
+              )}
+            </Button>
+
+            <div className="mt-4 bg-emerald-900/20 border border-emerald-900/30 rounded-md p-3 text-sm text-gray-300">
+              <p className="flex items-start gap-2">
+                <Info size={16} className="text-emerald-400 mt-0.5 flex-shrink-0" />
+                By swapping USDC to USDs, you'll automatically earn 4.2% APY on your stablecoins.
+              </p>
+            </div>
           </div>
-        </div>
-      )}
+        )}
+
+        {/* Transactions Tab */}
+        {activeTab === "transactions" && (
+          <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-6 shadow-sm">
+            <h2 className="text-xl font-semibold mb-6 text-white">Transaction History</h2>
+
+            {transactions.length > 0 ? (
+              <div className="space-y-3">
+                {transactions.map((tx) => (
+                  <div key={tx.id} className="p-4 border border-zinc-800 rounded-lg hover:bg-zinc-800/50 transition">
+                    <div className="flex items-start justify-between mb-2">
+                      <div className="flex items-center">
+                        {getStatusIcon(tx.status)}
+                        <span className="text-sm font-medium ml-2 text-gray-300">{tx.status}</span>
+                      </div>
+                      <span className="text-xs text-gray-500">
+                        {formatDate(tx.createdAt)}
+                      </span>
+                    </div>
+                    <p className="text-base font-medium mb-2 text-gray-200">{formatTxData(tx.txData)}</p>
+                    {tx.signature && (
+                      <div className="flex flex-wrap gap-2 mt-2">
+                        <a
+                          href={`https://solscan.io/tx/${tx.signature}?cluster=${process.env.NEXT_PUBLIC_SOLANA_NETWORK || 'devnet'}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-xs bg-emerald-900/30 text-emerald-400 px-2 py-1 rounded-md hover:bg-emerald-900/50 inline-flex items-center"
+                        >
+                          <ExternalLink size={12} className="mr-1" /> View on Solscan
+                        </a>
+                        <a
+                          href={`https://explorer.solana.com/tx/${tx.signature}?cluster=${process.env.NEXT_PUBLIC_SOLANA_NETWORK || 'devnet'}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-xs bg-zinc-800 text-gray-400 px-2 py-1 rounded-md hover:bg-zinc-700 inline-flex items-center"
+                        >
+                          <ExternalLink size={12} className="mr-1" /> Solana Explorer
+                        </a>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="flex flex-col items-center justify-center py-12 text-center">
+                <div className="p-4 rounded-full bg-zinc-800 mb-3">
+                  <ArrowLeftRight size={32} className="text-gray-500" />
+                </div>
+                <h3 className="text-lg font-medium mb-1 text-gray-300">No transactions yet</h3>
+                <p className="text-sm text-gray-500 max-w-md">
+                  When you send or receive tokens, your transactions will appear here
+                </p>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Passcode Modal */}
+        {showPasscodeModal && (
+          <div className="fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-50 backdrop-blur-sm">
+            <div className="bg-zinc-900 rounded-xl p-6 w-full max-w-md shadow-xl border border-zinc-800 animate-in fade-in-0 zoom-in-95">
+              <div className="flex items-center mb-6">
+                <div className="p-3 rounded-full bg-emerald-900/50 text-emerald-400 mr-3">
+                  <CheckCircle2 size={24} />
+                </div>
+                <div>
+                  <h2 className="text-xl font-bold text-white">Confirm Transaction</h2>
+                  <p className="text-sm text-gray-400">Enter your 6-digit passcode</p>
+                </div>
+              </div>
+
+              <div className="bg-zinc-800 p-4 rounded-lg mb-5 border border-zinc-700">
+                <div className="flex justify-between text-sm mb-2">
+                  <span className="text-gray-400">Amount</span>
+                  <span className="font-medium text-white">{amount} {tokenType.toUpperCase()}</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-400">To</span>
+                  <span className="font-mono text-xs text-gray-300">{shortenAddress(recipient)}</span>
+                </div>
+              </div>
+
+              {error && (
+                <div className="p-3 rounded-lg bg-red-900/20 text-red-400 text-sm mb-4 flex items-start">
+                  <XCircle size={16} className="mr-2 mt-0.5 flex-shrink-0" />
+                  <p>{error}</p>
+                </div>
+              )}
+
+              <form onSubmit={handleSendTransaction} className="space-y-4">
+                <div>
+                  <label htmlFor="passcode" className="text-sm font-medium block mb-2 text-gray-300">
+                    Passcode
+                  </label>
+                  <div className="relative">
+                    <input
+                      id="passcode"
+                      type="password"
+                      inputMode="numeric"
+                      maxLength={6}
+                      required
+                      value={passcode}
+                      onChange={(e) => setPasscode(e.target.value.replace(/[^0-9]/g, '').slice(0, 6))}
+                      className="w-full p-3 rounded-md border border-zinc-700 bg-zinc-800 text-gray-200 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 text-center text-xl tracking-[1em] font-mono"
+                      placeholder="······"
+                      autoFocus
+                    />
+                  </div>
+                  <p className="text-xs text-gray-500 mt-1">
+                    Enter the 6-digit passcode you set up with your wallet
+                  </p>
+                </div>
+
+                <div className="flex space-x-3 pt-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="flex-1 border-zinc-700 hover:bg-zinc-800 text-gray-300"
+                    onClick={() => {
+                      setShowPasscodeModal(false);
+                      setPasscode("");
+                      setError("");
+                    }}
+                    disabled={isLoading}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    type="submit"
+                    className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white"
+                    disabled={isLoading}
+                  >
+                    {isLoading ? (
+                      <span className="flex items-center">
+                        <RefreshCw size={16} className="animate-spin mr-2" />
+                        Processing...
+                      </span>
+                    ) : (
+                      "Confirm & Send"
+                    )}
+                  </Button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+      </main>
     </div>
   );
 }
