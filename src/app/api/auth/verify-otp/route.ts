@@ -5,6 +5,19 @@ import { createHash } from "crypto";
 
 const prisma = new PrismaClient();
 
+// Handle OPTIONS request for CORS preflight
+export async function OPTIONS() {
+  return new NextResponse(null, {
+    status: 200,
+    headers: {
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'POST, OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+      'Access-Control-Allow-Credentials': 'true',
+    },
+  });
+}
+
 export async function POST(request: NextRequest) {
   try {
     const { email, otp } = await request.json();
@@ -12,7 +25,15 @@ export async function POST(request: NextRequest) {
     if (!email || !otp) {
       return NextResponse.json(
         { error: "Email and OTP are required" },
-        { status: 400 }
+        {
+          status: 400,
+          headers: {
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Methods': 'POST, OPTIONS',
+            'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+            'Access-Control-Allow-Credentials': 'true',
+          }
+        }
       );
     }
 
@@ -22,7 +43,15 @@ export async function POST(request: NextRequest) {
     if (!isValid) {
       return NextResponse.json(
         { error: "Invalid or expired OTP" },
-        { status: 400 }
+        {
+          status: 400,
+          headers: {
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Methods': 'POST, OPTIONS',
+            'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+            'Access-Control-Allow-Credentials': 'true',
+          }
+        }
       );
     }
 
@@ -56,13 +85,40 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    // Return success
-    return NextResponse.json({ success: true, userId: user.id });
+    // Return success with session token and user details
+    return NextResponse.json(
+      {
+        success: true,
+        userId: user.id,
+        user: {
+          id: user.id,
+          email: user.email,
+          hasPasscode: !!user.passcodeHash
+        },
+        sessionToken
+      },
+      {
+        headers: {
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Methods': 'POST, OPTIONS',
+          'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+          'Access-Control-Allow-Credentials': 'true',
+        }
+      }
+    );
   } catch (error) {
     console.error("Error verifying OTP:", error);
     return NextResponse.json(
       { error: "Failed to verify OTP" },
-      { status: 500 }
+      {
+        status: 500,
+        headers: {
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Methods': 'POST, OPTIONS',
+          'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+          'Access-Control-Allow-Credentials': 'true',
+        }
+      }
     );
   }
 }

@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createOTP, sendOTPEmail } from "@/lib/otp";
+import { PrismaClient } from "@prisma/client";
+
+const prisma = new PrismaClient();
 
 // Handle OPTIONS request for CORS preflight
 export async function OPTIONS() {
@@ -16,20 +18,21 @@ export async function OPTIONS() {
 
 export async function POST(request: NextRequest) {
   try {
-    const { email } = await request.json();
+    // Get token from request header
+    const authHeader = request.headers.get('Authorization');
 
-    if (!email) {
-      return NextResponse.json(
-        { error: "Email is required" },
-        { status: 400 }
-      );
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      const sessionToken = authHeader.substring(7); // Remove 'Bearer ' prefix
+
+      // Delete the session
+      await prisma.session.delete({
+        where: {
+          sessionToken,
+        },
+      }).catch(() => {
+        // Ignore errors if session doesn't exist
+      });
     }
-
-    // Generate and save OTP
-    const otp = await createOTP(email);
-
-    // Send the OTP to the user's email
-    await sendOTPEmail(email, otp);
 
     return NextResponse.json(
       { success: true },
@@ -43,11 +46,10 @@ export async function POST(request: NextRequest) {
       }
     );
   } catch (error) {
-    console.error("Error sending OTP:", error);
+    console.error("Error during signout:", error);
     return NextResponse.json(
-      { error: "Failed to send OTP" },
+      { success: true }, // Return success anyway as the client will clear local storage
       {
-        status: 500,
         headers: {
           'Access-Control-Allow-Origin': '*',
           'Access-Control-Allow-Methods': 'POST, OPTIONS',
