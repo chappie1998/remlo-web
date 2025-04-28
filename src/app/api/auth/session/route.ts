@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getServerSession } from "next-auth/next";
 import { PrismaClient } from "@prisma/client";
+import { authOptions } from "@/lib/auth";
 
 const prisma = new PrismaClient();
 
@@ -16,16 +18,24 @@ export async function OPTIONS() {
   });
 }
 
-export async function GET(request: NextRequest) {
+export async function GET(req: NextRequest) {
   try {
-    // Get token from request header
-    const authHeader = request.headers.get('Authorization');
+    // First, try to get the session from NextAuth
+    const session = await getServerSession(authOptions);
+    if (session?.user) {
+      const user = await prisma.user.findUnique({
+        where: { email: session.user.email as string },
+        select: {
+          id: true,
+          email: true,
+          solanaAddress: true,
+          hasPasscode: true,
+        }
+      });
 
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
       return NextResponse.json(
-        { error: "Unauthorized" },
+        { user },
         {
-          status: 401,
           headers: {
             'Access-Control-Allow-Origin': '*',
             'Access-Control-Allow-Methods': 'GET, OPTIONS',
@@ -36,43 +46,51 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const sessionToken = authHeader.substring(7); // Remove 'Bearer ' prefix
+    // If no NextAuth session, try to get the user from the Authorization header
+    const authHeader = req.headers.get('authorization');
+    if (authHeader?.startsWith('Bearer ')) {
+      const token = authHeader.substring(7);
+      console.log('Received token in session endpoint:', token);
 
-    // Check if session exists and is valid
-    const session = await prisma.session.findUnique({
-      where: {
-        sessionToken,
-      },
-      include: {
-        user: true,
-      },
-    });
+      // Find the session in the database
+      const dbSession = await prisma.session.findUnique({
+        where: { sessionToken: token },
+        include: { user: true }
+      });
 
-    if (!session || new Date() > session.expires) {
-      return NextResponse.json(
-        { error: "Session expired" },
-        {
-          status: 401,
-          headers: {
-            'Access-Control-Allow-Origin': '*',
-            'Access-Control-Allow-Methods': 'GET, OPTIONS',
-            'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-            'Access-Control-Allow-Credentials': 'true',
+      if (dbSession?.user && dbSession.expires > new Date()) {
+        // Session is valid
+        const user = await prisma.user.findUnique({
+          where: { id: dbSession.user.id },
+          select: {
+            id: true,
+            email: true,
+            solanaAddress: true,
+            hasPasscode: !!dbSession.user.passcodeHash,
           }
-        }
-      );
+        });
+
+        console.log('Found valid session, returning user:', user);
+        return NextResponse.json(
+          { user },
+          {
+            headers: {
+              'Access-Control-Allow-Origin': '*',
+              'Access-Control-Allow-Methods': 'GET, OPTIONS',
+              'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+              'Access-Control-Allow-Credentials': 'true',
+            }
+          }
+        );
+      } else {
+        console.log('Invalid or expired session token');
+      }
     }
 
-    // Return user data
+    // No valid session found
+    console.log('No valid session found');
     return NextResponse.json(
-      {
-        user: {
-          id: session.user.id,
-          email: session.user.email,
-          hasPasscode: !!session.user.passcodeHash,
-          solanaAddress: session.user.solanaAddress,
-        },
-      },
+      { user: null },
       {
         headers: {
           'Access-Control-Allow-Origin': '*',
@@ -83,9 +101,9 @@ export async function GET(request: NextRequest) {
       }
     );
   } catch (error) {
-    console.error("Error verifying session:", error);
+    console.error("Error checking session:", error);
     return NextResponse.json(
-      { error: "Failed to verify session" },
+      { error: "Failed to check session" },
       {
         status: 500,
         headers: {
@@ -96,5 +114,7 @@ export async function GET(request: NextRequest) {
         }
       }
     );
+  } finally {
+    await prisma.$disconnect();
   }
 }

@@ -8,15 +8,80 @@ import { authOptions } from "@/lib/auth";
 
 const prisma = new PrismaClient();
 
+// Handle OPTIONS request for CORS preflight
+export async function OPTIONS() {
+  return new NextResponse(null, {
+    status: 200,
+    headers: {
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'POST, OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+      'Access-Control-Allow-Credentials': 'true',
+    },
+  });
+}
+
 export async function POST(req: NextRequest) {
   try {
-    // Get the current session - pass in the auth options
-    const session = await getServerSession(authOptions);
+    let userEmail = null;
+    console.log('Handling wallet setup request');
 
-    if (!session || !session.user || !session.user.email) {
+    // Log all headers
+    console.log('Request headers:');
+    for (const [key, value] of req.headers.entries()) {
+      console.log(`${key}: ${value}`);
+    }
+
+    // First, try to get the session from NextAuth
+    const session = await getServerSession(authOptions);
+    if (session?.user?.email) {
+      userEmail = session.user.email;
+      console.log('Found user email from NextAuth session:', userEmail);
+    }
+
+    // If no NextAuth session, try to get the user from the Authorization header
+    if (!userEmail) {
+      const authHeader = req.headers.get('authorization');
+      console.log('Authorization header:', authHeader);
+
+      if (authHeader?.startsWith('Bearer ')) {
+        const token = authHeader.substring(7);
+        console.log('Extracted token:', token);
+
+        // Find the session in the database
+        const dbSession = await prisma.session.findUnique({
+          where: { sessionToken: token },
+          include: { user: true }
+        });
+
+        console.log('Database session lookup result:', dbSession ? 'Found' : 'Not found');
+
+        if (dbSession?.user?.email && dbSession.expires > new Date()) {
+          userEmail = dbSession.user.email;
+          console.log('Found user email from session token:', userEmail);
+        } else {
+          console.log('Invalid or expired session token');
+          if (dbSession) {
+            console.log('Session expiry:', dbSession.expires);
+            console.log('Current time:', new Date());
+          }
+        }
+      }
+    }
+
+    if (!userEmail) {
+      console.log('No valid user session found, returning 401');
       return NextResponse.json(
         { error: "You must be signed in to set up a wallet" },
-        { status: 401 }
+        {
+          status: 401,
+          headers: {
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Methods': 'POST, OPTIONS',
+            'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+            'Access-Control-Allow-Credentials': 'true',
+          }
+        }
       );
     }
 
@@ -26,7 +91,15 @@ export async function POST(req: NextRequest) {
     if (!isValidPasscode(passcode)) {
       return NextResponse.json(
         { error: "Passcode must be 6 digits" },
-        { status: 400 }
+        {
+          status: 400,
+          headers: {
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Methods': 'POST, OPTIONS',
+            'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+            'Access-Control-Allow-Credentials': 'true',
+          }
+        }
       );
     }
 
@@ -34,7 +107,15 @@ export async function POST(req: NextRequest) {
     if (mnemonic && !validateMnemonic(mnemonic)) {
       return NextResponse.json(
         { error: "Invalid recovery phrase" },
-        { status: 400 }
+        {
+          status: 400,
+          headers: {
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Methods': 'POST, OPTIONS',
+            'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+            'Access-Control-Allow-Credentials': 'true',
+          }
+        }
       );
     }
 
@@ -43,7 +124,7 @@ export async function POST(req: NextRequest) {
 
     // Update the user record with the wallet address and MPC information
     await prisma.user.update({
-      where: { email: session.user.email },
+      where: { email: userEmail },
       data: {
         solanaAddress: publicKey,
         mpcServerShare: serverShare,
@@ -55,18 +136,36 @@ export async function POST(req: NextRequest) {
       },
     });
 
-    return NextResponse.json({
-      success: true,
-      solanaAddress: publicKey,
-      // Include both backup shares in the response for the user to save securely
-      backupShare,
-      recoveryShare, // Additional share for more recovery options
-    });
+    return NextResponse.json(
+      {
+        success: true,
+        solanaAddress: publicKey,
+        // Include both backup shares in the response for the user to save securely
+        backupShare,
+        recoveryShare, // Additional share for more recovery options
+      },
+      {
+        headers: {
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Methods': 'POST, OPTIONS',
+          'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+          'Access-Control-Allow-Credentials': 'true',
+        }
+      }
+    );
   } catch (error) {
     console.error("Error setting up wallet:", error);
     return NextResponse.json(
       { error: "Failed to set up wallet" },
-      { status: 500 }
+      {
+        status: 500,
+        headers: {
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Methods': 'POST, OPTIONS',
+          'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+          'Access-Control-Allow-Credentials': 'true',
+        }
+      }
     );
   } finally {
     await prisma.$disconnect();
