@@ -11,15 +11,70 @@ import { sign } from "tweetnacl";
 
 const prisma = new PrismaClient();
 
+// Handle OPTIONS request for CORS preflight
+export async function OPTIONS() {
+  return new NextResponse(null, {
+    status: 200,
+    headers: {
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'POST, OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+      'Access-Control-Allow-Credentials': 'true',
+    },
+  });
+}
+
 export async function POST(req: NextRequest) {
   try {
-    // Get the current session
-    const session = await getServerSession(authOptions);
+    let userEmail = null;
+    console.log('Handling send token transaction request');
 
-    if (!session || !session.user || !session.user.email) {
+    // First, try to get the session from NextAuth
+    const session = await getServerSession(authOptions);
+    if (session?.user?.email) {
+      userEmail = session.user.email;
+      console.log('Found user email from NextAuth session:', userEmail);
+    }
+
+    // If no NextAuth session, try to get the user from the Authorization header
+    if (!userEmail) {
+      const authHeader = req.headers.get('authorization');
+      console.log('Authorization header:', authHeader);
+
+      if (authHeader?.startsWith('Bearer ')) {
+        const token = authHeader.substring(7);
+        console.log('Extracted token:', token);
+
+        // Find the session in the database
+        const dbSession = await prisma.session.findUnique({
+          where: { sessionToken: token },
+          include: { user: true }
+        });
+
+        console.log('Database session lookup result:', dbSession ? 'Found' : 'Not found');
+
+        if (dbSession?.user?.email && dbSession.expires > new Date()) {
+          userEmail = dbSession.user.email;
+          console.log('Found user email from session token:', userEmail);
+        } else {
+          console.log('Invalid or expired session token');
+        }
+      }
+    }
+
+    if (!userEmail) {
+      console.log('No valid user session found, returning 401');
       return NextResponse.json(
         { error: "You must be signed in to send a transaction" },
-        { status: 401 }
+        {
+          status: 401,
+          headers: {
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Methods': 'POST, OPTIONS',
+            'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+            'Access-Control-Allow-Credentials': 'true',
+          }
+        }
       );
     }
 
@@ -29,27 +84,51 @@ export async function POST(req: NextRequest) {
     if (!to || !amount) {
       return NextResponse.json(
         { error: "Missing required fields: to, amount" },
-        { status: 400 }
+        {
+          status: 400,
+          headers: {
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Methods': 'POST, OPTIONS',
+            'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+            'Access-Control-Allow-Credentials': 'true',
+          }
+        }
       );
     }
 
     if (!isValidSolanaAddress(to)) {
       return NextResponse.json(
         { error: "Invalid recipient address" },
-        { status: 400 }
+        {
+          status: 400,
+          headers: {
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Methods': 'POST, OPTIONS',
+            'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+            'Access-Control-Allow-Credentials': 'true',
+          }
+        }
       );
     }
 
     if (!isValidPasscode(passcode)) {
       return NextResponse.json(
         { error: "Passcode must be 6 digits" },
-        { status: 400 }
+        {
+          status: 400,
+          headers: {
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Methods': 'POST, OPTIONS',
+            'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+            'Access-Control-Allow-Credentials': 'true',
+          }
+        }
       );
     }
 
     // Get the user's wallet information
     const user = await prisma.user.findUnique({
-      where: { email: session.user.email },
+      where: { email: userEmail },
       select: {
         id: true,
         solanaAddress: true,
@@ -63,7 +142,15 @@ export async function POST(req: NextRequest) {
     if (!user || !user.solanaAddress) {
       return NextResponse.json(
         { error: "Wallet not set up" },
-        { status: 400 }
+        {
+          status: 400,
+          headers: {
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Methods': 'POST, OPTIONS',
+            'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+            'Access-Control-Allow-Credentials': 'true',
+          }
+        }
       );
     }
 
@@ -71,7 +158,15 @@ export async function POST(req: NextRequest) {
     if (!user.usesMPC || !user.mpcServerShare || !user.mpcSalt) {
       return NextResponse.json(
         { error: "Wallet not set up properly" },
-        { status: 400 }
+        {
+          status: 400,
+          headers: {
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Methods': 'POST, OPTIONS',
+            'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+            'Access-Control-Allow-Credentials': 'true',
+          }
+        }
       );
     }
 
@@ -91,7 +186,15 @@ export async function POST(req: NextRequest) {
     if (!keypair) {
       return NextResponse.json(
         { error: "Invalid passcode or shares" },
-        { status: 401 }
+        {
+          status: 401,
+          headers: {
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Methods': 'POST, OPTIONS',
+            'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+            'Access-Control-Allow-Credentials': 'true',
+          }
+        }
       );
     }
 
@@ -100,7 +203,15 @@ export async function POST(req: NextRequest) {
     if (keypairAddress !== user.solanaAddress) {
       return NextResponse.json(
         { error: "Generated keypair does not match wallet address" },
-        { status: 401 }
+        {
+          status: 401,
+          headers: {
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Methods': 'POST, OPTIONS',
+            'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+            'Access-Control-Allow-Credentials': 'true',
+          }
+        }
       );
     }
 
@@ -236,11 +347,21 @@ export async function POST(req: NextRequest) {
       },
     });
 
-    return NextResponse.json({
-      success: true,
-      signature: txSignature,
-      message: "Token transaction sent successfully via relayer",
-    });
+    return NextResponse.json(
+      {
+        success: true,
+        signature: txSignature,
+        message: "Token transaction sent successfully via relayer",
+      },
+      {
+        headers: {
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Methods': 'POST, OPTIONS',
+          'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+          'Access-Control-Allow-Credentials': 'true',
+        }
+      }
+    );
   } catch (error) {
     console.error("Error sending token transaction:", error);
 
@@ -263,7 +384,15 @@ export async function POST(req: NextRequest) {
     const errorMessage = error instanceof Error ? error.message : "Failed to send token transaction";
     return NextResponse.json(
       { error: errorMessage },
-      { status: 500 }
+      {
+        status: 500,
+        headers: {
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Methods': 'POST, OPTIONS',
+          'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+          'Access-Control-Allow-Credentials': 'true',
+        }
+      }
     );
   } finally {
     await prisma.$disconnect();
