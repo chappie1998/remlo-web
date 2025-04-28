@@ -5,28 +5,91 @@ import { authOptions } from "@/lib/auth";
 
 const prisma = new PrismaClient();
 
+// Handle OPTIONS request for CORS preflight
+export async function OPTIONS() {
+  return new NextResponse(null, {
+    status: 200,
+    headers: {
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'GET, OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+      'Access-Control-Allow-Credentials': 'true',
+    },
+  });
+}
+
 export async function GET(req: NextRequest) {
   try {
-    // Get the current session - pass in the auth options
-    const session = await getServerSession(authOptions);
+    let userEmail = null;
+    console.log('Handling wallet transactions request');
 
-    if (!session || !session.user || !session.user.email) {
+    // First, try to get the session from NextAuth
+    const session = await getServerSession(authOptions);
+    if (session?.user?.email) {
+      userEmail = session.user.email;
+      console.log('Found user email from NextAuth session:', userEmail);
+    }
+
+    // If no NextAuth session, try to get the user from the Authorization header
+    if (!userEmail) {
+      const authHeader = req.headers.get('authorization');
+      console.log('Authorization header:', authHeader);
+
+      if (authHeader?.startsWith('Bearer ')) {
+        const token = authHeader.substring(7);
+        console.log('Extracted token:', token);
+
+        // Find the session in the database
+        const dbSession = await prisma.session.findUnique({
+          where: { sessionToken: token },
+          include: { user: true }
+        });
+
+        console.log('Database session lookup result:', dbSession ? 'Found' : 'Not found');
+
+        if (dbSession?.user?.email && dbSession.expires > new Date()) {
+          userEmail = dbSession.user.email;
+          console.log('Found user email from session token:', userEmail);
+        } else {
+          console.log('Invalid or expired session token');
+        }
+      }
+    }
+
+    if (!userEmail) {
+      console.log('No valid user session found, returning 401');
       return NextResponse.json(
         { error: "You must be signed in to view your transactions" },
-        { status: 401 }
+        {
+          status: 401,
+          headers: {
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Methods': 'GET, OPTIONS',
+            'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+            'Access-Control-Allow-Credentials': 'true',
+          }
+        }
       );
     }
 
     // Get the user's ID
     const user = await prisma.user.findUnique({
-      where: { email: session.user.email },
+      where: { email: userEmail },
       select: { id: true },
     });
 
     if (!user) {
       return NextResponse.json(
         { error: "User not found" },
-        { status: 404 }
+        {
+          status: 404,
+          headers: {
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Methods': 'GET, OPTIONS',
+            'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+            'Access-Control-Allow-Credentials': 'true',
+          }
+        }
       );
     }
 
@@ -44,15 +107,33 @@ export async function GET(req: NextRequest) {
       },
     });
 
-    return NextResponse.json({
-      success: true,
-      transactions,
-    });
+    return NextResponse.json(
+      {
+        success: true,
+        transactions,
+      },
+      {
+        headers: {
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Methods': 'GET, OPTIONS',
+          'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+          'Access-Control-Allow-Credentials': 'true',
+        }
+      }
+    );
   } catch (error) {
     console.error("Error fetching transactions:", error);
     return NextResponse.json(
       { error: "Failed to fetch transactions" },
-      { status: 500 }
+      {
+        status: 500,
+        headers: {
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Methods': 'GET, OPTIONS',
+          'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+          'Access-Control-Allow-Credentials': 'true',
+        }
+      }
     );
   } finally {
     // Close the Prisma client connection
