@@ -66,7 +66,7 @@ export async function GET(req: NextRequest) {
             id: true,
             email: true,
             solanaAddress: true,
-            hasPasscode: !!dbSession.user.passcodeHash,
+            hasPasscode: true,
           }
         });
 
