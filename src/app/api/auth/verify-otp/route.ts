@@ -93,7 +93,8 @@ export async function POST(request: NextRequest) {
         user: {
           id: user.id,
           email: user.email,
-          hasPasscode: !!user.passcodeHash
+          hasPasscode: user.hasPasscode,
+          solanaAddress: user.solanaAddress
         },
         sessionToken
       },
