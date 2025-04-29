@@ -99,13 +99,15 @@ export async function GET(req: NextRequest) {
 
     try {
       // First, try to fetch the token balance directly using our utility function
-      const { balance, formattedBalance } = await fetchSplTokenBalance(user.solanaAddress);
-
+      const { balance, formattedBalance, usdcBalance } = await fetchSplTokenBalance(user.solanaAddress);
+      console.log(balance, formattedBalance, usdcBalance);
+      
       return NextResponse.json(
         {
           address: user.solanaAddress,
           balance,
           formattedBalance,
+          usdcBalance,
         },
         {
           headers: {
@@ -119,52 +121,52 @@ export async function GET(req: NextRequest) {
     } catch (error) {
       console.error("Error fetching token balance directly:", error);
 
-      // Fallback: try to fetch from the relayer
-      try {
-        const response = await fetch(`${RELAYER_URL}/api/token-balance/${user.solanaAddress}`);
+      // // Fallback: try to fetch from the relayer
+      // try {
+      //   const response = await fetch(`${RELAYER_URL}/api/token-balance/${user.solanaAddress}`);
 
-        if (response.ok) {
-          const data = await response.json();
-          return NextResponse.json(
-            {
-              address: user.solanaAddress,
-              balance: data.balance,
-              formattedBalance: data.formattedBalance,
-            },
-            {
-              headers: {
-                'Access-Control-Allow-Origin': '*',
-                'Access-Control-Allow-Methods': 'GET, OPTIONS',
-                'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-                'Access-Control-Allow-Credentials': 'true',
-              }
-            }
-          );
-        } else {
-          const error = await response.json();
-          throw new Error(error.error || "Failed to fetch token balance from relayer");
-        }
-      } catch (relayerError) {
-        console.error("Error fetching from relayer:", relayerError);
+      //   if (response.ok) {
+      //     const data = await response.json();
+      //     return NextResponse.json(
+      //       {
+      //         address: user.solanaAddress,
+      //         balance: data.balance,
+      //         formattedBalance: data.formattedBalance,
+      //       },
+      //       {
+      //         headers: {
+      //           'Access-Control-Allow-Origin': '*',
+      //           'Access-Control-Allow-Methods': 'GET, OPTIONS',
+      //           'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+      //           'Access-Control-Allow-Credentials': 'true',
+      //         }
+      //       }
+      //     );
+      //   } else {
+      //     const error = await response.json();
+      //     throw new Error(error.error || "Failed to fetch token balance from relayer");
+      //   }
+      // } catch (relayerError) {
+      //   console.error("Error fetching from relayer:", relayerError);
 
-        // If both methods fail, return a default response with zero balance
-        return NextResponse.json(
-          {
-            address: user.solanaAddress,
-            balance: 0,
-            formattedBalance: "0.000000000",
-            error: "Failed to fetch token balance",
-          },
-          {
-            headers: {
-              'Access-Control-Allow-Origin': '*',
-              'Access-Control-Allow-Methods': 'GET, OPTIONS',
-              'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-              'Access-Control-Allow-Credentials': 'true',
-            }
-          }
-        );
-      }
+      //   // If both methods fail, return a default response with zero balance
+      //   return NextResponse.json(
+      //     {
+      //       address: user.solanaAddress,
+      //       balance: 0,
+      //       formattedBalance: "0.000000000",
+      //       error: "Failed to fetch token balance",
+      //     },
+      //     {
+      //       headers: {
+      //         'Access-Control-Allow-Origin': '*',
+      //         'Access-Control-Allow-Methods': 'GET, OPTIONS',
+      //         'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+      //         'Access-Control-Allow-Credentials': 'true',
+      //       }
+      //     }
+      //   );
+      // }
     }
   } catch (error) {
     console.error("Error fetching token balance:", error);

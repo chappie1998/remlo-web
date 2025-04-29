@@ -11,6 +11,9 @@
   },
   "dependencies": {
     "@auth/prisma-adapter": "^2.8.0",
+    "@lightprotocol/compressed-token": "^0.20.9",
+    "@lightprotocol/stateless.js": "^0.20.9",
+    "@lightprotocol/zk-compression-cli": "^0.23.0",
     "@noble/hashes": "^1.7.2",
     "@prisma/client": "^6.6.0",
     "@radix-ui/react-slot": "^1.2.0",

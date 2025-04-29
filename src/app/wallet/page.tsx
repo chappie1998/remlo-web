@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import Header from "@/components/header";
 import { shortenAddress, formatDate, isValidPasscode, copyToClipboard } from "@/lib/utils";
-import { isValidSolanaAddress } from "@/lib/solana";
+import { fetchCompressedUSDSBalance, isValidSolanaAddress } from "@/lib/solana";
 import {
   Copy,
   Clock,
@@ -87,24 +87,24 @@ export default function WalletDashboard() {
   const fetchBalances = async () => {
     try {
       setLoadingBalance(true);
-      // Fetch SOL balance
-      const solResponse = await fetch("/api/wallet/balance");
-      if (solResponse.ok) {
-        const solData = await solResponse.json();
-        setSolBalance(solData.formattedBalance);
-      }
+       // Fetch token balance (treat this as USDC for demonstration)
+       const tokenResponse = await fetch("/api/wallet/token-balance");
+       if (tokenResponse.ok) {
+         const tokenData = await tokenResponse.json();
+         setUsdcBalance(tokenData.formattedBalance);
+        console.log(tokenData);
+        
+         // For demonstration, show a simulated USDs balance (normally this would be fetched separately)
+         // We'll simulate that users have more USDs than USDC as if they have already swapped
+         setUsdsBalance((parseFloat(tokenData.usdcBalance)/10**9).toFixed(6));
+       }
+      // const solResponse = await fetch("/api/wallet/balance");
+      // if (solResponse.ok) {
+      //   const solData = await solResponse.json();
+      //   setSolBalance(solData.formattedBalance);
+      // }
 
-      // Fetch token balance (treat this as USDC for demonstration)
-      const tokenResponse = await fetch("/api/wallet/token-balance");
-      if (tokenResponse.ok) {
-        const tokenData = await tokenResponse.json();
-        setUsdcBalance(tokenData.formattedBalance);
-
-        // For demonstration, show a simulated USDs balance (normally this would be fetched separately)
-        // We'll simulate that users have more USDs than USDC as if they have already swapped
-        const usdsFactor = 2.5; // Show 2.5x of USDC balance as USDs
-        setUsdsBalance((parseFloat(tokenData.formattedBalance) * usdsFactor).toFixed(6));
-      }
+     
     } catch (error) {
       console.error("Error fetching balances:", error);
     } finally {
