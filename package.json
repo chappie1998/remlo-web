@@ -32,6 +32,7 @@
     "nodemailer": "^6.10.1",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
+    "react-qr-code": "^2.0.15",
     "secrets.js-grempe": "^2.0.0",
     "shamirs-secret-sharing": "^2.0.0",
     "sonner": "^2.0.3",

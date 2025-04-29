@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
@@ -9,6 +9,7 @@ import Link from "next/link";
 import Header from "@/components/header";
 import { shortenAddress, formatDate, isValidPasscode, copyToClipboard } from "@/lib/utils";
 import { isValidSolanaAddress } from "@/lib/solana";
+import QRCode from 'react-qr-code';
 import {
   Copy,
   Clock,
@@ -22,7 +23,9 @@ import {
   ChevronDown,
   PiggyBank,
   Percent,
-  TrendingUp
+  TrendingUp,
+  Download,
+  Filter,
 } from "lucide-react";
 import { USDsIcon, USDCIcon, SwapIcon, ReceiveIcon, SendIcon, SolanaIcon } from "@/components/icons";
 
@@ -705,6 +708,21 @@ export default function WalletDashboard() {
             <div className="bg-zinc-800 p-6 rounded-lg border border-zinc-700 text-center mb-6">
               <p className="text-sm text-gray-400 mb-2">Your wallet address</p>
               <p className="font-mono text-sm text-gray-200 break-all mb-4">{session?.user?.solanaAddress}</p>
+              
+              {/* QR Code */}
+              <div className="flex justify-center mb-4">
+                <div className="p-3 bg-white rounded-lg">
+                  {session?.user?.solanaAddress && (
+                    <QRCode 
+                      value={session.user.solanaAddress}
+                      size={160}
+                      style={{ height: "auto", maxWidth: "100%", width: "100%" }}
+                      viewBox={`0 0 256 256`}
+                    />
+                  )}
+                </div>
+              </div>
+              
               <div className="flex justify-center">
                 <button
                   className="bg-emerald-700 hover:bg-emerald-600 text-white px-4 py-2 rounded flex items-center gap-2 text-sm font-medium transition"
