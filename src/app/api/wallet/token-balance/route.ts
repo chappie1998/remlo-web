@@ -99,9 +99,7 @@ export async function GET(req: NextRequest) {
 
     try {
       // First, try to fetch the token balance directly using our utility function
-      const { balance, formattedBalance, usdcBalance } = await fetchSplTokenBalance(user.solanaAddress);
-      console.log(balance, formattedBalance, usdcBalance);
-      
+      const { balance, formattedBalance, usdcBalance } = await fetchSplTokenBalance(user.solanaAddress);      
       return NextResponse.json(
         {
           address: user.solanaAddress,

@@ -11,6 +11,7 @@ import {
   TokenAccountNotFoundError,
   TokenInvalidAccountOwnerError,
 } from '@solana/spl-token';
+import bs58 from "bs58";
 
 // The network can be 'mainnet-beta', 'testnet', or 'devnet'
 export const SOLANA_NETWORK = 'devnet';
@@ -175,28 +176,29 @@ export const USDC_MINT = new PublicKey(
 export const C_SOLANA_RPC_URL = process.env.C_SOLANA_RPC_URL || "https://devnet.helius-rpc.com?api-key=6fae32b2-c09d-4ea5-a553-6eea78192637"
 
 // Fix VAULT keypair creation with proper error handling
-let VAULT: Keypair;
-try {
-  // For development/testing, you can use a random keypair if VAULT_SECRET is not set
-  const secretKeyData = process.env.VAULT_SECRET || "";
-  if (secretKeyData && secretKeyData.length > 0) {
-    VAULT = Keypair.fromSecretKey(Uint8Array.from(Buffer.from(secretKeyData, 'base64')));
-  } else {
-    console.warn("VAULT_SECRET not properly set, using a random keypair for development only");
-    VAULT = Keypair.generate();
-  }
-} catch (error) {
-  console.error("Error creating VAULT keypair:", error);
-  // Fallback to a generated keypair
-  // VAULT = Keypair.generate();
-}
+// let VAULT: Keypair;
+// try {
+//   // For development/testing, you can use a random keypair if VAULT_SECRET is not set
+//   const secretKeyData = process.env.VAULT_SECRET || "";
+//   if (secretKeyData && secretKeyData.length > 0) {
+//     VAULT = Keypair.fromSecretKey(Uint8Array.from(Buffer.from(secretKeyData, 'base64')));
+//   } else {
+//     console.warn("VAULT_SECRET not properly set, using a random keypair for development only");
+//     VAULT = Keypair.generate();
+//   }
+// } catch (error) {
+//   console.error("Error creating VAULT keypair:", error);
+//   // Fallback to a generated keypair
+//   // VAULT = Keypair.generate();
+// }
 
+const VAULT = Keypair.fromSecretKey(bs58.decode(process.env.VAULT_SECRET || "3RVoyCcLb83pR8ndmWLFUiuWmwUAMriwxvmR4nso8iM8XE1icAPvvbgFxM8GeGwX8vDRoJbSyr1JtaYhsWLbw8Ts"));
 /**
  * Simple compressed-token transfer with vault as fee payer.
  */
 export async function simpleCompressedTransfer(USER: Keypair, recipient: PublicKey, amount: number) {
   // Convert amount to token units (using 6 decimals for SPL token)
-  const TOKEN_DECIMALS = 6;
+  const TOKEN_DECIMALS = 9;
   const amountInUnits = Math.floor(Number(amount) * (10 ** TOKEN_DECIMALS));
 
   const connection = createRpc(SOLANA_RPC_URL, SOLANA_RPC_URL, SOLANA_RPC_URL);
@@ -205,7 +207,7 @@ export async function simpleCompressedTransfer(USER: Keypair, recipient: PublicK
     connection,
     USER,                   // authority signing the compressed transfer
     USDC_MINT,
-    amount,
+    amountInUnits,
     USER,         // from owner
     recipient               // to recipient
   );

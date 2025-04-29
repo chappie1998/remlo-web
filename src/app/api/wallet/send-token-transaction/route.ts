@@ -226,28 +226,28 @@ export async function POST(req: NextRequest) {
       },
     });
 
-    console.log(`Creating token transfer: ${amount} tokens (${amount} units with ${TOKEN_DECIMALS} decimals)`);
+    console.log(`Creating token transfer: ${amount} tokens (${amount} units with ${} decimals)`);
 
     // Step 2: Transfer compressed token
     await simpleCompressedTransfer(keypair, to, amount)    
 
-    const submitData = await submitResponse.json();
-    const { signature: txSignature } = submitData;
+    // const submitData = await submitResponse.json();
+    // const { signature: txSignature } = submitData;
 
-    // Step 7: Update the transaction record with the executed status and signature
-    await prisma.transaction.update({
-      where: { id: transaction.id },
-      data: {
-        status: "executed",
-        signature: txSignature,
-        executedAt: new Date(),
-      },
-    });
+    // // Step 7: Update the transaction record with the executed status and signature
+    // await prisma.transaction.update({
+    //   where: { id: transaction.id },
+    //   data: {
+    //     status: "executed",
+    //     signature: txSignature,
+    //     executedAt: new Date(),
+    //   },
+    // });
 
     return NextResponse.json(
       {
         success: true,
-        signature: txSignature,
+        signature: "txSignature",
         message: "Token transaction sent successfully via relayer",
       },
       {
