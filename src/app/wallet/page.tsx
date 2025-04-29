@@ -92,7 +92,6 @@ export default function WalletDashboard() {
        if (tokenResponse.ok) {
          const tokenData = await tokenResponse.json();
          setUsdcBalance(tokenData.formattedBalance);
-        console.log(tokenData);
         
          // For demonstration, show a simulated USDs balance (normally this would be fetched separately)
          // We'll simulate that users have more USDs than USDC as if they have already swapped
@@ -209,7 +208,7 @@ export default function WalletDashboard() {
       // Determine which endpoint to use based on token type
       const endpoint = tokenType === "usdc"
         ? "/api/wallet/send-token-transaction"
-        : "/api/wallet/send-transaction"; // Assuming USDs use the regular SOL transaction endpoint for now
+        : "/api/wallet/send-compressed-token-transaction"; // USDs will be compressed token
 
       const response = await fetch(endpoint, {
         method: "POST",
