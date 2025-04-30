@@ -4,12 +4,16 @@ import Link from "next/link";
 import { useSession, signOut } from "next-auth/react";
 import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/theme-toggle";
-import { SolanaIcon } from "@/components/icons";
+import { RemloIcon } from "@/components/icons";
 import { usePathname } from "next/navigation";
 import {
   LogOut,
   User,
-  HelpCircle
+  HelpCircle,
+  Home,
+  Activity,
+  DollarSign,
+  Bell
 } from "lucide-react";
 
 export default function Header() {
@@ -21,16 +25,16 @@ export default function Header() {
   };
 
   return (
-    <header className="border-b border-zinc-800 bg-black sticky top-0 z-40">
+    <header className="border-b border-zinc-800 sticky top-0 z-40 bg-black">
       <div className="container mx-auto px-4 py-3 flex items-center justify-between">
         <div className="flex items-center gap-1">
           <Link href="/" className="flex items-center gap-2 text-lg font-bold text-emerald-400">
-            <SolanaIcon className="h-6 w-6 text-emerald-400" />
-            <span>Passcode Wallet</span>
+            <RemloIcon className="h-6 w-6 text-emerald-400" />
+            <span>Remlo</span>
           </Link>
 
           {session && (
-            <nav className="hidden md:flex items-center ml-8 space-x-1">
+            <nav className="hidden md:flex items-center ml-8 space-x-2">
               <Link
                 href="/wallet"
                 className={`px-3 py-2 rounded-md text-sm transition-colors flex items-center gap-1.5 ${
@@ -39,24 +43,41 @@ export default function Header() {
                     : "hover:bg-zinc-800 hover:text-gray-200 text-gray-400"
                 }`}
               >
-                <span>My Wallet</span>
+                <Home size={16} />
+                <span>Home</span>
               </Link>
               <Link
-                href="/about"
+                href="/activity"
                 className={`px-3 py-2 rounded-md text-sm transition-colors flex items-center gap-1.5 ${
-                  isActive("/about")
+                  isActive("/activity")
                     ? "bg-emerald-950/50 text-emerald-400 font-medium"
                     : "hover:bg-zinc-800 hover:text-gray-200 text-gray-400"
                 }`}
               >
-                <HelpCircle size={16} />
-                <span>About</span>
+                <Activity size={16} />
+                <span>Activity</span>
+              </Link>
+              <Link
+                href="/payment-requests"
+                className={`px-3 py-2 rounded-md text-sm transition-colors flex items-center gap-1.5 ${
+                  isActive("/payment-requests")
+                    ? "bg-emerald-950/50 text-emerald-400 font-medium"
+                    : "hover:bg-zinc-800 hover:text-gray-200 text-gray-400"
+                }`}
+              >
+                <DollarSign size={16} />
+                <span>Payments</span>
               </Link>
             </nav>
           )}
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-3">
+          {session && (
+            <Button variant="ghost" size="icon" className="text-gray-400 hover:text-emerald-400 hover:bg-zinc-800">
+              <Bell size={18} />
+            </Button>
+          )}
           <ThemeToggle />
           {session ? (
             <div className="flex items-center gap-2">

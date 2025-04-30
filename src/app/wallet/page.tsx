@@ -26,8 +26,10 @@ import {
   TrendingUp,
   Download,
   Filter,
+  DollarSign,
+  Wallet
 } from "lucide-react";
-import { USDsIcon, USDCIcon, SwapIcon, ReceiveIcon, SendIcon, SolanaIcon } from "@/components/icons";
+import { USDsIcon, USDCIcon, SwapIcon, ReceiveIcon, SendMoneyIcon, RemloIcon, ActivityIcon } from "@/components/icons";
 
 // Define interfaces
 interface Transaction {
@@ -45,14 +47,14 @@ interface TokenBalance {
   icon: React.ReactNode;
 }
 
-export default function WalletDashboard() {
+export default function AccountDashboard() {
   const { data: session, status } = useSession();
   const router = useRouter();
   const [showPasscodeModal, setShowPasscodeModal] = useState(false);
   const [passcode, setPasscode] = useState("");
   const [recipient, setRecipient] = useState("");
   const [amount, setAmount] = useState("");
-  const [tokenType, setTokenType] = useState("usds"); // "usds" or "usdc"
+  const [tokenType, setTokenType] = useState("usd"); // "usd" or "usdc"
   const [swapAmount, setSwapAmount] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
@@ -130,7 +132,7 @@ export default function WalletDashboard() {
   const refreshData = async () => {
     setRefreshing(true);
     await Promise.all([fetchBalances(), fetchTransactions()]);
-    toast.success("Wallet data refreshed");
+    toast.success("Account data refreshed");
     setRefreshing(false);
   };
 
@@ -142,7 +144,7 @@ export default function WalletDashboard() {
     }
 
     if (!isValidSolanaAddress(recipient)) {
-      setError("Invalid Solana address");
+      setError("Invalid recipient address");
       return false;
     }
 
@@ -152,11 +154,11 @@ export default function WalletDashboard() {
     }
 
     // Check if there are sufficient funds
-    if (tokenType === "usds" && parseFloat(amount) > parseFloat(usdsBalance)) {
-      setError("Insufficient USDs balance");
+    if (tokenType === "usd" && parseFloat(amount) > parseFloat(usdsBalance)) {
+      setError("Insufficient balance");
       return false;
     } else if (tokenType === "usdc" && parseFloat(amount) > parseFloat(usdcBalance)) {
-      setError("Insufficient USDC balance");
+      setError("Insufficient balance");
       return false;
     }
 
@@ -173,7 +175,7 @@ export default function WalletDashboard() {
             <div className="animate-spin">
               <RefreshCw size={32} className="text-emerald-400" />
             </div>
-            <p className="text-lg text-gray-300">Loading your wallet...</p>
+            <p className="text-lg text-gray-300">Loading your account...</p>
           </div>
         </div>
       </div>
@@ -316,13 +318,13 @@ export default function WalletDashboard() {
       tokenSymbol: "USDs",
       balance: usdsBalance,
       usdValue: `$${parseFloat(usdsBalance).toFixed(2)}`,
-      icon: <USDsIcon className="text-emerald-400" />
+      icon: <USDsIcon width={20} height={20} className="text-emerald-400 mr-2" />
     },
     {
       tokenSymbol: "USDC",
       balance: usdcBalance,
       usdValue: `$${parseFloat(usdcBalance).toFixed(2)}`,
-      icon: <USDCIcon className="text-blue-400" />
+      icon: <USDCIcon width={20} height={20} className="text-blue-400 mr-2" />
     }
   ];
 
@@ -330,101 +332,88 @@ export default function WalletDashboard() {
     <div className="min-h-screen flex flex-col bg-black text-white">
       <Header />
 
-      {/* Main content */}
-      <main className="flex-1 container mx-auto p-4 md:p-6 max-w-6xl">
-        {/* Dashboard Header with Balance */}
-        <div className="mb-8 p-6 rounded-xl bg-zinc-900 border border-zinc-800 shadow-sm relative overflow-hidden">
-          <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-900/20 rounded-bl-full -mt-4 -mr-4"></div>
-          <div className="relative z-10">
-            <div className="flex flex-col md:flex-row md:items-end justify-between mb-8">
+      <main className="container mx-auto py-6 px-4 flex-1">
+        {/* Account balance card */}
+        <div className="bg-zinc-900 rounded-xl border border-zinc-800 mb-6 overflow-hidden">
+          <div className="p-6 bg-emerald-900/20 border-b border-emerald-900/30">
+            <div className="flex justify-between items-start">
               <div>
-                <h1 className="text-2xl font-bold mb-1 text-white">Your Wallet</h1>
-                <p className="text-gray-400 text-sm flex items-center gap-1">
-                  <span className="bg-emerald-900/50 text-emerald-400 text-xs px-2 py-0.5 rounded">
-                    {process.env.NEXT_PUBLIC_SOLANA_NETWORK || 'devnet'}
-                  </span>
-                  <span>•</span>
-                  <span
-                    className="hover:text-emerald-400 transition cursor-pointer flex items-center gap-1"
-                    onClick={refreshData}
-                  >
-                    {refreshing ? 'Refreshing...' : 'Refresh'}
-                    <RefreshCw size={14} className={refreshing ? "animate-spin" : ""} />
-                  </span>
-                </p>
-              </div>
-              <div className="mt-4 md:mt-0 md:text-right">
-                <p className="text-gray-400 text-sm">Total Balance</p>
-                <div className="flex items-end gap-2 md:justify-end">
-                  <h2 className="text-3xl md:text-4xl font-bold text-white">
-                    ${loadingBalance ? "..." : totalUsdBalance.toFixed(2)}
-                  </h2>
-                  <span className="text-xl font-medium text-gray-400">USD</span>
+                <h2 className="text-lg font-medium text-emerald-400">Total Balance</h2>
+                <div className="flex items-baseline mt-1">
+                  <span className="text-3xl font-bold text-white">${totalUsdBalance.toFixed(2)}</span>
+                  <span className="ml-1 text-sm text-gray-400">USD</span>
                 </div>
               </div>
-            </div>
-
-            <div className="bg-zinc-800/80 backdrop-blur border border-zinc-700 p-3 rounded-lg flex flex-col sm:flex-row items-start sm:items-center gap-2 group relative">
-              <div className="p-1 bg-emerald-900/30 rounded text-emerald-400">
-                <SolanaIcon className="h-5 w-5" />
-              </div>
-              <div className="font-mono text-xs sm:text-sm break-all flex-1 max-w-full overflow-hidden text-gray-300">
-                {session?.user?.solanaAddress || "Loading..."}
-              </div>
-              <button
-                className="text-xs bg-emerald-700 text-white px-3 py-1.5 rounded-md font-medium flex items-center gap-1 hover:bg-emerald-600 transition"
-                onClick={async () => {
-                  if (session?.user?.solanaAddress) {
-                    const success = await copyToClipboard(session.user.solanaAddress);
-                    if (success) {
-                      toast.success("Address copied to clipboard");
-                    } else {
-                      toast.error("Failed to copy address");
-                    }
-                  }
-                }}
+              <Button
+                size="sm"
+                variant="outline"
+                className="text-gray-300 border-zinc-700 hover:bg-zinc-800"
+                onClick={refreshData}
+                disabled={refreshing}
               >
-                <Copy size={14} /> Copy
-              </button>
+                {refreshing ? (
+                  <RefreshCw className="h-4 w-4 animate-spin" />
+                ) : (
+                  <RefreshCw className="h-4 w-4" />
+                )}
+                <span className="ml-1">{refreshing ? "Refreshing..." : "Refresh"}</span>
+              </Button>
+            </div>
+          </div>
+
+          <div className="px-6 py-4">
+            <div className="flex justify-between items-center mb-2">
+              <h3 className="text-base font-medium text-white">Your Accounts</h3>
+            </div>
+            <div className="space-y-3">
+              {[
+                { name: "USD Balance", balance: `$${usdsBalance}`, icon: <DollarSign size={18} className="text-emerald-400" /> },
+                { name: "USDC Balance", balance: `$${usdcBalance}`, icon: <DollarSign size={18} className="text-blue-400" /> }
+              ].map((item, index) => (
+                <div key={index} className="flex items-center justify-between p-3 rounded-lg bg-zinc-800">
+                  <div className="flex items-center">
+                    <div className="mr-3 p-2 rounded-full bg-zinc-700">
+                      {item.icon}
+                    </div>
+                    <div>
+                      <div className="font-medium text-white">{item.name}</div>
+                    </div>
+                  </div>
+                  <div className="text-lg font-semibold text-white">{item.balance}</div>
+                </div>
+              ))}
             </div>
           </div>
         </div>
 
-        {/* Token Balance Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
-          {tokenBalances.map((token) => (
-            <div
-              key={token.tokenSymbol}
-              className={`p-5 border rounded-xl flex items-center gap-4 relative ${
-                token.tokenSymbol === 'USDs'
-                  ? 'bg-emerald-900/20 border-emerald-800'
-                  : 'bg-blue-900/20 border-blue-800'
-              }`}
-            >
-              {token.tokenSymbol === 'USDs' && (
-                <div className="absolute -top-3 -right-2 bg-emerald-600 text-white text-xs px-2 py-1 rounded-full font-bold flex items-center shadow-lg">
-                  <Percent size={12} className="mr-1" /> 4.2% APY
-                </div>
-              )}
-              <div className={`p-3 rounded-full ${
-                token.tokenSymbol === 'USDs' ? 'bg-emerald-900/30' : 'bg-blue-900/30'
-              }`}>
-                {token.icon}
-              </div>
-              <div className="flex-1">
-                <p className="text-sm text-gray-400">{token.tokenSymbol}</p>
-                <p className="text-xl font-bold text-white">{token.balance}</p>
-                <p className="text-xs text-gray-400">{token.usdValue}</p>
-                {token.tokenSymbol === 'USDs' && (
-                  <div className="flex items-center mt-1">
-                    <span className="text-xs text-emerald-400 flex items-center">
-                      <TrendingUp size={12} className="mr-1" /> Earning 4.2% APY
-                    </span>
-                  </div>
-                )}
-              </div>
-            </div>
-          ))}
+        {/* Action buttons */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 mb-8">
+          <Button 
+            variant="outline" 
+            className="flex flex-col items-center p-4 h-auto bg-zinc-900 hover:bg-zinc-800 border-zinc-800"
+            onClick={() => setActiveTab("send")}
+          >
+            <SendMoneyIcon width={24} height={24} className="text-emerald-400 mb-2" />
+            <span>Send Money</span>
+          </Button>
+          
+          <Button 
+            variant="outline" 
+            className="flex flex-col items-center p-4 h-auto bg-zinc-900 hover:bg-zinc-800 border-zinc-800"
+            onClick={() => setActiveTab("receive")}
+          >
+            <ReceiveIcon width={24} height={24} className="text-emerald-400 mb-2" />
+            <span>Request Money</span>
+          </Button>
+          
+          <Button 
+            variant="outline" 
+            className="flex flex-col items-center p-4 h-auto bg-zinc-900 hover:bg-zinc-800 border-zinc-800 col-span-2 sm:col-span-1"
+            onClick={() => router.push("/activity")}
+          >
+            <ActivityIcon width={24} height={24} className="text-emerald-400 mb-2" />
+            <span>Activity</span>
+          </Button>
         </div>
 
         {/* Tabs for different sections */}
@@ -517,7 +506,7 @@ export default function WalletDashboard() {
                     className="flex flex-col items-center justify-center p-4 bg-zinc-800 hover:bg-zinc-700 rounded-lg transition group"
                   >
                     <div className="p-3 rounded-full bg-emerald-900/50 text-emerald-400 mb-3 group-hover:bg-emerald-900/60 transition">
-                      <SendIcon size={24} />
+                      <SendMoneyIcon width={24} height={24} />
                     </div>
                     <span className="font-medium text-white">Send</span>
                   </button>
@@ -527,7 +516,7 @@ export default function WalletDashboard() {
                     className="flex flex-col items-center justify-center p-4 bg-zinc-800 hover:bg-zinc-700 rounded-lg transition group"
                   >
                     <div className="p-3 rounded-full bg-emerald-900/50 text-emerald-400 mb-3 group-hover:bg-emerald-900/60 transition">
-                      <ReceiveIcon size={24} />
+                      <ReceiveIcon width={24} height={24} />
                     </div>
                     <span className="font-medium text-white">Receive</span>
                   </Link>
@@ -537,7 +526,7 @@ export default function WalletDashboard() {
                     className="flex flex-col items-center justify-center p-4 bg-zinc-800 hover:bg-zinc-700 rounded-lg border-emerald-800 border transition group"
                   >
                     <div className="p-3 rounded-full bg-emerald-900/50 text-emerald-400 mb-3 group-hover:bg-emerald-900/60 transition">
-                      <SwapIcon size={24} />
+                      <SwapIcon width={24} height={24} />
                     </div>
                     <span className="font-medium text-white">Swap</span>
                   </button>
@@ -604,7 +593,7 @@ export default function WalletDashboard() {
           <div className="max-w-lg mx-auto bg-zinc-900 border border-zinc-800 rounded-xl p-6 shadow-sm">
             <div className="flex items-center mb-6">
               <div className="p-3 rounded-full bg-emerald-900/50 text-emerald-400 mr-3">
-                <SendIcon size={20} />
+                <SendMoneyIcon width={20} height={20} />
               </div>
               <h2 className="text-xl font-semibold text-white">Send</h2>
             </div>
@@ -628,7 +617,7 @@ export default function WalletDashboard() {
                     onChange={(e) => setTokenType(e.target.value)}
                     className="w-full p-3 rounded-md border border-zinc-700 bg-zinc-800 text-gray-200 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 appearance-none"
                   >
-                    <option value="usds">USDs</option>
+                    <option value="usd">USDs</option>
                     <option value="usdc">USDC</option>
                   </select>
                   <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
@@ -637,7 +626,7 @@ export default function WalletDashboard() {
                 </div>
                 <p className="text-xs text-gray-500 flex justify-between">
                   <span>Selected token to send</span>
-                  <span>Balance: {tokenType === "usds" ? usdsBalance : usdcBalance}</span>
+                  <span>Balance: {tokenType === "usd" ? usdsBalance : usdcBalance}</span>
                 </p>
               </div>
 
@@ -696,7 +685,7 @@ export default function WalletDashboard() {
           <div className="max-w-lg mx-auto bg-zinc-900 border border-zinc-800 rounded-xl p-6 shadow-sm">
             <div className="flex items-center mb-6">
               <div className="p-3 rounded-full bg-emerald-900/50 text-emerald-400 mr-3">
-                <ReceiveIcon size={20} />
+                <ReceiveIcon width={20} height={20} />
               </div>
               <h2 className="text-xl font-semibold text-white">Receive</h2>
             </div>
@@ -715,7 +704,7 @@ export default function WalletDashboard() {
           <div className="max-w-lg mx-auto bg-zinc-900 border border-zinc-800 rounded-xl p-6 shadow-sm">
             <div className="flex items-center mb-4">
               <div className="p-3 rounded-full bg-emerald-900/50 text-emerald-400 mr-3">
-                <SwapIcon size={20} />
+                <SwapIcon width={20} height={20} />
               </div>
               <div>
                 <h2 className="text-xl font-semibold text-white">Swap USDC to USDs</h2>
@@ -755,7 +744,7 @@ export default function WalletDashboard() {
               <div className="flex items-center bg-zinc-900 rounded-md p-3 border border-zinc-700">
                 <div className="pr-3 border-r border-zinc-700">
                   <div className="flex items-center gap-2">
-                    <USDCIcon className="text-blue-400" size={24} />
+                    <USDCIcon width={20} height={20} className="text-blue-400" />
                     <span className="font-medium text-gray-200">USDC</span>
                   </div>
                 </div>
@@ -772,7 +761,7 @@ export default function WalletDashboard() {
 
             <div className="flex justify-center my-2">
               <div className="p-2 rounded-full bg-emerald-900/20 border border-emerald-900/30">
-                <ArrowDown className="text-emerald-400" size={20} />
+                <ArrowDown size={20} className="text-emerald-400" />
               </div>
             </div>
 
@@ -784,7 +773,7 @@ export default function WalletDashboard() {
               <div className="flex items-center bg-zinc-900 rounded-md p-3 border border-zinc-700">
                 <div className="pr-3 border-r border-zinc-700">
                   <div className="flex items-center gap-2">
-                    <USDsIcon className="text-emerald-400" size={24} />
+                    <USDsIcon width={20} height={20} className="text-emerald-400" />
                     <span className="font-medium text-gray-200">USDs</span>
                   </div>
                 </div>
