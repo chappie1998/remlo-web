@@ -231,137 +231,149 @@ export async function POST(req: NextRequest) {
     const amountInUnits = Math.floor(Number(amount) * (10 ** TOKEN_DECIMALS));
 
     console.log(`Creating token transfer: ${amount} tokens (${amountInUnits} units with ${TOKEN_DECIMALS} decimals)`);
+    console.log(`Sending request to relayer at: ${RELAYER_URL}/api/create-transfer`);
 
     // Step 2: Request the transaction data from the relayer
-    const createTransferResponse = await fetch(`${RELAYER_URL}/api/create-transfer`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        fromAddress: user.solanaAddress,
-        toAddress: to,
-        amount: amount,  // This is the human-readable amount, e.g. "1.5"
-        amountInRawUnits: amountInUnits,  // Add the raw token units
-      }),
-    });
-
-    console.log(`Relayer response status: ${createTransferResponse.status}`);
-
-    if (!createTransferResponse.ok) {
-      let errorMessage = "Failed to create transfer with relayer";
-      try {
-        const errorData = await createTransferResponse.json();
-        errorMessage = errorData.error || errorMessage;
-        console.error("Relayer error details:", errorData);
-      } catch (parseError) {
-        console.error("Could not parse relayer error response:", parseError);
-      }
-      throw new Error(errorMessage);
-    }
-
-    const createTransferData = await createTransferResponse.json();
-    const serializedTransaction = createTransferData.transactionData;
-
-    // Step 3: Deserialize the transaction to sign it
-    const transactionBuffer = Buffer.from(serializedTransaction, 'base64');
-    const unsignedTransaction = Transaction.from(transactionBuffer);
-
-    console.log("Received transaction for signing with following instructions:");
-    unsignedTransaction.instructions.forEach((instruction, i) => {
-      console.log(`- Instruction ${i}: Required signers:`,
-        instruction.keys
-          .filter(key => key.isSigner)
-          .map(key => key.pubkey.toString())
-      );
-    });
-
-    // Check if the transaction has a blockhash
-    if (!unsignedTransaction.recentBlockhash) {
-      console.log("Transaction missing blockhash, using a new one");
-      const connection = getSolanaConnection();
-      const { blockhash } = await connection.getLatestBlockhash('confirmed');
-      unsignedTransaction.recentBlockhash = blockhash;
-    }
-
-    // Make sure fee payer is set
-    if (!unsignedTransaction.feePayer) {
-      console.log("Transaction missing fee payer, using relayer");
-      // We'll assume the relayer is the fee payer
-    }
-
-    // Step 4: User signs the transaction (only signing the transfer instruction)
-    console.log(`User signing transaction with address: ${keypair.publicKey.toString()}`);
-    const messageToSign = unsignedTransaction.serializeMessage();
-    const signature = sign.detached(messageToSign, keypair.secretKey);
-
-    // Step 5: Serialize the signed transaction
-    unsignedTransaction.addSignature(keypair.publicKey, Buffer.from(signature));
-
-    // Log transaction signatures after user signs
-    console.log("Transaction signatures after user signing:");
-    unsignedTransaction.signatures.forEach((sig, i) => {
-      console.log(`- Signature ${i}: ${sig.publicKey.toString()} - ${sig.signature ? 'signed' : 'not signed'}`);
-    });
-
-    const serializedSignedTransaction = unsignedTransaction.serialize({
-      verifySignatures: false,
-      requireAllSignatures: false
-    }).toString('base64');
-
-    // Step 6: Submit the signed transaction to the relayer
-    const submitResponse = await fetch(`${RELAYER_URL}/api/submit-transaction`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        signedTransaction: serializedSignedTransaction,
-      }),
-    });
-
-    console.log(`Relayer submit response status: ${submitResponse.status}`);
-
-    if (!submitResponse.ok) {
-      let errorMessage = "Failed to submit transaction to relayer";
-      try {
-        const errorData = await submitResponse.json();
-        errorMessage = errorData.error || errorMessage;
-        console.error("Relayer submit error details:", errorData);
-      } catch (parseError) {
-        console.error("Could not parse relayer submit error response:", parseError);
-      }
-      throw new Error(errorMessage);
-    }
-
-    const submitData = await submitResponse.json();
-    const { signature: txSignature } = submitData;
-
-    // Step 7: Update the transaction record with the executed status and signature
-    await prisma.transaction.update({
-      where: { id: transaction.id },
-      data: {
-        status: "executed",
-        signature: txSignature,
-        executedAt: new Date(),
-      },
-    });
-
-    return NextResponse.json(
-      {
-        success: true,
-        signature: txSignature,
-        message: "Token transaction sent successfully via relayer",
-      },
-      {
+    try {
+      const createTransferResponse = await fetch(`${RELAYER_URL}/api/create-transfer`, {
+        method: "POST",
         headers: {
-          'Access-Control-Allow-Origin': '*',
-          'Access-Control-Allow-Methods': 'POST, OPTIONS',
-          'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-          'Access-Control-Allow-Credentials': 'true',
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          fromAddress: user.solanaAddress,
+          toAddress: to,
+          amount: amount,  // This is the human-readable amount, e.g. "1.5"
+          amountInRawUnits: amountInUnits,  // Add the raw token units
+        }),
+        // Add timeout for fetch
+        signal: AbortSignal.timeout(2000), // 2 second timeout
+      });
+
+      console.log(`Relayer response status: ${createTransferResponse.status}`);
+
+      if (!createTransferResponse.ok) {
+        let errorMessage = "Failed to create transfer with relayer";
+        try {
+          const errorData = await createTransferResponse.json();
+          errorMessage = errorData.error || errorMessage;
+          console.error("Relayer error details:", errorData);
+        } catch (parseError) {
+          console.error("Could not parse relayer error response:", parseError);
         }
+        throw new Error(errorMessage);
       }
-    );
+
+      const createTransferData = await createTransferResponse.json();
+      const serializedTransaction = createTransferData.transactionData;
+
+      // Step 3: Deserialize the transaction to sign it
+      const transactionBuffer = Buffer.from(serializedTransaction, 'base64');
+      const unsignedTransaction = Transaction.from(transactionBuffer);
+
+      console.log("Received transaction for signing with following instructions:");
+      unsignedTransaction.instructions.forEach((instruction, i) => {
+        console.log(`- Instruction ${i}: Required signers:`,
+          instruction.keys
+            .filter(key => key.isSigner)
+            .map(key => key.pubkey.toString())
+        );
+      });
+
+      // Check if the transaction has a blockhash
+      if (!unsignedTransaction.recentBlockhash) {
+        console.log("Transaction missing blockhash, using a new one");
+        const connection = getSolanaConnection();
+        const { blockhash } = await connection.getLatestBlockhash('confirmed');
+        unsignedTransaction.recentBlockhash = blockhash;
+      }
+
+      // Make sure fee payer is set
+      if (!unsignedTransaction.feePayer) {
+        console.log("Transaction missing fee payer, using relayer");
+        // We'll assume the relayer is the fee payer
+      }
+
+      // Step 4: User signs the transaction (only signing the transfer instruction)
+      console.log(`User signing transaction with address: ${keypair.publicKey.toString()}`);
+      const messageToSign = unsignedTransaction.serializeMessage();
+      const signature = sign.detached(messageToSign, keypair.secretKey);
+
+      // Step 5: Serialize the signed transaction
+      unsignedTransaction.addSignature(keypair.publicKey, Buffer.from(signature));
+
+      // Log transaction signatures after user signs
+      console.log("Transaction signatures after user signing:");
+      unsignedTransaction.signatures.forEach((sig, i) => {
+        console.log(`- Signature ${i}: ${sig.publicKey.toString()} - ${sig.signature ? 'signed' : 'not signed'}`);
+      });
+
+      const serializedSignedTransaction = unsignedTransaction.serialize({
+        verifySignatures: false,
+        requireAllSignatures: false
+      }).toString('base64');
+
+      // Step 6: Submit the signed transaction to the relayer
+      const submitResponse = await fetch(`${RELAYER_URL}/api/submit-transaction`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          signedTransaction: serializedSignedTransaction,
+        }),
+      });
+
+      console.log(`Relayer submit response status: ${submitResponse.status}`);
+
+      if (!submitResponse.ok) {
+        let errorMessage = "Failed to submit transaction to relayer";
+        try {
+          const errorData = await submitResponse.json();
+          errorMessage = errorData.error || errorMessage;
+          console.error("Relayer submit error details:", errorData);
+        } catch (parseError) {
+          console.error("Could not parse relayer submit error response:", parseError);
+        }
+        throw new Error(errorMessage);
+      }
+
+      const submitData = await submitResponse.json();
+      const { signature: txSignature } = submitData;
+
+      // Step 7: Update the transaction record with the executed status and signature
+      await prisma.transaction.update({
+        where: { id: transaction.id },
+        data: {
+          status: "executed",
+          signature: txSignature,
+          executedAt: new Date(),
+        },
+      });
+
+      return NextResponse.json(
+        {
+          success: true,
+          signature: txSignature,
+          message: "Token transaction sent successfully via relayer",
+        },
+        {
+          headers: {
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Methods': 'POST, OPTIONS',
+            'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+            'Access-Control-Allow-Credentials': 'true',
+          }
+        }
+      );
+    } catch (error: unknown) {
+      console.error("Error connecting to relayer:", error);
+      // Check if it's a timeout or connection error
+      if (error instanceof Error && (error.name === 'AbortError' || error.name === 'TypeError')) {
+        throw new Error("Failed to connect to relayer. The service may be unavailable. Please try again later.");
+      }
+      throw error;
+    }
   } catch (error) {
     console.error("Error sending token transaction:", error);
 

@@ -45,6 +45,7 @@ export default function PaymentPage() {
   const [passcode, setPasscode] = useState("");
   const [error, setError] = useState("");
   const [showQrCode, setShowQrCode] = useState(false);
+  const [processingStage, setProcessingStage] = useState("idle");
 
   // Add check to verify session on mount and refresh
   useEffect(() => {
@@ -124,13 +125,20 @@ export default function PaymentPage() {
   const handlePaymentSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
+    setProcessingStage("validating");
 
     if (!isValidPasscode(passcode)) {
       setError("Passcode must be exactly 6 digits");
+      setProcessingStage("idle");
       return;
     }
 
     setIsProcessing(true);
+    setProcessingStage("connecting");
+
+    // Create an abort controller for the token transaction to implement a timeout
+    const abortController = new AbortController();
+    const timeoutId = setTimeout(() => abortController.abort(), 15000); // 15 second timeout
 
     try {
       if (!paymentRequest) {
@@ -138,6 +146,9 @@ export default function PaymentPage() {
       }
 
       // Step 1: Send the actual token transaction
+      console.log("Sending token transaction to relayer...");
+      setProcessingStage("sending");
+      
       const tokenResponse = await fetch('/api/wallet/send-token-transaction', {
         method: 'POST',
         headers: {
@@ -148,10 +159,21 @@ export default function PaymentPage() {
           amount: paymentRequest.amount,
           passcode: passcode
         }),
+        signal: abortController.signal
+      }).catch(err => {
+        // Handle fetch errors like network issues or timeouts
+        if (err.name === 'AbortError') {
+          throw new Error('Transaction request timed out. The relayer may be unavailable.');
+        }
+        throw err;
       });
+      
+      // Clear the timeout since the request completed
+      clearTimeout(timeoutId);
       
       if (!tokenResponse.ok) {
         const errorData = await tokenResponse.json();
+        console.error("Token transaction failed:", errorData);
         throw new Error(errorData.error || 'Transaction failed');
       }
       
@@ -159,6 +181,7 @@ export default function PaymentPage() {
       console.log('Token transaction completed:', tokenResult);
       
       // Step 2: Update the payment request status in the database
+      setProcessingStage("completing");
       const completeResponse = await fetch('/api/payment-request/complete', {
         method: 'POST',
         headers: {
@@ -178,6 +201,7 @@ export default function PaymentPage() {
       const completeResult = await completeResponse.json();
       console.log('Payment completed:', completeResult);
       
+      setProcessingStage("success");
       toast.success("Payment successful!");
       
       // Refresh payment request data from server
@@ -186,10 +210,13 @@ export default function PaymentPage() {
       setShowPasscodeModal(false);
       setPasscode("");
     } catch (err) {
+      console.error("Payment error:", err);
       const errorMessage = err instanceof Error ? err.message : "Payment failed";
       setError(errorMessage);
+      setProcessingStage("error");
       toast.error(errorMessage);
     } finally {
+      clearTimeout(timeoutId);
       setIsProcessing(false);
     }
   };
@@ -496,9 +523,12 @@ export default function PaymentPage() {
             </div>
 
             {error && (
-              <div className="p-3 rounded-lg bg-red-900/20 text-red-400 text-sm mb-4 flex items-start">
-                <XCircle size={16} className="mr-2 mt-0.5 flex-shrink-0" />
-                <p>{error}</p>
+              <div className="p-4 rounded-lg bg-red-900/30 border border-red-700/50 text-red-400 text-sm mb-4 flex items-start">
+                <XCircle size={18} className="mr-2 mt-0.5 flex-shrink-0" />
+                <div>
+                  <p className="font-medium mb-1">Transaction Failed</p>
+                  <p className="break-words text-xs">{error}</p>
+                </div>
               </div>
             )}
 
@@ -548,7 +578,18 @@ export default function PaymentPage() {
                   {isProcessing ? (
                     <span className="flex items-center">
                       <RefreshCw size={16} className="animate-spin mr-2" />
-                      Processing...
+                      {processingStage === "validating" && "Validating..."}
+                      {processingStage === "connecting" && "Connecting..."}
+                      {processingStage === "sending" && "Sending Transaction..."}
+                      {processingStage === "completing" && "Confirming Payment..."}
+                      {processingStage === "success" && "Payment Completed!"}
+                      {processingStage === "error" && "Failed - Retry"}
+                      {processingStage !== "validating" && 
+                       processingStage !== "connecting" && 
+                       processingStage !== "sending" && 
+                       processingStage !== "completing" && 
+                       processingStage !== "success" && 
+                       processingStage !== "error" && "Processing..."}
                     </span>
                   ) : (
                     "Confirm & Pay"
