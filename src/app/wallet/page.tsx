@@ -76,7 +76,7 @@ export default function AccountDashboard() {
       fetchBalances();
       fetchTransactions();
     }
-  }, [session]);
+  }, [session?.user?.solanaAddress]); // Only re-run when solanaAddress changes
 
   // Handle authentication redirects
   useEffect(() => {

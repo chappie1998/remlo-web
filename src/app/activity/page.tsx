@@ -55,7 +55,7 @@ export default function ActivityPage() {
     if (session?.user?.solanaAddress) {
       fetchData();
     }
-  }, [session]);
+  }, [session?.user?.solanaAddress]);
 
   // Handle authentication redirects
   useEffect(() => {
