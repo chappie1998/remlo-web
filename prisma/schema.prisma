@@ -34,9 +34,11 @@ model User {
   usesMPC          Boolean   @default(false) // Whether the user is using MPC
 
   // Relations
-  accounts      Account[]
-  sessions      Session[]
-  transactions  Transaction[]
+  accounts        Account[]
+  sessions        Session[]
+  transactions    Transaction[]
+  paymentRequests PaymentRequest[] // Payment requests created by this user
+  payments        Payment[]       // Payments made by this user
 }
 
 model Account {
@@ -94,4 +96,37 @@ model PaymasterInfo {
   lastSponsoredAt DateTime?
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
+}
+
+// Payment request model for tracking link-based payment requests
+model PaymentRequest {
+  id            String    @id @default(cuid())
+  shortId       String    @unique // Short ID for URLs (e.g., pr_123abc)
+  creatorId     String    // User who created the request
+  amount        String    // Amount requested (as string to preserve decimal precision)
+  tokenType     String    // "usds", "usdc", etc.
+  note          String?   // Optional note about the payment
+  status        String    // "pending", "completed", "cancelled", "expired"
+  expiresAt     DateTime? // Optional expiration date
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  
+  // Relations
+  creator       User      @relation(fields: [creatorId], references: [id], onDelete: Cascade)
+  payment       Payment?  // The payment fulfilling this request, if any
+}
+
+// Payment model for tracking payments made to fulfill requests
+model Payment {
+  id              String   @id @default(cuid())
+  payerId         String   // User who made the payment
+  paymentRequestId String  @unique // The payment request being fulfilled
+  transactionSignature String? // Solana transaction signature
+  status          String   // "pending", "confirmed", "failed"
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  // Relations
+  payer           User     @relation(fields: [payerId], references: [id], onDelete: Cascade)
+  paymentRequest  PaymentRequest @relation(fields: [paymentRequestId], references: [id], onDelete: Cascade)
 }

@@ -449,16 +449,12 @@ export default function WalletDashboard() {
           >
             Send
           </button>
-          <button
-            className={`px-4 py-2 font-medium text-sm relative whitespace-nowrap ${
-              activeTab === "receive"
-                ? "text-emerald-400 border-b-2 border-emerald-400"
-                : "text-gray-400 hover:text-gray-300"
-            }`}
-            onClick={() => setActiveTab("receive")}
+          <Link
+            href="/wallet/receive"
+            className="px-4 py-2 font-medium text-sm relative whitespace-nowrap text-gray-400 hover:text-gray-300"
           >
             Receive
-          </button>
+          </Link>
           <button
             className={`px-4 py-2 font-medium text-sm relative whitespace-nowrap ${
               activeTab === "swap"
@@ -526,15 +522,15 @@ export default function WalletDashboard() {
                     <span className="font-medium text-white">Send</span>
                   </button>
 
-                  <button
-                    onClick={() => setActiveTab("receive")}
+                  <Link
+                    href="/wallet/receive"
                     className="flex flex-col items-center justify-center p-4 bg-zinc-800 hover:bg-zinc-700 rounded-lg transition group"
                   >
                     <div className="p-3 rounded-full bg-emerald-900/50 text-emerald-400 mb-3 group-hover:bg-emerald-900/60 transition">
                       <ReceiveIcon size={24} />
                     </div>
                     <span className="font-medium text-white">Receive</span>
-                  </button>
+                  </Link>
 
                   <button
                     onClick={() => setActiveTab("swap")}
@@ -706,76 +702,10 @@ export default function WalletDashboard() {
             </div>
 
             <div className="bg-zinc-800 p-6 rounded-lg border border-zinc-700 text-center mb-6">
-              <p className="text-sm text-gray-400 mb-2">Your wallet address</p>
-              <p className="font-mono text-sm text-gray-200 break-all mb-4">{session?.user?.solanaAddress}</p>
-              
-              {/* QR Code */}
-              <div className="flex justify-center mb-4">
-                <div className="p-3 bg-white rounded-lg">
-                  {session?.user?.solanaAddress && (
-                    <QRCode 
-                      value={session.user.solanaAddress}
-                      size={160}
-                      style={{ height: "auto", maxWidth: "100%", width: "100%" }}
-                      viewBox={`0 0 256 256`}
-                    />
-                  )}
-                </div>
-              </div>
-              
-              <div className="flex justify-center">
-                <button
-                  className="bg-emerald-700 hover:bg-emerald-600 text-white px-4 py-2 rounded flex items-center gap-2 text-sm font-medium transition"
-                  onClick={async () => {
-                    if (session?.user?.solanaAddress) {
-                      const success = await copyToClipboard(session.user.solanaAddress);
-                      if (success) {
-                        toast.success("Address copied to clipboard");
-                      } else {
-                        toast.error("Failed to copy address");
-                      }
-                    }
-                  }}
-                >
-                  <Copy size={16} />
-                  Copy Address
-                </button>
-              </div>
-            </div>
-
-            <div className="space-y-4">
-              <h3 className="text-lg font-medium text-white">Supported Assets</h3>
-              <div className="grid gap-3">
-                <div className="flex items-center p-3 border border-zinc-800 rounded-lg bg-zinc-800/30">
-                  <div className="p-2 rounded-full bg-emerald-900/30 mr-3">
-                    <USDsIcon className="text-emerald-400" size={20} />
-                  </div>
-                  <div>
-                    <p className="font-medium text-gray-200">USDs</p>
-                    <p className="text-xs text-gray-400">Stable token with 4.2% APY</p>
-                  </div>
-                </div>
-
-                <div className="flex items-center p-3 border border-zinc-800 rounded-lg bg-zinc-800/30">
-                  <div className="p-2 rounded-full bg-blue-900/30 mr-3">
-                    <USDCIcon className="text-blue-400" size={20} />
-                  </div>
-                  <div>
-                    <p className="font-medium text-gray-200">USDC</p>
-                    <p className="text-xs text-gray-400">USD Coin stablecoin</p>
-                  </div>
-                </div>
-
-                <div className="flex items-center p-3 border border-zinc-800 rounded-lg bg-zinc-800/30">
-                  <div className="p-2 rounded-full bg-purple-900/30 mr-3">
-                    <SolanaIcon className="text-purple-400" size={20} />
-                  </div>
-                  <div>
-                    <p className="font-medium text-gray-200">SOL</p>
-                    <p className="text-xs text-gray-400">Solana native token</p>
-                  </div>
-                </div>
-              </div>
+              <p className="text-sm text-gray-400 mb-4">This feature has moved to a dedicated page</p>
+              <Link href="/wallet/receive" className="bg-emerald-700 hover:bg-emerald-600 text-white px-4 py-2 rounded inline-flex items-center gap-2 text-sm font-medium transition">
+                Go to Receive Page
+              </Link>
             </div>
           </div>
         )}
