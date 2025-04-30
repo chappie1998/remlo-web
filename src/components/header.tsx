@@ -1,12 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { signOut } from "next-auth/react";
+import { useSession, signOut } from "next-auth/react";
 import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { RemloIcon } from "@/components/icons";
 import { usePathname } from "next/navigation";
-import { useOptimizedSession } from "@/lib/session";
 import {
   LogOut,
   User,
@@ -18,7 +17,7 @@ import {
 } from "lucide-react";
 
 export default function Header() {
-  const { data: session } = useOptimizedSession();
+  const { data: session } = useSession();
   const pathname = usePathname();
 
   const isActive = (path: string) => {
