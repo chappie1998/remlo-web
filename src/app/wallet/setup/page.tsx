@@ -8,6 +8,7 @@ import { useSession } from "next-auth/react";
 import Link from "next/link";
 import { isValidPasscode } from "@/lib/utils";
 import { generateMnemonic } from "@/lib/crypto";
+import { Pencil } from "lucide-react";
 
 export default function WalletSetup() {
   const [passcode, setPasscode] = useState("");
@@ -18,6 +19,14 @@ export default function WalletSetup() {
   const [solanaAddress, setSolanaAddress] = useState("");
   const [backupShare, setBackupShare] = useState("");
   const [recoveryShare, setRecoveryShare] = useState(""); // New state for recovery share
+  const [username, setUsername] = useState(""); // New state for generated username
+  
+  // States for username editing
+  const [isEditingUsername, setIsEditingUsername] = useState(false);
+  const [editedUsername, setEditedUsername] = useState("");
+  const [usernameError, setUsernameError] = useState("");
+  const [isUpdatingUsername, setIsUpdatingUsername] = useState(false);
+  
   const router = useRouter();
   const { data: session, update } = useSession();
 
@@ -78,9 +87,11 @@ export default function WalletSetup() {
       setSolanaAddress(data.solanaAddress);
       setBackupShare(data.backupShare);
       setRecoveryShare(data.recoveryShare); // Store the recovery share
+      setUsername(data.username); // Store the generated username
+      setEditedUsername(data.username); // Initialize edited username
 
-      // Move to backup share information
-      setStep(2);
+      // Skip the backup step and go straight to success
+      setStep(3);
       toast.success("Wallet created successfully!");
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : "Failed to set up wallet";
@@ -94,6 +105,53 @@ export default function WalletSetup() {
   const handleBackupConfirm = () => {
     // Move to success state
     setStep(3);
+  };
+
+  const updateUsername = async () => {
+    if (!editedUsername || editedUsername.trim() === "") {
+      setUsernameError("Username cannot be empty");
+      return;
+    }
+
+    if (editedUsername === username) {
+      setIsEditingUsername(false);
+      return;
+    }
+
+    setIsUpdatingUsername(true);
+    setUsernameError("");
+
+    try {
+      const response = await fetch('/api/user/update-username', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ username: editedUsername }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to update username");
+      }
+
+      // Update the local state and session
+      setUsername(editedUsername);
+      await update({ username: editedUsername });
+      
+      setIsEditingUsername(false);
+      toast.success("Username updated successfully");
+    } catch (error) {
+      console.error("Error updating username:", error);
+      if (error instanceof Error && error.message.includes("taken")) {
+        setUsernameError("This username is already taken");
+      } else {
+        setUsernameError(error instanceof Error ? error.message : "Failed to update username");
+      }
+    } finally {
+      setIsUpdatingUsername(false);
+    }
   };
 
   // If user already has a wallet, show loading until client-side redirect happens
@@ -190,52 +248,52 @@ export default function WalletSetup() {
     );
   }
 
-  // Step 2: Backup share information
-  if (step === 2) {
-    return (
-      <div className="flex min-h-screen flex-col items-center justify-center p-4">
-        <div className="w-full max-w-md p-8 space-y-8 bg-card rounded-lg border">
-          <div className="text-center">
-            <h1 className="text-2xl font-bold">Save Your Backup Shares</h1>
-            <p className="text-muted-foreground mt-2">
-              These backup shares are critical for recovering your wallet if you lose your passcode.
-              Write them down and keep them in secure, separate locations.
-            </p>
-          </div>
+  // Step 2: Backup share information (now skipped)
+  // if (step === 2) {
+  //   return (
+  //     <div className="flex min-h-screen flex-col items-center justify-center p-4">
+  //       <div className="w-full max-w-md p-8 space-y-8 bg-card rounded-lg border">
+  //         <div className="text-center">
+  //           <h1 className="text-2xl font-bold">Save Your Backup Shares</h1>
+  //           <p className="text-muted-foreground mt-2">
+  //             These backup shares are critical for recovering your wallet if you lose your passcode.
+  //             Write them down and keep them in secure, separate locations.
+  //           </p>
+  //         </div>
 
-          <div className="space-y-6">
-            <div>
-              <p className="font-medium mb-2 text-sm">Primary Backup Share:</p>
-              <div className="p-3 font-mono text-center break-words text-sm border bg-background rounded-md">
-                {backupShare}
-              </div>
-            </div>
+  //         <div className="space-y-6">
+  //           <div>
+  //             <p className="font-medium mb-2 text-sm">Primary Backup Share:</p>
+  //             <div className="p-3 font-mono text-center break-words text-sm border bg-background rounded-md">
+  //               {backupShare}
+  //             </div>
+  //           </div>
 
-            <div>
-              <p className="font-medium mb-2 text-sm">Recovery Share:</p>
-              <div className="p-3 font-mono text-center break-words text-sm border bg-background rounded-md">
-                {recoveryShare}
-              </div>
-            </div>
-          </div>
+  //           <div>
+  //             <p className="font-medium mb-2 text-sm">Recovery Share:</p>
+  //             <div className="p-3 font-mono text-center break-words text-sm border bg-background rounded-md">
+  //               {recoveryShare}
+  //             </div>
+  //           </div>
+  //         </div>
 
-          <div className="p-4 border-l-4 border-amber-500 bg-amber-50 dark:bg-amber-950/20 rounded">
-            <p className="text-sm text-amber-800 dark:text-amber-200">
-              <strong>IMPORTANT:</strong> Store these backup shares in different secure locations.
-              Anyone with your passcode and these shares can access your wallet.
-            </p>
-          </div>
+  //         <div className="p-4 border-l-4 border-amber-500 bg-amber-50 dark:bg-amber-950/20 rounded">
+  //           <p className="text-sm text-amber-800 dark:text-amber-200">
+  //             <strong>IMPORTANT:</strong> Store these backup shares in different secure locations.
+  //             Anyone with your passcode and these shares can access your wallet.
+  //           </p>
+  //         </div>
 
-          <Button
-            onClick={handleBackupConfirm}
-            className="w-full"
-          >
-            I've Saved My Backup Shares
-          </Button>
-        </div>
-      </div>
-    );
-  }
+  //         <Button
+  //           onClick={handleBackupConfirm}
+  //           className="w-full"
+  //         >
+  //           I've Saved My Backup Shares
+  //         </Button>
+  //       </div>
+  //     </div>
+  //   );
+  // }
 
   // Step 3: Success state
   return (
@@ -249,24 +307,93 @@ export default function WalletSetup() {
           </div>
           <h1 className="text-2xl font-bold">Wallet Created Successfully!</h1>
           <p className="text-muted-foreground mt-2">
-            Your Solana wallet has been created and is ready to use.
+            Your Solana wallet is ready to use. You can now send and receive payments.
           </p>
         </div>
 
-        <div className="p-4 bg-muted rounded-md">
-          <p className="font-medium mb-1 text-sm">Your Wallet Address:</p>
-          <p className="font-mono text-xs break-all">{solanaAddress}</p>
+        <div className="space-y-4">
+          <div>
+            <p className="font-medium mb-2 text-sm">Your Username:</p>
+            
+            {isEditingUsername ? (
+              <div className="space-y-3">
+                <input
+                  type="text"
+                  value={editedUsername}
+                  onChange={(e) => setEditedUsername(e.target.value)}
+                  className="w-full p-3 font-mono text-center bg-background rounded-md border focus:ring-2 focus:ring-primary"
+                  placeholder="Enter username"
+                  autoFocus
+                />
+                
+                {usernameError && (
+                  <p className="text-destructive text-xs text-center">{usernameError}</p>
+                )}
+                
+                <div className="flex space-x-2">
+                  <Button 
+                    onClick={updateUsername}
+                    disabled={isUpdatingUsername}
+                    className="flex-1 bg-emerald-600 hover:bg-emerald-700"
+                    size="sm"
+                  >
+                    {isUpdatingUsername ? "Saving..." : "Save Username"}
+                  </Button>
+                  <Button 
+                    onClick={() => {
+                      setIsEditingUsername(false);
+                      setEditedUsername(username);
+                      setUsernameError("");
+                    }}
+                    variant="outline"
+                    size="sm"
+                  >
+                    Cancel
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <div className="relative p-3 font-mono text-center break-words text-sm border bg-background rounded-md">
+                {username || "Loading..."}
+                <button
+                  onClick={() => {
+                    setIsEditingUsername(true);
+                    setEditedUsername(username);
+                  }}
+                  className="absolute right-3 top-1/2 transform -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                  aria-label="Edit username"
+                >
+                  <Pencil size={14} />
+                </button>
+              </div>
+            )}
+            
+            <p className="text-xs text-muted-foreground mt-1">
+              This is your unique Remlo username. Others can use it to send you payments easily.
+            </p>
+          </div>
+          
+          {/* <div>
+            <p className="font-medium mb-2 text-sm">Your Solana Address:</p>
+            <div className="p-3 font-mono text-center break-words text-sm border bg-background rounded-md">
+              {solanaAddress}
+            </div>
+          </div> */}
         </div>
 
-        <div className="space-y-2">
-          <p className="text-sm text-center">
-            Remember your 6-digit passcode and keep your backup shares in secure locations.
-            You'll need the passcode to authorize transactions.
+        <div className="p-4 border-l-4 border-amber-500 bg-amber-50 dark:bg-amber-950/20 rounded">
+          <p className="text-sm text-amber-800 dark:text-amber-200">
+            <strong>Remember:</strong> Your wallet is secured with your 6-digit passcode.
+            Keep your backup shares in safe locations.
           </p>
-          <Button asChild className="w-full">
-            <Link href="/wallet">Go to My Wallet</Link>
-          </Button>
         </div>
+
+        <Button
+          onClick={() => router.push('/wallet')}
+          className="w-full"
+        >
+          Go to My Wallet
+        </Button>
       </div>
     </div>
   );

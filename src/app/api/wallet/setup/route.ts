@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { PrismaClient } from "@prisma/client";
-import { isValidPasscode } from "@/lib/utils";
+import { isValidPasscode, generateRandomUsername } from "@/lib/utils";
 import { validateMnemonic } from "@/lib/crypto";
 import { createMPCWallet } from "@/lib/mpc";
 import { authOptions } from "@/lib/auth";
@@ -122,7 +122,33 @@ export async function POST(req: NextRequest) {
     // Create a new MPC wallet with 3-part secret sharing
     const { publicKey, serverShare, backupShare, recoveryShare, salt } = createMPCWallet(passcode);
 
-    // Update the user record with the wallet address and MPC information
+    // Generate a random username
+    let username = generateRandomUsername();
+    let isUsernameTaken = true;
+    let attempts = 0;
+    
+    // Make sure the username is unique (try up to 5 times)
+    while (isUsernameTaken && attempts < 5) {
+      attempts++;
+      try {
+        // Check if username exists
+        const existingUser = await prisma.user.findUnique({
+          where: { username }
+        });
+        
+        if (!existingUser) {
+          isUsernameTaken = false;
+        } else {
+          // Generate a new username if the current one is taken
+          username = generateRandomUsername();
+        }
+      } catch (error) {
+        console.error("Error checking username:", error);
+        break; // Exit the loop on error
+      }
+    }
+
+    // Update the user record with the wallet address, MPC information, and username
     await prisma.user.update({
       where: { email: userEmail },
       data: {
@@ -133,6 +159,7 @@ export async function POST(req: NextRequest) {
         usesMPC: true,
         hasPasscode: true,
         passcodeSetAt: new Date(),
+        username, // Set the generated username
       },
     });
 
@@ -143,6 +170,7 @@ export async function POST(req: NextRequest) {
         // Include both backup shares in the response for the user to save securely
         backupShare,
         recoveryShare, // Additional share for more recovery options
+        username, // Include the username in the response
       },
       {
         headers: {

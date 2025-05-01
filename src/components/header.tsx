@@ -47,6 +47,26 @@ export default function Header() {
                 <span>Home</span>
               </Link>
               <Link
+                href="/wallet/send"
+                className={`px-3 py-2 rounded-md text-sm transition-colors flex items-center gap-1.5 ${
+                  isActive("/wallet/send")
+                    ? "bg-emerald-950/50 text-emerald-400 font-medium"
+                    : "hover:bg-zinc-800 hover:text-gray-200 text-gray-400"
+                }`}
+              >
+                <span>Send</span>
+              </Link>
+              <Link
+                href="/wallet/receive"
+                className={`px-3 py-2 rounded-md text-sm transition-colors flex items-center gap-1.5 ${
+                  isActive("/wallet/receive")
+                    ? "bg-emerald-950/50 text-emerald-400 font-medium"
+                    : "hover:bg-zinc-800 hover:text-gray-200 text-gray-400"
+                }`}
+              >
+                <span>Receive</span>
+              </Link>
+              <Link
                 href="/activity"
                 className={`px-3 py-2 rounded-md text-sm transition-colors flex items-center gap-1.5 ${
                   isActive("/activity")

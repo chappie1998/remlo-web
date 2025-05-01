@@ -27,7 +27,7 @@ export async function OPTIONS() {
 export async function POST(req: NextRequest) {
   try {
     let userEmail = null;
-    console.log('Handling send transaction request');
+    console.log('Handling transaction request');
 
     // First, try to get the session from NextAuth
     const session = await getServerSession(authOptions);
@@ -39,8 +39,6 @@ export async function POST(req: NextRequest) {
     // If no NextAuth session, try to get the user from the Authorization header
     if (!userEmail) {
       const authHeader = req.headers.get('authorization');
-      console.log('Authorization header:', authHeader);
-
       if (authHeader?.startsWith('Bearer ')) {
         const token = authHeader.substring(7);
         console.log('Extracted token:', token);
@@ -51,21 +49,16 @@ export async function POST(req: NextRequest) {
           include: { user: true }
         });
 
-        console.log('Database session lookup result:', dbSession ? 'Found' : 'Not found');
-
         if (dbSession?.user?.email && dbSession.expires > new Date()) {
           userEmail = dbSession.user.email;
           console.log('Found user email from session token:', userEmail);
-        } else {
-          console.log('Invalid or expired session token');
         }
       }
     }
 
     if (!userEmail) {
-      console.log('No valid user session found, returning 401');
       return NextResponse.json(
-        { error: "You must be signed in to send a transaction" },
+        { error: "You must be signed in to send transactions" },
         {
           status: 401,
           headers: {
@@ -78,8 +71,8 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Get transaction details and passcode from the request
-    const { to, amount, passcode, backupShare, recoveryShare } = await req.json();
+    // Extract data from the request
+    const { to, amount, passcode, username } = await req.json();
 
     if (!to || !amount) {
       return NextResponse.json(
@@ -142,7 +135,22 @@ export async function POST(req: NextRequest) {
 
     if (!user || !user.solanaAddress) {
       return NextResponse.json(
-        { error: "Wallet not set up" },
+        { error: "Wallet not found" },
+        {
+          status: 404,
+          headers: {
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Methods': 'POST, OPTIONS',
+            'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+            'Access-Control-Allow-Credentials': 'true',
+          }
+        }
+      );
+    }
+
+    if (!user.mpcServerShare || !user.mpcSalt) {
+      return NextResponse.json(
+        { error: "Wallet not set up properly" },
         {
           status: 400,
           headers: {
@@ -155,131 +163,46 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Determine which type of wallet the user has (MPC or legacy)
-    let keypair;
-
-    if (user.usesMPC) {
-      // MPC wallet approach
-      if (!user.mpcServerShare || !user.mpcSalt) {
-        return NextResponse.json(
-          { error: "Wallet not set up properly" },
-          {
-            status: 400,
-            headers: {
-              'Access-Control-Allow-Origin': '*',
-              'Access-Control-Allow-Methods': 'POST, OPTIONS',
-              'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-              'Access-Control-Allow-Credentials': 'true',
-            }
+    // Code to generate the keypair from MPC shares
+    const keypair = await prepareMPCSigningKeypair(user.mpcSalt, passcode, user.mpcServerShare);
+    if (!keypair) {
+      return NextResponse.json(
+        { error: "Failed to derive wallet from passcode" },
+        {
+          status: 400,
+          headers: {
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Methods': 'POST, OPTIONS',
+            'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+            'Access-Control-Allow-Credentials': 'true',
           }
-        );
-      }
-
-      // If the client provided their own backup and recovery shares, use those
-      // Otherwise, use the server's stored backup share for 3-part reconstruction
-      const clientBackupShare = backupShare || user.mpcBackupShare;
-
-      console.log(`Attempting MPC signing with ${clientBackupShare ? 'backup share' : 'no backup share'}`);
-
-      // Prepare the keypair using MPC with 3 shares
-      try {
-        keypair = prepareMPCSigningKeypair(
-          passcode,
-          user.mpcServerShare,
-          user.mpcSalt,
-          clientBackupShare,
-          recoveryShare // This might be undefined, which is fine
-        );
-
-        if (!keypair) {
-          console.error("MPC signing preparation returned null");
-          return NextResponse.json(
-            { error: "Invalid passcode or shares" },
-            {
-              status: 401,
-              headers: {
-                'Access-Control-Allow-Origin': '*',
-                'Access-Control-Allow-Methods': 'POST, OPTIONS',
-                'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-                'Access-Control-Allow-Credentials': 'true',
-              }
-            }
-          );
         }
-
-        // Verify the keypair corresponds to the user's address
-        const keypairAddress = keypair.publicKey.toBase58();
-        if (keypairAddress !== user.solanaAddress) {
-          console.error(`Address mismatch: expected ${user.solanaAddress}, got ${keypairAddress}`);
-          return NextResponse.json(
-            { error: "Generated keypair does not match wallet address" },
-            {
-              status: 401,
-              headers: {
-                'Access-Control-Allow-Origin': '*',
-                'Access-Control-Allow-Methods': 'POST, OPTIONS',
-                'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-                'Access-Control-Allow-Credentials': 'true',
-              }
-            }
-          );
-        }
-      } catch (mpError) {
-        console.error("Error in MPC signing preparation:", mpError);
-        return NextResponse.json(
-          { error: mpError instanceof Error ? mpError.message : "Failed to prepare MPC signing" },
-          {
-            status: 401,
-            headers: {
-              'Access-Control-Allow-Origin': '*',
-              'Access-Control-Allow-Methods': 'POST, OPTIONS',
-              'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-              'Access-Control-Allow-Credentials': 'true',
-            }
-          }
-        );
-      }
-    } else {
-      // Legacy approach with encrypted mnemonic
-      if (!user.encryptedKeypair) {
-        return NextResponse.json(
-          { error: "Wallet not set up properly" },
-          {
-            status: 400,
-            headers: {
-              'Access-Control-Allow-Origin': '*',
-              'Access-Control-Allow-Methods': 'POST, OPTIONS',
-              'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-              'Access-Control-Allow-Credentials': 'true',
-            }
-          }
-        );
-      }
-
-      // Decrypt the mnemonic with the provided passcode
-      const mnemonic = await decryptMnemonic(user.encryptedKeypair, passcode);
-
-      if (!mnemonic) {
-        return NextResponse.json(
-          { error: "Invalid passcode" },
-          {
-            status: 401,
-            headers: {
-              'Access-Control-Allow-Origin': '*',
-              'Access-Control-Allow-Methods': 'POST, OPTIONS',
-              'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-              'Access-Control-Allow-Credentials': 'true',
-            }
-          }
-        );
-      }
-
-      // Derive the keypair from the mnemonic
-      keypair = getKeypairFromMnemonic(mnemonic);
+      );
     }
 
-    // Convert the amount from SOL to lamports
-    const amountInLamports = Math.floor(Number.parseFloat(amount) * LAMPORTS_PER_SOL);
+    // Verify the generated keypair matches the user's address
+    const keypairAddress = keypair.publicKey.toString();
+    console.log(`Generated keypair address: ${keypairAddress}`);
+    console.log(`User's stored address: ${user.solanaAddress}`);
+
+    if (keypairAddress !== user.solanaAddress) {
+      return NextResponse.json(
+        { error: "Generated keypair does not match wallet address" },
+        {
+          status: 401,
+          headers: {
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Methods': 'POST, OPTIONS',
+            'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+            'Access-Control-Allow-Credentials': 'true',
+          }
+        }
+      );
+    }
+
+    // Convert amount to lamports
+    const amountInLamports = Math.floor(parseFloat(amount) * LAMPORTS_PER_SOL);
+    console.log(`Amount in lamports: ${amountInLamports}`);
 
     if (Number.isNaN(amountInLamports) || amountInLamports <= 0) {
       return NextResponse.json(
@@ -296,10 +219,15 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // Create transaction data object, including username if available
+    const txData = username 
+      ? JSON.stringify({ to, amount, username }) 
+      : JSON.stringify({ to, amount });
+
     // Create a record of the transaction request
     const transaction = await prisma.transaction.create({
       data: {
-        txData: JSON.stringify({ to, amount }),
+        txData,
         status: "pending",
         user: {
           connect: { id: user.id }
@@ -336,19 +264,19 @@ export async function POST(req: NextRequest) {
           }
         }
       );
-    } catch (txError) {
-      // Update the transaction record with the rejected status
+    } catch (error) {
+      console.error("Error sending transaction:", error);
+
+      // Update the transaction record with the failed status
       await prisma.transaction.update({
         where: { id: transaction.id },
         data: {
-          status: "rejected",
+          status: "failed",
         },
       });
 
-      console.error("Transaction failed:", txError);
-      const errorMessage = txError instanceof Error ? txError.message : "Transaction failed to execute";
       return NextResponse.json(
-        { error: errorMessage },
+        { error: "Failed to send transaction" },
         {
           status: 500,
           headers: {
@@ -361,10 +289,9 @@ export async function POST(req: NextRequest) {
       );
     }
   } catch (error) {
-    console.error("Error sending transaction:", error);
-    const errorMessage = error instanceof Error ? error.message : "Failed to send transaction";
+    console.error("Error in send-transaction API:", error);
     return NextResponse.json(
-      { error: errorMessage },
+      { error: "An unexpected error occurred" },
       {
         status: 500,
         headers: {
@@ -376,7 +303,6 @@ export async function POST(req: NextRequest) {
       }
     );
   } finally {
-    // Close the Prisma client connection
     await prisma.$disconnect();
   }
 }

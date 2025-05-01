@@ -27,7 +27,11 @@ import {
   Download,
   Filter,
   DollarSign,
-  Wallet
+  Wallet,
+  CircleDashed,
+  FileText,
+  Wallet2,
+  CopyIcon
 } from "lucide-react";
 import { USDsIcon, USDCIcon, SwapIcon, ReceiveIcon, SendMoneyIcon, RemloIcon, ActivityIcon } from "@/components/icons";
 
@@ -53,6 +57,9 @@ export default function AccountDashboard() {
   const [showPasscodeModal, setShowPasscodeModal] = useState(false);
   const [passcode, setPasscode] = useState("");
   const [recipient, setRecipient] = useState("");
+  const [recipientUsername, setRecipientUsername] = useState("");
+  const [isLookingUpUsername, setIsLookingUpUsername] = useState(false);
+  const [foundUser, setFoundUser] = useState<{ username: string, solanaAddress: string } | null>(null);
   const [amount, setAmount] = useState("");
   const [tokenType, setTokenType] = useState("usd"); // "usd" or "usdc"
   const [swapAmount, setSwapAmount] = useState("");
@@ -136,14 +143,71 @@ export default function AccountDashboard() {
     setRefreshing(false);
   };
 
-  // Validate form inputs before proceeding
+  // Look up a user by username
+  const lookupUsername = async () => {
+    if (!recipientUsername || recipientUsername.trim() === "") {
+      setError("Username cannot be empty");
+      return;
+    }
+
+    setIsLookingUpUsername(true);
+    setError("");
+    setFoundUser(null);
+
+    try {
+      const response = await fetch("/api/user/lookup", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          username: recipientUsername,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to find user");
+      }
+
+      // Set the recipient address from the username lookup
+      setRecipient(data.solanaAddress);
+      setFoundUser({
+        username: data.username,
+        solanaAddress: data.solanaAddress
+      });
+      
+      toast.success(`Found user ${data.username}`);
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : "Failed to find user";
+      setError(errorMessage);
+      setRecipient(""); // Clear recipient address if lookup fails
+    } finally {
+      setIsLookingUpUsername(false);
+    }
+  };
+
+  // Clear the username and found user when recipient address is manually changed
+  const handleRecipientChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setRecipient(e.target.value);
+    // If the user manually modifies the address, clear the username lookup
+    if (foundUser && e.target.value !== foundUser.solanaAddress) {
+      setRecipientUsername("");
+      setFoundUser(null);
+    }
+  };
+
+  // Modified validation function to handle either username or address
   const validateSendForm = () => {
-    if (!recipient) {
-      setError("Recipient address is required");
+    // If neither username nor address is provided, show error
+    if ((!recipient || recipient.trim() === "") && (!foundUser || !foundUser.solanaAddress)) {
+      setError("Recipient address or username is required");
       return false;
     }
 
-    if (!isValidSolanaAddress(recipient)) {
+    // Validate the Solana address if one is provided directly
+    if (recipient && !isValidSolanaAddress(recipient)) {
       setError("Invalid recipient address");
       return false;
     }
@@ -216,16 +280,29 @@ export default function AccountDashboard() {
         ? "/api/wallet/send-token-transaction"
         : "/api/wallet/send-transaction"; // Assuming USDs use the regular SOL transaction endpoint for now
 
+      // Include username in the request if a user was found
+      const requestData: {
+        to: string;
+        amount: string;
+        passcode: string;
+        username?: string;
+      } = {
+        to: recipient,
+        amount,
+        passcode,
+      };
+      
+      // If sending to a user found by username, include the username in the transaction data
+      if (foundUser) {
+        requestData.username = foundUser.username;
+      }
+
       const response = await fetch(endpoint, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({
-          to: recipient,
-          amount,
-          passcode,
-        }),
+        body: JSON.stringify(requestData),
       });
 
       const data = await response.json();
@@ -234,10 +311,17 @@ export default function AccountDashboard() {
         throw new Error(data.error || "Transaction failed");
       }
 
-      toast.success("Transaction sent successfully!");
+      // Create a success message that includes the username if available
+      const successMessage = foundUser 
+        ? `Transaction sent successfully to ${foundUser.username}!`
+        : "Transaction sent successfully!";
+      
+      toast.success(successMessage);
       setShowPasscodeModal(false);
       setPasscode("");
       setRecipient("");
+      setRecipientUsername("");
+      setFoundUser(null);
       setAmount("");
 
       // Refresh balance and transactions
@@ -285,6 +369,12 @@ export default function AccountDashboard() {
   const formatTxData = (txDataString: string) => {
     try {
       const txData = JSON.parse(txDataString);
+      
+      // Check if the transaction includes a username
+      if (txData.username) {
+        return `${txData.amount} ${txData.token ? 'USDC' : 'SOL'} to ${txData.username}`;
+      }
+      
       return `${txData.amount} ${txData.token ? 'USDC' : 'SOL'} to ${shortenAddress(txData.to)}`;
     } catch (e) {
       return "Unknown transaction";
@@ -327,6 +417,14 @@ export default function AccountDashboard() {
       icon: <USDCIcon width={20} height={20} className="text-blue-400 mr-2" />
     }
   ];
+
+  // Add copy address function
+  const copyAddress = () => {
+    if (session?.user?.solanaAddress) {
+      navigator.clipboard.writeText(session.user.solanaAddress);
+      toast.success("Address copied to clipboard");
+    }
+  };
 
   return (
     <div className="min-h-screen flex flex-col bg-black text-white">
@@ -388,14 +486,13 @@ export default function AccountDashboard() {
 
         {/* Action buttons */}
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 mb-8">
-          <Button 
-            variant="outline" 
-            className="flex flex-col items-center p-4 h-auto bg-zinc-900 hover:bg-zinc-800 border-zinc-800"
-            onClick={() => setActiveTab("send")}
+          <Link 
+            href="/wallet/send"
+            className="flex flex-col items-center p-4 h-auto bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 rounded-md"
           >
             <SendMoneyIcon width={24} height={24} className="text-emerald-400 mb-2" />
             <span>Send Money</span>
-          </Button>
+          </Link>
           
           <Button 
             variant="outline" 
@@ -428,16 +525,12 @@ export default function AccountDashboard() {
           >
             Overview
           </button>
-          <button
-            className={`px-4 py-2 font-medium text-sm relative whitespace-nowrap ${
-              activeTab === "send"
-                ? "text-emerald-400 border-b-2 border-emerald-400"
-                : "text-gray-400 hover:text-gray-300"
-            }`}
-            onClick={() => setActiveTab("send")}
+          <Link
+            href="/wallet/send"
+            className="px-4 py-2 font-medium text-sm relative whitespace-nowrap text-gray-400 hover:text-gray-300"
           >
             Send
-          </button>
+          </Link>
           <Link
             href="/wallet/receive"
             className="px-4 py-2 font-medium text-sm relative whitespace-nowrap text-gray-400 hover:text-gray-300"
@@ -501,15 +594,15 @@ export default function AccountDashboard() {
               <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-6 shadow-sm">
                 <h2 className="text-xl font-semibold mb-4 text-white">Quick Actions</h2>
                 <div className="grid grid-cols-2 gap-4">
-                  <button
-                    onClick={() => setActiveTab("send")}
-                    className="flex flex-col items-center justify-center p-4 bg-zinc-800 hover:bg-zinc-700 rounded-lg transition group"
+                  <Link
+                    href="/wallet/send"
+                    className="flex flex-col items-center justify-center p-4 bg-emerald-900/40 hover:bg-emerald-900/60 rounded-lg transition group border border-emerald-800"
                   >
                     <div className="p-3 rounded-full bg-emerald-900/50 text-emerald-400 mb-3 group-hover:bg-emerald-900/60 transition">
                       <SendMoneyIcon width={24} height={24} />
                     </div>
-                    <span className="font-medium text-white">Send</span>
-                  </button>
+                    <span className="font-medium text-emerald-400">Send by Username</span>
+                  </Link>
 
                   <Link
                     href="/wallet/receive"
@@ -585,98 +678,6 @@ export default function AccountDashboard() {
                 </div>
               </div>
             </div>
-          </div>
-        )}
-
-        {/* Send Tab */}
-        {activeTab === "send" && (
-          <div className="max-w-lg mx-auto bg-zinc-900 border border-zinc-800 rounded-xl p-6 shadow-sm">
-            <div className="flex items-center mb-6">
-              <div className="p-3 rounded-full bg-emerald-900/50 text-emerald-400 mr-3">
-                <SendMoneyIcon width={20} height={20} />
-              </div>
-              <h2 className="text-xl font-semibold text-white">Send</h2>
-            </div>
-
-            {error && (
-              <div className="p-3 rounded-lg bg-red-900/20 text-red-400 text-sm mb-4 flex items-start">
-                <XCircle size={16} className="mr-2 mt-0.5 flex-shrink-0" />
-                <p>{error}</p>
-              </div>
-            )}
-
-            <form onSubmit={handleSendFormSubmit} className="space-y-4">
-              <div className="space-y-2">
-                <label htmlFor="token-selector" className="text-sm font-medium flex items-center text-gray-300">
-                  Token <span className="text-red-400 ml-1">*</span>
-                </label>
-                <div className="relative">
-                  <select
-                    id="token-selector"
-                    value={tokenType}
-                    onChange={(e) => setTokenType(e.target.value)}
-                    className="w-full p-3 rounded-md border border-zinc-700 bg-zinc-800 text-gray-200 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 appearance-none"
-                  >
-                    <option value="usd">USDs</option>
-                    <option value="usdc">USDC</option>
-                  </select>
-                  <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
-                    <ChevronDown size={18} className="text-gray-400" />
-                  </div>
-                </div>
-                <p className="text-xs text-gray-500 flex justify-between">
-                  <span>Selected token to send</span>
-                  <span>Balance: {tokenType === "usd" ? usdsBalance : usdcBalance}</span>
-                </p>
-              </div>
-
-              <div className="space-y-2">
-                <label htmlFor="recipient" className="text-sm font-medium flex items-center text-gray-300">
-                  Recipient Address <span className="text-red-400 ml-1">*</span>
-                </label>
-                <div className="relative">
-                  <input
-                    id="recipient"
-                    type="text"
-                    required
-                    placeholder="Enter Solana address"
-                    value={recipient}
-                    onChange={(e) => setRecipient(e.target.value)}
-                    className="w-full p-3 rounded-md border border-zinc-700 bg-zinc-800 text-gray-200 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
-                  />
-                </div>
-                <p className="text-xs text-gray-500">Enter a valid Solana wallet address</p>
-              </div>
-
-              <div className="space-y-2">
-                <label htmlFor="amount" className="text-sm font-medium flex items-center text-gray-300">
-                  Amount <span className="text-red-400 ml-1">*</span>
-                </label>
-                <div className="relative">
-                  <input
-                    id="amount"
-                    type="text"
-                    inputMode="decimal"
-                    required
-                    placeholder="0.00"
-                    value={amount}
-                    onChange={(e) => setAmount(e.target.value)}
-                    className="w-full p-3 rounded-md border border-zinc-700 bg-zinc-800 text-gray-200 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 pr-16"
-                  />
-                  <div className="absolute right-3 top-1/2 transform -translate-y-1/2 font-medium text-gray-400 text-sm">
-                    {tokenType.toUpperCase()}
-                  </div>
-                </div>
-              </div>
-
-              <Button
-                type="submit"
-                size="lg"
-                className="w-full mt-4 bg-emerald-600 hover:bg-emerald-700 text-white"
-              >
-                Continue to Confirm
-              </Button>
-            </form>
           </div>
         )}
 

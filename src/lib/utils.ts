@@ -50,3 +50,29 @@ export async function copyToClipboard(text: string): Promise<boolean> {
     return false;
   }
 }
+
+/**
+ * Generates a random username for new users
+ * Format: [adjective][noun][number]
+ */
+export function generateRandomUsername(): string {
+  const adjectives = [
+    "swift", "vivid", "azure", "lunar", "cosmic", "neon", "rapid", "solar", 
+    "brave", "amber", "emerald", "golden", "silver", "bright", "wild", "cool", 
+    "crypto", "digital", "electric", "fancy", "happy", "instant", "jolly", "kind",
+    "lucky", "magic", "noble", "orange", "purple", "quick", "royal", "sunny"
+  ];
+  
+  const nouns = [
+    "wallet", "panda", "tiger", "eagle", "falcon", "dolphin", "phoenix", "atlas",
+    "orbit", "comet", "rocket", "pulse", "nova", "spark", "wave", "zenith",
+    "pixel", "quasar", "ranger", "star", "token", "vision", "whale", "zephyr",
+    "bear", "cat", "dog", "fox", "gecko", "hawk", "jaguar", "kangaroo", "lion"
+  ];
+  
+  const randomAdjective = adjectives[Math.floor(Math.random() * adjectives.length)];
+  const randomNoun = nouns[Math.floor(Math.random() * nouns.length)];
+  const randomNumber = Math.floor(Math.random() * 1000); // 0-999
+  
+  return `${randomAdjective}${randomNoun}${randomNumber}`;
+}

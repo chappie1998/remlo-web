@@ -30,6 +30,7 @@ export async function GET(req: NextRequest) {
           email: true,
           solanaAddress: true,
           hasPasscode: true,
+          username: true,
         }
       });
 
@@ -67,6 +68,7 @@ export async function GET(req: NextRequest) {
             email: true,
             solanaAddress: true,
             hasPasscode: true,
+            username: true,
           }
         });
 

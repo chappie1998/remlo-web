@@ -5,7 +5,7 @@ import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import Header from "@/components/header";
-import { copyToClipboard, formatDate } from "@/lib/utils";
+import { copyToClipboard, formatDate, shortenAddress } from "@/lib/utils";
 import { toast } from "sonner";
 import QRCode from 'react-qr-code';
 import {
@@ -20,6 +20,8 @@ import {
   Clock,
   Link as LinkIcon,
   QrCode,
+  AtSign,
+  CreditCard
 } from "lucide-react";
 import { USDsIcon, USDCIcon, SolanaIcon } from "@/components/icons";
 
@@ -36,7 +38,7 @@ interface PaymentRequest {
 export default function ReceivePage() {
   const { data: session, status } = useSession();
   const router = useRouter();
-  const [activeTab, setActiveTab] = useState("address");
+  const [activeTab, setActiveTab] = useState("username");
   const [tokenType, setTokenType] = useState("usds");
   const [amount, setAmount] = useState("");
   const [note, setNote] = useState("");
@@ -230,7 +232,7 @@ export default function ReceivePage() {
       if (navigator.share) {
         await navigator.share({
           title: "Payment Request",
-          text: "Please pay this request using Solana Passcode Wallet",
+          text: "Please pay this request using Remlo",
           url: link,
         });
       } else {
@@ -290,425 +292,328 @@ export default function ReceivePage() {
   return (
     <div className="min-h-screen flex flex-col bg-black text-white">
       <Header />
+      <main className="flex-1 container max-w-3xl mx-auto p-4 sm:p-6">
+        <h1 className="text-3xl font-bold mb-6">Receive Money</h1>
 
-      <main className="flex-1 container mx-auto p-4 md:p-6 max-w-4xl">
-        <div className="flex items-center mb-6">
-          <h1 className="text-2xl font-bold">Receive</h1>
-          <button 
-            className="ml-auto text-gray-400 hover:text-white"
-            onClick={() => router.push("/wallet")}
-          >
-            Back to Wallet
-          </button>
-        </div>
-
-        {/* Tabs */}
-        <div className="flex border-b border-zinc-800 mb-6">
-          <button
-            className={`px-4 py-2 font-medium text-sm relative flex items-center gap-2 ${
-              activeTab === "address"
-                ? "text-emerald-400 border-b-2 border-emerald-400"
-                : "text-gray-400 hover:text-gray-300"
-            }`}
-            onClick={() => setActiveTab("address")}
-          >
-            <QrCode width={16} height={16} />
-            Address
-          </button>
-          <button
-            className={`px-4 py-2 font-medium text-sm relative flex items-center gap-2 ${
-              activeTab === "payment-request"
-                ? "text-emerald-400 border-b-2 border-emerald-400"
-                : "text-gray-400 hover:text-gray-300"
-            }`}
-            onClick={() => setActiveTab("payment-request")}
-          >
-            <LinkIcon width={16} height={16} />
-            Payment Request
-          </button>
-          <button
-            className={`px-4 py-2 font-medium text-sm relative flex items-center gap-2 ${
-              activeTab === "history"
-                ? "text-emerald-400 border-b-2 border-emerald-400"
-                : "text-gray-400 hover:text-gray-300"
-            }`}
-            onClick={() => setActiveTab("history")}
-          >
-            <Clock width={14} height={14} />
-            Request History
-          </button>
-        </div>
-
-        {/* Address Tab */}
-        {activeTab === "address" && (
-          <div className="max-w-lg mx-auto bg-zinc-900 border border-zinc-800 rounded-xl p-6 shadow-sm">
-            <div className="bg-zinc-800 p-6 rounded-lg border border-zinc-700 text-center mb-6">
-              <p className="text-sm text-gray-400 mb-2">Your wallet address</p>
-              <p className="font-mono text-sm text-gray-200 break-all mb-4">{session?.user?.solanaAddress}</p>
-              
-              {/* QR Code */}
-              <div className="flex justify-center mb-4">
-                <div className="p-3 bg-white rounded-lg">
-                  {session?.user?.solanaAddress && (
-                    <QRCode 
-                      value={session.user.solanaAddress}
-                      size={160}
-                      style={{ height: "auto", maxWidth: "100%", width: "100%" }}
-                      viewBox={`0 0 256 256`}
-                    />
-                  )}
-                </div>
+        <div className="bg-zinc-900 rounded-lg mb-6">
+          <div className="flex border-b border-zinc-800">
+            <button
+              className={`flex-1 py-4 text-center font-medium ${
+                activeTab === "username" ? "text-emerald-400 border-b-2 border-emerald-400" : "text-gray-400"
+              }`}
+              onClick={() => setActiveTab("username")}
+            >
+              <div className="flex items-center justify-center gap-2">
+                <AtSign size={16} />
+                <span>Username</span>
               </div>
-              
-              <div className="flex justify-center">
-                <button
-                  className="bg-emerald-700 hover:bg-emerald-600 text-white px-4 py-2 rounded flex items-center gap-2 text-sm font-medium transition"
-                  onClick={async () => {
-                    if (session?.user?.solanaAddress) {
-                      const success = await copyToClipboard(session.user.solanaAddress);
-                      if (success) {
-                        toast.success("Address copied to clipboard");
-                      } else {
-                        toast.error("Failed to copy address");
-                      }
-                    }
-                  }}
-                >
-                  <Copy width={16} height={16} />
-                  Copy Address
-                </button>
+            </button>
+            <button
+              className={`flex-1 py-4 text-center font-medium ${
+                activeTab === "address" ? "text-emerald-400 border-b-2 border-emerald-400" : "text-gray-400"
+              }`}
+              onClick={() => setActiveTab("address")}
+            >
+              <div className="flex items-center justify-center gap-2">
+                <CreditCard size={16} />
+                <span>Wallet Address</span>
               </div>
-            </div>
-
-            <div className="space-y-4">
-              <h3 className="text-lg font-medium text-white">Supported Assets</h3>
-              <div className="grid gap-3">
-                <div className="flex items-center p-3 border border-zinc-800 rounded-lg bg-zinc-800/30">
-                  <div className="p-2 rounded-full bg-emerald-900/30 mr-3">
-                    <USDsIcon className="text-emerald-400" width={20} height={20} />
-                  </div>
-                  <div>
-                    <p className="font-medium text-gray-200">USDs</p>
-                    <p className="text-xs text-gray-400">Stable token with 4.2% APY</p>
-                  </div>
-                </div>
-
-                <div className="flex items-center p-3 border border-zinc-800 rounded-lg bg-zinc-800/30">
-                  <div className="p-2 rounded-full bg-blue-900/30 mr-3">
-                    <USDCIcon className="text-blue-400" width={20} height={20} />
-                  </div>
-                  <div>
-                    <p className="font-medium text-gray-200">USDC</p>
-                    <p className="text-xs text-gray-400">USD Coin stablecoin</p>
-                  </div>
-                </div>
-
-                <div className="flex items-center p-3 border border-zinc-800 rounded-lg bg-zinc-800/30">
-                  <div className="p-2 rounded-full bg-purple-900/30 mr-3">
-                    <SolanaIcon className="text-purple-400" width={20} height={20} />
-                  </div>
-                  <div>
-                    <p className="font-medium text-gray-200">SOL</p>
-                    <p className="text-xs text-gray-400">Solana native token</p>
-                  </div>
-                </div>
+            </button>
+            <button
+              className={`flex-1 py-4 text-center font-medium ${
+                activeTab === "request" ? "text-emerald-400 border-b-2 border-emerald-400" : "text-gray-400"
+              }`}
+              onClick={() => setActiveTab("request")}
+            >
+              <div className="flex items-center justify-center gap-2">
+                <LinkIcon size={16} />
+                <span>Request Money</span>
               </div>
-            </div>
+            </button>
           </div>
-        )}
 
-        {/* Payment Request Tab */}
-        {activeTab === "payment-request" && (
-          <div className="max-w-lg mx-auto bg-zinc-900 border border-zinc-800 rounded-xl p-6 shadow-sm">
-            {newRequestId ? (
+          <div className="p-6">
+            {activeTab === "username" && (
               <div className="space-y-6">
-                <div className="flex items-center justify-between">
-                  <h2 className="text-xl font-semibold text-white">Payment Request Created</h2>
-                  <button 
-                    className="text-gray-400 hover:text-white"
-                    onClick={() => {
-                      setNewRequestId(null);
-                      setNewRequestLink(null);
-                    }}
-                  >
-                    Create New
-                  </button>
-                </div>
-                
-                <div className="bg-zinc-800 p-6 rounded-lg border border-zinc-700 text-center">
-                  <p className="text-sm text-gray-400 mb-4">Scan this QR code to pay</p>
-                  
-                  {/* QR Code for the payment link */}
-                  <div className="flex justify-center mb-4">
-                    <div className="p-3 bg-white rounded-lg">
-                      {newRequestLink && (
-                        <QRCode 
-                          value={newRequestLink}
-                          size={160}
-                          style={{ height: "auto", maxWidth: "100%", width: "100%" }}
-                          viewBox={`0 0 256 256`}
-                        />
-                      )}
-                    </div>
+                <div className="flex flex-col items-center space-y-4">
+                  <div className="bg-zinc-800 p-4 rounded-lg">
+                    <QRCode 
+                      value={`remlo:username:${session?.user?.username || ''}`}
+                      size={180}
+                      className="rounded"
+                    />
                   </div>
                   
-                  <div className="mb-4">
-                    <p className="text-sm text-gray-400">Payment Request Link</p>
-                    <p className="font-mono text-sm text-gray-200 break-all bg-zinc-900 p-2 rounded mt-1">
-                      {newRequestLink}
+                  <div className="w-full text-center mt-2">
+                    <p className="text-sm text-gray-400 mb-1">Your Username</p>
+                    <div className="flex items-center justify-center space-x-2 bg-zinc-800 rounded-lg p-3">
+                      <AtSign size={16} className="text-emerald-400" />
+                      <h2 className="text-lg font-bold">
+                        {session?.user?.username || "Loading..."}
+                      </h2>
+                      <button
+                        onClick={async () => {
+                          await copyToClipboard(session?.user?.username || "");
+                          toast.success("Username copied to clipboard");
+                        }}
+                        className="ml-2 p-1 rounded-full hover:bg-zinc-700 transition"
+                        title="Copy username"
+                      >
+                        <Copy size={16} />
+                      </button>
+                    </div>
+                    
+                    <p className="text-sm text-gray-400 mt-2">
+                      Share your username with friends to receive payments
                     </p>
                   </div>
-                  
-                  <div className="flex gap-2">
-                    <button
-                      className="flex-1 bg-emerald-700 hover:bg-emerald-600 text-white px-4 py-2 rounded flex items-center justify-center gap-2 text-sm font-medium transition"
-                      onClick={() => newRequestLink && handleShareRequest(newRequestLink)}
-                    >
-                      <Share2 width={14} height={14} />
-                      Share
-                    </button>
-                    <button
-                      className="flex-1 bg-zinc-700 hover:bg-zinc-600 text-white px-4 py-2 rounded flex items-center justify-center gap-2 text-sm font-medium transition"
-                      onClick={async () => {
-                        if (newRequestLink) {
-                          const success = await copyToClipboard(newRequestLink);
-                          if (success) {
-                            toast.success("Link copied to clipboard");
-                          } else {
-                            toast.error("Failed to copy link");
-                          }
-                        }
-                      }}
-                    >
-                      <Copy width={14} height={14} />
-                      Copy Link
-                    </button>
-                  </div>
                 </div>
-                
-                <div className="bg-zinc-800 rounded-lg border border-zinc-700 p-4">
-                  <div className="flex justify-between items-center mb-2">
-                    <span className="text-sm text-gray-400">Status</span>
-                    <span className="flex items-center text-yellow-500 text-sm">
-                      <Clock width={14} height={14} /> Pending
-                    </span>
-                  </div>
-                  <div className="flex justify-between items-center mb-2">
-                    <span className="text-sm text-gray-400">Amount</span>
-                    <span className="font-medium text-white">
-                      {paymentRequests.find(req => req.id === newRequestId)?.amount || "0"} 
-                      {" "}
-                      {paymentRequests.find(req => req.id === newRequestId)?.tokenType.toUpperCase() || ""}
-                    </span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-gray-400">Created</span>
-                    <span className="text-sm text-gray-300">
-                      {formatDate(new Date().toISOString())}
-                    </span>
-                  </div>
-                </div>
-                
-                <button
-                  className="w-full bg-red-800 hover:bg-red-700 text-white px-4 py-2 rounded flex items-center justify-center gap-2 text-sm font-medium transition"
-                  onClick={async () => {
-                    if (newRequestId) {
-                      await handleCancelRequest(newRequestId);
-                      // After cancellation, go back to the create form
-                      setNewRequestId(null);
-                      setNewRequestLink(null);
-                    }
-                  }}
-                >
-                  <Trash2 width={16} height={16} />
-                  Cancel Payment Request
-                </button>
               </div>
-            ) : (
+            )}
+
+            {activeTab === "address" && (
               <div className="space-y-6">
-                <h2 className="text-xl font-semibold text-white">Create Payment Request</h2>
-                <p className="text-gray-400 text-sm">
-                  Generate a payment link to request funds from anyone. They don't need to have an account.
-                </p>
-                
-                <form onSubmit={handleCreatePaymentRequest} className="space-y-4">
-                  <div className="space-y-2">
-                    <label htmlFor="token-selector" className="text-sm font-medium text-gray-300">
-                      Token
-                    </label>
-                    <select
-                      id="token-selector"
-                      value={tokenType}
-                      onChange={(e) => setTokenType(e.target.value)}
-                      className="w-full p-3 rounded-md border border-zinc-700 bg-zinc-800 text-gray-200 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
-                    >
-                      <option value="usds">USDs</option>
-                      <option value="usdc">USDC</option>
-                    </select>
-                  </div>
-                  
-                  <div className="space-y-2">
-                    <label htmlFor="amount" className="text-sm font-medium text-gray-300">
-                      Amount
-                    </label>
-                    <div className="relative">
-                      <input
-                        id="amount"
-                        type="text"
-                        inputMode="decimal"
-                        required
-                        placeholder="0.00"
-                        value={amount}
-                        onChange={(e) => setAmount(e.target.value)}
-                        className="w-full p-3 rounded-md border border-zinc-700 bg-zinc-800 text-gray-200 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 pr-16"
-                      />
-                      <div className="absolute right-3 top-1/2 transform -translate-y-1/2 font-medium text-gray-400 text-sm">
-                        {tokenType.toUpperCase()}
-                      </div>
-                    </div>
-                  </div>
-                  
-                  <div className="space-y-2">
-                    <label htmlFor="note" className="text-sm font-medium text-gray-300">
-                      Note (Optional)
-                    </label>
-                    <input
-                      id="note"
-                      type="text"
-                      placeholder="What's this payment for?"
-                      value={note}
-                      onChange={(e) => setNote(e.target.value)}
-                      className="w-full p-3 rounded-md border border-zinc-700 bg-zinc-800 text-gray-200 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                <div className="flex flex-col items-center space-y-4">
+                  <div className="bg-zinc-800 p-4 rounded-lg">
+                    <QRCode 
+                      value={session?.user?.solanaAddress || ''}
+                      size={180}
+                      className="rounded"
                     />
                   </div>
                   
-                  <Button
-                    type="submit"
-                    disabled={isLoading}
-                    className="w-full bg-emerald-600 hover:bg-emerald-700 text-white"
-                  >
-                    {isLoading ? (
-                      <div className="flex items-center justify-center gap-2">
-                        <RefreshCw width={16} height={16} className="animate-spin" />
-                        Creating...
-                      </div>
-                    ) : (
-                      "Create Payment Request"
-                    )}
-                  </Button>
-                </form>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* History Tab */}
-        {activeTab === "history" && (
-          <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-6 shadow-sm">
-            <h2 className="text-xl font-semibold mb-6 text-white">Payment Request History</h2>
-            
-            {paymentRequests.length > 0 ? (
-              <div className="space-y-4">
-                {paymentRequests.map((request) => (
-                  <div key={request.id} className="bg-zinc-800 rounded-lg border border-zinc-700 p-4">
-                    <div className="flex justify-between items-center mb-3">
-                      <div className="flex items-center">
-                        {getStatusIcon(request.status)}
-                        <span className="ml-2 text-sm font-medium capitalize text-gray-200">
-                          {request.status}
-                        </span>
-                      </div>
-                      <span className="text-xs text-gray-500">
-                        {formatDate(request.createdAt)}
-                      </span>
+                  <div className="w-full">
+                    <p className="text-sm text-gray-400 mb-1 text-center">Your Solana Address</p>
+                    <div className="flex items-center justify-center space-x-2 bg-zinc-800 rounded-lg p-3">
+                      <SolanaIcon className="text-emerald-400 h-4 w-4" />
+                      <p className="font-mono text-sm overflow-hidden">
+                        {shortenAddress(session?.user?.solanaAddress || "")}
+                      </p>
+                      <button
+                        onClick={async () => {
+                          await copyToClipboard(session?.user?.solanaAddress || "");
+                          toast.success("Address copied to clipboard");
+                        }}
+                        className="ml-2 p-1 rounded-full hover:bg-zinc-700 transition"
+                      >
+                        <Copy size={16} />
+                      </button>
                     </div>
                     
-                    <div className="mb-3">
-                      <div className="flex justify-between items-center mb-1">
-                        <span className="text-sm text-gray-400">Amount</span>
-                        <span className="font-medium text-white">
-                          {request.amount} {request.tokenType.toUpperCase()}
-                        </span>
-                      </div>
-                      <div className="flex justify-between items-center">
-                        <span className="text-sm text-gray-400">Link</span>
-                        <span className="text-sm text-emerald-400 truncate max-w-[200px]">
-                          {request.link}
-                        </span>
-                      </div>
-                    </div>
-                    
-                    <div className="flex gap-2 mt-3">
-                      {request.status === "pending" && (
-                        <>
-                          <button
-                            className="flex-1 bg-emerald-700 hover:bg-emerald-600 text-white px-3 py-1.5 rounded text-xs font-medium flex items-center justify-center gap-1"
-                            onClick={() => handleShareRequest(request.link)}
-                          >
-                            <Share2 width={14} height={14} />
-                            Share
-                          </button>
-                          <button
-                            className="flex-1 bg-zinc-700 hover:bg-zinc-600 text-white px-3 py-1.5 rounded text-xs font-medium flex items-center justify-center gap-1"
-                            onClick={async () => {
-                              const success = await copyToClipboard(request.link);
-                              if (success) {
-                                toast.success("Link copied to clipboard");
-                              } else {
-                                toast.error("Failed to copy link");
-                              }
-                            }}
-                          >
-                            <Copy width={14} height={14} />
-                            Copy
-                          </button>
-                          <button
-                            className="flex-1 bg-red-800 hover:bg-red-700 text-white px-3 py-1.5 rounded text-xs font-medium flex items-center justify-center gap-1"
-                            onClick={() => handleCancelRequest(request.id)}
-                          >
-                            <Trash2 width={14} height={14} />
-                            Cancel
-                          </button>
-                        </>
-                      )}
-                      
-                      {request.status === "completed" && (
-                        <button
-                          className="flex-1 bg-zinc-700 hover:bg-zinc-600 text-white px-3 py-1.5 rounded text-xs font-medium flex items-center justify-center gap-1"
-                          onClick={() => router.push(`/pay/${request.id}`)}
-                        >
-                          <ExternalLink width={14} height={14} />
-                          View Details
-                        </button>
-                      )}
-                      
-                      {request.status === "cancelled" && (
-                        <span className="text-xs text-gray-500 italic">
-                          This request has been cancelled
-                        </span>
-                      )}
+                    <div className="flex justify-center mt-3">
+                      <a
+                        href={`https://explorer.solana.com/address/${session?.user?.solanaAddress}?cluster=${process.env.NEXT_PUBLIC_SOLANA_NETWORK || 'devnet'}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-sm text-emerald-400 flex items-center space-x-1 hover:underline"
+                      >
+                        <span>View on Explorer</span>
+                        <ExternalLink size={12} />
+                      </a>
                     </div>
                   </div>
-                ))}
-              </div>
-            ) : (
-              <div className="flex flex-col items-center justify-center py-12 text-center">
-                <div className="p-4 rounded-full bg-zinc-800 mb-3">
-                  <LinkIcon width={32} height={32} className="text-gray-500" />
                 </div>
-                <h3 className="text-lg font-medium mb-1 text-gray-300">No payment requests yet</h3>
-                <p className="text-sm text-gray-500 max-w-md">
-                  Create a payment request link to make it easy for others to pay you
-                </p>
-                <Button
-                  className="mt-4 bg-emerald-600 hover:bg-emerald-700 text-white"
-                  onClick={() => setActiveTab("payment-request")}
-                >
-                  Create Payment Request
-                </Button>
+              </div>
+            )}
+
+            {activeTab === "request" && (
+              <div>
+                {newRequestLink ? (
+                  <div className="space-y-6">
+                    <div className="flex flex-col items-center space-y-4">
+                      <div className="w-16 h-16 bg-emerald-100 text-emerald-700 rounded-full flex items-center justify-center mx-auto">
+                        <CheckCircle2 size={32} />
+                      </div>
+                      
+                      <h3 className="text-xl font-semibold text-center">Request Created!</h3>
+                      
+                      <div className="bg-zinc-800 p-4 rounded-lg">
+                        <QRCode 
+                          value={newRequestLink}
+                          size={180}
+                          className="rounded"
+                        />
+                      </div>
+                      
+                      <div className="w-full">
+                        <p className="text-sm text-gray-400 mb-1 text-center">Payment Link</p>
+                        <div className="flex items-center space-x-2 bg-zinc-800 rounded-lg p-3">
+                          <p className="font-mono text-xs overflow-hidden truncate">
+                            {newRequestLink}
+                          </p>
+                          <button
+                            onClick={async () => {
+                              await copyToClipboard(newRequestLink);
+                              toast.success("Link copied to clipboard");
+                            }}
+                            className="ml-auto p-1 rounded-full hover:bg-zinc-700 flex-shrink-0"
+                          >
+                            <Copy size={16} />
+                          </button>
+                        </div>
+                      </div>
+                      
+                      <div className="flex space-x-3 w-full">
+                        <Button 
+                          onClick={() => handleShareRequest(newRequestLink)}
+                          className="flex-1 bg-emerald-600 hover:bg-emerald-700"
+                        >
+                          <Share2 size={16} className="mr-2" />
+                          Share Link
+                        </Button>
+                        
+                        <Button 
+                          onClick={() => {
+                            setNewRequestLink(null);
+                            setNewRequestId(null);
+                          }}
+                          variant="secondary"
+                          className="flex-1"
+                        >
+                          Create Another
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <form onSubmit={handleCreatePaymentRequest} className="space-y-6">
+                    <div>
+                      <label htmlFor="amount" className="block text-sm font-medium mb-2">
+                        Amount
+                      </label>
+                      <div className="relative rounded-md shadow-sm">
+                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                          <span className="text-gray-400 sm:text-sm">$</span>
+                        </div>
+                        <input
+                          type="number"
+                          name="amount"
+                          id="amount"
+                          required
+                          value={amount}
+                          onChange={(e) => setAmount(e.target.value)}
+                          step="0.01"
+                          min="0.01"
+                          placeholder="0.00"
+                          className="w-full pl-7 pr-20 py-3 bg-zinc-800 border-0 rounded-md focus:ring-1 focus:ring-emerald-400 text-white"
+                        />
+                        <div className="absolute inset-y-0 right-0 flex items-center">
+                          <label htmlFor="token-type" className="sr-only">
+                            Token Type
+                          </label>
+                          <select
+                            id="token-type"
+                            name="token-type"
+                            value={tokenType}
+                            onChange={(e) => setTokenType(e.target.value)}
+                            className="h-full py-0 pl-2 pr-7 border-0 bg-zinc-800 rounded-r-md focus:ring-1 focus:ring-emerald-400 text-white"
+                          >
+                            <option value="usds">USDS</option>
+                            <option value="usdc">USDC</option>
+                          </select>
+                        </div>
+                      </div>
+                    </div>
+                    
+                    <div>
+                      <label htmlFor="note" className="block text-sm font-medium mb-2">
+                        Note (Optional)
+                      </label>
+                      <input
+                        type="text"
+                        name="note"
+                        id="note"
+                        value={note}
+                        onChange={(e) => setNote(e.target.value)}
+                        placeholder="For dinner, rent, etc."
+                        className="w-full py-3 px-4 bg-zinc-800 border-0 rounded-md focus:ring-1 focus:ring-emerald-400 text-white"
+                      />
+                    </div>
+                    
+                    <Button
+                      type="submit"
+                      className="w-full bg-emerald-600 hover:bg-emerald-700"
+                      disabled={isLoading}
+                    >
+                      {isLoading ? "Creating..." : "Create Payment Request"}
+                    </Button>
+                  </form>
+                )}
               </div>
             )}
           </div>
+        </div>
+
+        {/* Payment Requests History */}
+        {activeTab === "request" && (
+          <>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-xl font-bold">Payment Requests</h2>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={refreshPaymentRequests}
+                className="text-emerald-400"
+              >
+                <RefreshCw size={14} className="mr-1" />
+                Refresh
+              </Button>
+            </div>
+            
+            <div className="bg-zinc-900 rounded-lg">
+              {paymentRequests.length === 0 ? (
+                <div className="p-6 text-center text-gray-400">
+                  <p>No payment requests yet</p>
+                </div>
+              ) : (
+                <div className="divide-y divide-zinc-800">
+                  {paymentRequests.map((request) => (
+                    <div key={request.id} className="p-4">
+                      <div className="flex justify-between items-start">
+                        <div>
+                          <div className="flex items-center space-x-2">
+                            <span className="font-bold">
+                              ${parseFloat(request.amount).toFixed(2)}
+                            </span>
+                            <span className="text-xs bg-zinc-800 px-2 py-1 rounded text-gray-300">
+                              {request.tokenType.toUpperCase()}
+                            </span>
+                            <span className="flex items-center text-xs text-gray-400">
+                              {getStatusIcon(request.status)}
+                              <span className="ml-1 capitalize">{request.status}</span>
+                            </span>
+                          </div>
+                          <p className="text-xs text-gray-400 mt-1">
+                            {formatDate(request.createdAt)}
+                          </p>
+                        </div>
+                        
+                        <div className="flex space-x-2">
+                          <button
+                            onClick={() => handleShareRequest(request.link)}
+                            className="p-2 rounded-full hover:bg-zinc-800 transition"
+                            title="Share payment link"
+                          >
+                            <Share2 size={14} />
+                          </button>
+                          
+                          {request.status === "pending" && (
+                            <button
+                              onClick={() => handleCancelRequest(request.id)}
+                              className="p-2 rounded-full hover:bg-zinc-800 transition text-red-400"
+                              title="Cancel request"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </>
         )}
       </main>
     </div>

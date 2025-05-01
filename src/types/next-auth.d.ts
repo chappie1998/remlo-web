@@ -12,6 +12,8 @@ declare module "next-auth" {
       solanaAddress?: string | null;
       /** Whether the user has set up a passcode */
       hasPasscode?: boolean;
+      /** The user's unique username */
+      username?: string | null;
     } & DefaultSession["user"];
   }
 
@@ -24,5 +26,7 @@ declare module "next-auth" {
     solanaAddress?: string;
     /** Whether the user has set up a passcode */
     hasPasscode?: boolean;
+    /** The user's unique username */
+    username?: string;
   }
 }

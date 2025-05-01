@@ -78,8 +78,8 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Get transaction details and passcode from the request
-    const { to, amount, passcode, backupShare, recoveryShare } = await req.json();
+    // Extract the recipient address, amount, and passcode from the request
+    const { to, amount, passcode, username, backupShare, recoveryShare } = await req.json();
 
     if (!to || !amount) {
       return NextResponse.json(
@@ -215,10 +215,10 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Step 1: Create a record of the transaction request
+    // Create a record of the transaction request
     const transaction = await prisma.transaction.create({
       data: {
-        txData: JSON.stringify({ to, amount, token: SPL_TOKEN_ADDRESS }),
+        txData: JSON.stringify({ to, amount, token: SPL_TOKEN_ADDRESS, username }),
         status: "pending",
         user: {
           connect: { id: user.id }
