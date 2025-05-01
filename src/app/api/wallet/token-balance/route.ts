@@ -4,6 +4,7 @@ import { PrismaClient } from "@prisma/client";
 import { RELAYER_URL } from "@/lib/solana";
 import { authOptions } from "@/lib/auth";
 import { fetchSplTokenBalance } from "@/lib/solana";
+import connectionPool from "@/lib/solana-connection-pool";
 
 const prisma = new PrismaClient();
 
@@ -24,6 +25,7 @@ export async function GET(req: NextRequest) {
   try {
     let userEmail = null;
     console.log('Handling token balance request');
+    console.log(`Connection pool stats: ${connectionPool.getConnectionCount()} active connections`);
 
     // First, try to get the session from NextAuth
     const session = await getServerSession(authOptions);

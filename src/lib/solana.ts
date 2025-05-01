@@ -11,13 +11,14 @@ import {
   TokenAccountNotFoundError,
   TokenInvalidAccountOwnerError,
 } from '@solana/spl-token';
+import connectionPool from './solana-connection-pool';
 
 // The network can be 'mainnet-beta', 'testnet', or 'devnet'
 export const SOLANA_NETWORK = 'devnet';
 
 // RPC URL from environment or fallback to public endpoints
 export const SOLANA_RPC_URL =
-  process.env.SOLANA_RPC_URL || clusterApiUrl(SOLANA_NETWORK);
+  process.env.NEXT_PUBLIC_SOLANA_RPC_URL || clusterApiUrl(SOLANA_NETWORK);
 
 // SPL token address
 export const SPL_TOKEN_ADDRESS = 'Gh9ZwEmdLJ8DscKNTkTqPbNwLNNBjuSzaG9Vp2KGtKJr';
@@ -26,11 +27,10 @@ export const SPL_TOKEN_ADDRESS = 'Gh9ZwEmdLJ8DscKNTkTqPbNwLNNBjuSzaG9Vp2KGtKJr';
 export const RELAYER_URL = process.env.NEXT_PUBLIC_RELAYER_URL || 'http://localhost:3001';
 
 /**
- * Creates a Connection for Solana
+ * Gets a Connection for Solana from the connection pool
  */
 export function getSolanaConnection(): Connection {
-  console.log(`Creating Solana connection to: ${SOLANA_RPC_URL}`);
-  return new Connection(SOLANA_RPC_URL, 'confirmed');
+  return connectionPool.getConnection(SOLANA_RPC_URL);
 }
 
 /**

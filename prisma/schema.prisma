@@ -14,7 +14,7 @@ model User {
   id            String    @id @default(cuid())
   name          String?
   username      String?   @unique  // Username for user-friendly identification
-  email         String?   @unique
+  email         String    @unique
   phone         String?   @unique
   emailVerified DateTime?
   phoneVerified DateTime?
@@ -27,6 +27,8 @@ model User {
   encryptedKeypair String?           // Encrypted keypair (legacy field)
   hasPasscode      Boolean   @default(false)
   passcodeSetAt    DateTime?
+  passcodeHash     String?
+  recoveryKey      String?
 
   // MPC related fields
   mpcServerShare   String?            // Encrypted server share for MPC
@@ -39,7 +41,10 @@ model User {
   sessions        Session[]
   transactions    Transaction[]
   paymentRequests PaymentRequest[] // Payment requests created by this user
-  payments        Payment[]       // Payments made by this user
+  sentPayments    Payment[]        @relation("SentPayments")
+  receivedPayments Payment[]       @relation("ReceivedPayments")
+  contacts        Contact[]        @relation("UserContacts")
+  savedTemplates  SavedTemplate[]  @relation("UserTemplates")
 }
 
 model Account {
@@ -71,7 +76,7 @@ model Session {
 
 model VerificationToken {
   identifier String
-  token      String
+  token      String   @unique
   expires    DateTime
 
   @@unique([identifier, token])
@@ -130,4 +135,36 @@ model Payment {
   // Relations
   payer           User     @relation(fields: [payerId], references: [id], onDelete: Cascade)
   paymentRequest  PaymentRequest @relation(fields: [paymentRequestId], references: [id], onDelete: Cascade)
+}
+
+// Contact model for saving frequently used recipients
+model Contact {
+  id            String    @id @default(cuid())
+  nickname      String
+  username      String?
+  solanaAddress String
+  isFavorite    Boolean   @default(false)
+  lastUsed      DateTime  @default(now())
+  createdAt     DateTime  @default(now())
+
+  user          User      @relation("UserContacts", fields: [userId], references: [id], onDelete: Cascade)
+  userId        String
+  
+  @@unique([userId, solanaAddress])
+}
+
+// SavedTemplate model for recurring payments
+model SavedTemplate {
+  id            String    @id @default(cuid())
+  name          String
+  recipient     String    // Can be address or username
+  amount        String
+  tokenType     String    // "usd" or "usdc"
+  description   String?
+  frequency     String?   // "once", "daily", "weekly", "monthly"
+  createdAt     DateTime  @default(now())
+  lastUsed      DateTime  @default(now())
+
+  user          User      @relation("UserTemplates", fields: [userId], references: [id], onDelete: Cascade)
+  userId        String
 }

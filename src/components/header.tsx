@@ -5,7 +5,7 @@ import { useSession, signOut } from "next-auth/react";
 import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { RemloIcon } from "@/components/icons";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import {
   LogOut,
   User,
@@ -13,17 +13,50 @@ import {
   Home,
   Activity,
   DollarSign,
-  Bell
+  Bell,
+  ArrowLeft
 } from "lucide-react";
 
-export default function Header() {
+interface HeaderProps {
+  title?: string;
+  backUrl?: string;
+}
+
+export default function Header({ title, backUrl }: HeaderProps) {
   const { data: session } = useSession();
   const pathname = usePathname();
+  const router = useRouter();
 
   const isActive = (path: string) => {
     return pathname === path;
   };
 
+  // If a back URL is provided, show a simpler header with back button and title
+  if (backUrl) {
+    return (
+      <header className="border-b border-zinc-800 fixed top-0 left-0 right-0 z-40 bg-black">
+        <div className="container mx-auto px-4 py-3 flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <Button 
+              variant="ghost" 
+              size="icon" 
+              className="text-gray-400 hover:text-emerald-400"
+              onClick={() => router.push(backUrl)}
+            >
+              <ArrowLeft size={20} />
+            </Button>
+            {title && <h1 className="text-lg font-medium">{title}</h1>}
+          </div>
+          
+          <div className="flex items-center gap-3">
+            <ThemeToggle />
+          </div>
+        </div>
+      </header>
+    );
+  }
+
+  // Default header with navigation
   return (
     <header className="border-b border-zinc-800 sticky top-0 z-40 bg-black">
       <div className="container mx-auto px-4 py-3 flex items-center justify-between">

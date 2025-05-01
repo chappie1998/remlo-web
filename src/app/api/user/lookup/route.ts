@@ -19,64 +19,42 @@ export async function OPTIONS() {
 
 export async function POST(req: NextRequest) {
   try {
-    // Get the authenticated user from the session
-    const session = await getServerSession(authOptions);
-    
-    if (!session?.user?.email) {
-      return NextResponse.json(
-        { error: "You must be logged in to look up users" },
-        { status: 401 }
-      );
-    }
-
-    // Get the username from the request body
+    // Get the username from request body
     const { username } = await req.json();
-
-    // Validate the username
-    if (!username || typeof username !== 'string' || username.trim() === '') {
+    
+    if (!username || typeof username !== 'string') {
       return NextResponse.json(
-        { error: "Username cannot be empty" },
+        { error: "Username is required" },
         { status: 400 }
       );
     }
 
-    // Use findUnique but with email as a safety measure - this avoids type issues
-    const currentUser = await prisma.user.findUnique({
-      where: { email: session.user.email },
-    });
+    // Use a direct query to find the user by username
+    const users = await prisma.$queryRaw`
+      SELECT id, username, "solanaAddress" FROM "User" 
+      WHERE username = ${username}
+    `;
 
-    if (!currentUser) {
+    // Check if we found a user and it has a Solana address
+    // @ts-ignore - safely ignore type errors because we're using raw queries
+    if (!users || users.length === 0 || !users[0].solanaAddress) {
       return NextResponse.json(
         { error: "User not found" },
         { status: 404 }
       );
     }
 
-    // Now use a direct database query to find all users
-    const users = await prisma.$queryRaw`SELECT id, username, solanaAddress FROM User WHERE username IS NOT NULL`;
-    
-    // Find the user with the matching username
-    // @ts-ignore - safely ignore type errors because we're using raw queries
-    const matchedUser = users.find(u => u.username === username);
-
-    if (!matchedUser || !matchedUser.solanaAddress) {
-      return NextResponse.json(
-        { error: "User not found or has no wallet" },
-        { status: 404 }
-      );
-    }
-
-    // Return the user's Solana address
+    // Return the user information
     return NextResponse.json({
-      success: true,
-      username: username,
       // @ts-ignore - safely ignore type errors because we're using raw queries
-      solanaAddress: matchedUser.solanaAddress,
+      username: users[0].username,
+      // @ts-ignore - safely ignore type errors because we're using raw queries
+      solanaAddress: users[0].solanaAddress,
     });
   } catch (error) {
-    console.error("Error looking up user by username:", error);
+    console.error("Error looking up user:", error);
     return NextResponse.json(
-      { error: "Failed to look up user" },
+      { error: "An error occurred while looking up the user" },
       { status: 500 }
     );
   } finally {

@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth/next";
 import { PrismaClient } from "@prisma/client";
 import { fetchAccountBalance } from "@/lib/solana";
 import { authOptions } from "@/lib/auth";
+import connectionPool from "@/lib/solana-connection-pool";
 
 const prisma = new PrismaClient();
 
@@ -23,6 +24,7 @@ export async function GET(req: NextRequest) {
   try {
     let userEmail = null;
     console.log('Handling wallet balance request');
+    console.log(`Connection pool stats: ${connectionPool.getConnectionCount()} active connections`);
 
     // First, try to get the session from NextAuth
     const session = await getServerSession(authOptions);

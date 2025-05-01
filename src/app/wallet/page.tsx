@@ -31,7 +31,10 @@ import {
   CircleDashed,
   FileText,
   Wallet2,
-  CopyIcon
+  CopyIcon,
+  Search,
+  SlidersHorizontal,
+  User
 } from "lucide-react";
 import { USDsIcon, USDCIcon, SwapIcon, ReceiveIcon, SendMoneyIcon, RemloIcon, ActivityIcon } from "@/components/icons";
 
@@ -74,6 +77,12 @@ export default function AccountDashboard() {
   const [loadingBalance, setLoadingBalance] = useState(true);
   const [activeTab, setActiveTab] = useState("overview");
   const [refreshing, setRefreshing] = useState(false);
+
+  // Transaction filtering
+  const [searchQuery, setSearchQuery] = useState("");
+  const [txFilter, setTxFilter] = useState<"all" | "sent" | "received" | "swapped">("all");
+  const [txStatusFilter, setTxStatusFilter] = useState<"all" | "success" | "pending" | "failed">("all");
+  const [showFilters, setShowFilters] = useState(false);
 
   // Calculate the total balance in USD (assuming 1 USDC = 1 USDs = $1)
   const totalUsdBalance = parseFloat(usdsBalance) + parseFloat(usdcBalance);
@@ -426,6 +435,51 @@ export default function AccountDashboard() {
     }
   };
 
+  // Filter transactions based on search query and filters
+  const getFilteredTransactions = () => {
+    return transactions.filter(tx => {
+      // Parse transaction data to get more details
+      let txData;
+      try {
+        txData = JSON.parse(tx.txData);
+      } catch (e) {
+        txData = {};
+      }
+      
+      // Apply status filter
+      if (txStatusFilter !== "all" && tx.status !== txStatusFilter) {
+        return false;
+      }
+      
+      // Apply transaction type filter
+      if (txFilter !== "all") {
+        if (txFilter === "sent" && !txData.to) {
+          return false;
+        }
+        if (txFilter === "received" && txData.to) {
+          return false;
+        }
+        if (txFilter === "swapped" && !txData.swap) {
+          return false;
+        }
+      }
+      
+      // Apply search query
+      if (searchQuery) {
+        const formattedTx = formatTxData(tx.txData).toLowerCase();
+        if (!formattedTx.includes(searchQuery.toLowerCase())) {
+          // Check recipient address or username
+          if (txData.to && !txData.to.toLowerCase().includes(searchQuery.toLowerCase()) &&
+              (!txData.username || !txData.username.toLowerCase().includes(searchQuery.toLowerCase()))) {
+            return false;
+          }
+        }
+      }
+      
+      return true;
+    });
+  };
+
   return (
     <div className="min-h-screen flex flex-col bg-black text-white">
       <Header />
@@ -482,6 +536,29 @@ export default function AccountDashboard() {
               ))}
             </div>
           </div>
+        </div>
+
+        {/* Quick links section - add after the balances */}
+        <div className="grid grid-cols-2 gap-4 mb-6">
+          <Link href="/wallet/contacts" className="flex items-center p-4 bg-zinc-900 rounded-xl border border-zinc-800 hover:bg-zinc-800 transition">
+            <div className="p-2 mr-3 rounded-full bg-emerald-900/20 text-emerald-400">
+              <User size={18} />
+            </div>
+            <div>
+              <h3 className="font-medium text-gray-200">Contacts</h3>
+              <p className="text-xs text-gray-500">Manage your recipients</p>
+            </div>
+          </Link>
+          
+          <Link href="/wallet/send" className="flex items-center p-4 bg-zinc-900 rounded-xl border border-zinc-800 hover:bg-zinc-800 transition">
+            <div className="p-2 mr-3 rounded-full bg-emerald-900/20 text-emerald-400">
+              <SendMoneyIcon width={18} height={18} />
+            </div>
+            <div>
+              <h3 className="font-medium text-gray-200">Send</h3>
+              <p className="text-xs text-gray-500">Send USDs or USDC</p>
+            </div>
+          </Link>
         </div>
 
         {/* Action buttons */}
@@ -812,11 +889,101 @@ export default function AccountDashboard() {
         {/* Transactions Tab */}
         {activeTab === "transactions" && (
           <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-6 shadow-sm">
-            <h2 className="text-xl font-semibold mb-6 text-white">Transaction History</h2>
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
+              <h2 className="text-xl font-semibold text-white">Transaction History</h2>
+              
+              <div className="flex space-x-2">
+                <div className="relative flex-1 min-w-[200px]">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <Search size={16} className="text-gray-400" />
+                  </div>
+                  <input
+                    type="text"
+                    placeholder="Search transactions..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="w-full pl-10 pr-4 py-2 rounded-md border border-zinc-700 bg-zinc-800 text-gray-200 focus:outline-none focus:ring-2 focus:ring-emerald-500 text-sm"
+                  />
+                </div>
+                
+                <Button
+                  variant="outline"
+                  size="icon"
+                  className="border-zinc-700 text-gray-300 hover:bg-zinc-800"
+                  onClick={() => setShowFilters(!showFilters)}
+                >
+                  <SlidersHorizontal size={16} />
+                </Button>
+              </div>
+            </div>
+            
+            {/* Filters */}
+            {showFilters && (
+              <div className="p-4 mb-6 bg-zinc-800 rounded-lg border border-zinc-700">
+                <div className="flex flex-col sm:flex-row gap-4">
+                  <div className="flex-1">
+                    <label className="text-xs text-gray-400 mb-1 block">Transaction Type</label>
+                    <div className="flex space-x-2">
+                      {(["all", "sent", "received", "swapped"] as const).map((filter) => (
+                        <Button
+                          key={filter}
+                          size="sm"
+                          variant={txFilter === filter ? "default" : "outline"}
+                          className={txFilter === filter 
+                            ? "bg-emerald-600 hover:bg-emerald-700 text-white border-transparent"
+                            : "border-zinc-700 text-gray-300 hover:bg-zinc-700"
+                          }
+                          onClick={() => setTxFilter(filter)}
+                        >
+                          {filter.charAt(0).toUpperCase() + filter.slice(1)}
+                        </Button>
+                      ))}
+                    </div>
+                  </div>
+                  
+                  <div className="flex-1">
+                    <label className="text-xs text-gray-400 mb-1 block">Status</label>
+                    <div className="flex space-x-2">
+                      {(["all", "success", "pending", "failed"] as const).map((filter) => (
+                        <Button
+                          key={filter}
+                          size="sm"
+                          variant={txStatusFilter === filter ? "default" : "outline"}
+                          className={txStatusFilter === filter 
+                            ? "bg-emerald-600 hover:bg-emerald-700 text-white border-transparent"
+                            : "border-zinc-700 text-gray-300 hover:bg-zinc-700"
+                          }
+                          onClick={() => setTxStatusFilter(filter)}
+                        >
+                          {filter.charAt(0).toUpperCase() + filter.slice(1)}
+                        </Button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+                
+                {(searchQuery || txFilter !== "all" || txStatusFilter !== "all") && (
+                  <div className="flex justify-end mt-4">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="text-xs border-zinc-700 text-gray-300 hover:bg-zinc-700"
+                      onClick={() => {
+                        setSearchQuery("");
+                        setTxFilter("all");
+                        setTxStatusFilter("all");
+                      }}
+                    >
+                      Clear Filters
+                    </Button>
+                  </div>
+                )}
+              </div>
+            )}
 
-            {transactions.length > 0 ? (
+            {getFilteredTransactions().length > 0 ? (
               <div className="space-y-3">
-                {transactions.map((tx) => (
+                {getFilteredTransactions().map((tx) => (
                   <div key={tx.id} className="p-4 border border-zinc-800 rounded-lg hover:bg-zinc-800/50 transition">
                     <div className="flex items-start justify-between mb-2">
                       <div className="flex items-center">
@@ -853,13 +1020,23 @@ export default function AccountDashboard() {
               </div>
             ) : (
               <div className="flex flex-col items-center justify-center py-12 text-center">
-                <div className="p-4 rounded-full bg-zinc-800 mb-3">
-                  <ArrowLeftRight size={32} className="text-gray-500" />
-                </div>
-                <h3 className="text-lg font-medium mb-1 text-gray-300">No transactions yet</h3>
-                <p className="text-sm text-gray-500 max-w-md">
-                  When you send or receive tokens, your transactions will appear here
-                </p>
+                {searchQuery || txFilter !== "all" || txStatusFilter !== "all" ? (
+                  <>
+                    <Filter size={32} className="text-gray-500 mb-3" />
+                    <h3 className="text-lg font-medium mb-1 text-gray-300">No matching transactions</h3>
+                    <p className="text-sm text-gray-500 max-w-md">
+                      Try adjusting your filters or search query
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <ArrowLeftRight size={32} className="text-gray-500 mb-3" />
+                    <h3 className="text-lg font-medium mb-1 text-gray-300">No transactions yet</h3>
+                    <p className="text-sm text-gray-500 max-w-md">
+                      When you send or receive tokens, your transactions will appear here
+                    </p>
+                  </>
+                )}
               </div>
             )}
           </div>

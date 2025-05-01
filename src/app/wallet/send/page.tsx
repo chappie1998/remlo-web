@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
@@ -21,6 +21,7 @@ import { USDsIcon, USDCIcon } from "@/components/icons";
 import { shortenAddress, isValidPasscode } from "@/lib/utils";
 import { isValidSolanaAddress } from "@/lib/solana";
 import Link from "next/link";
+import debounce from "lodash/debounce";
 
 export default function SendPage() {
   const { data: session, status } = useSession();
@@ -46,6 +47,62 @@ export default function SendPage() {
   const [foundUser, setFoundUser] = useState<{ username: string, solanaAddress: string } | null>(null);
   const [usdsBalance, setUsdsBalance] = useState("0.0");
   const [usdcBalance, setUsdcBalance] = useState("0.0");
+  
+  // Username validation states
+  const [isValidatingUsername, setIsValidatingUsername] = useState(false);
+  const [usernameStatus, setUsernameStatus] = useState<"idle" | "validating" | "valid" | "invalid">("idle");
+  
+  // Debounced username validation function
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const debouncedValidateUsername = useCallback(
+    debounce(async (username: string) => {
+      if (!username || username.length < 3) {
+        setUsernameStatus("idle");
+        return;
+      }
+
+      setIsValidatingUsername(true);
+      setUsernameStatus("validating");
+
+      try {
+        const response = await fetch("/api/user/lookup", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ username }),
+        });
+
+        const data = await response.json();
+
+        if (response.ok) {
+          setUsernameStatus("valid");
+          // Don't automatically set the found user yet, just indicate it exists
+        } else {
+          setUsernameStatus("invalid");
+        }
+      } catch (err) {
+        setUsernameStatus("invalid");
+      } finally {
+        setIsValidatingUsername(false);
+      }
+    }, 500), // 500ms debounce time
+    []
+  );
+
+  // Trigger username validation on input change
+  useEffect(() => {
+    if (activeTab === "username" && username && username.length >= 3) {
+      debouncedValidateUsername(username);
+    } else {
+      setUsernameStatus("idle");
+    }
+
+    // Cleanup function to cancel debounced calls
+    return () => {
+      debouncedValidateUsername.cancel();
+    };
+  }, [username, activeTab, debouncedValidateUsername]);
   
   // Check authentication and fetch balances
   useEffect(() => {
@@ -293,6 +350,7 @@ export default function SendPage() {
   const handleTabChange = (tab: "username" | "address") => {
     setActiveTab(tab);
     setError("");
+    setUsernameStatus("idle");
     
     // Reset fields when switching tabs
     if (tab === "address") {
@@ -420,15 +478,31 @@ export default function SendPage() {
                           setRecipient("");
                         }
                       }}
-                      className="w-full p-3 rounded-md border border-zinc-700 bg-zinc-800 text-gray-200 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                      className={`w-full p-3 rounded-md border ${
+                        usernameStatus === "valid" 
+                          ? "border-emerald-500 bg-emerald-900/20" 
+                          : usernameStatus === "invalid" 
+                            ? "border-red-500 bg-red-900/20" 
+                            : "border-zinc-700 bg-zinc-800"
+                      } text-gray-200 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500`}
                       disabled={isLookingUpUsername}
                     />
-                    {isLookingUpUsername && (
-                      <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
+                    <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
+                      {isLookingUpUsername || isValidatingUsername ? (
                         <RefreshCw size={16} className="animate-spin text-gray-400" />
-                      </div>
-                    )}
+                      ) : usernameStatus === "valid" ? (
+                        <CheckCircle2 size={16} className="text-emerald-400" />
+                      ) : usernameStatus === "invalid" && username.length >= 3 ? (
+                        <XCircle size={16} className="text-red-400" />
+                      ) : null}
+                    </div>
                   </div>
+                  {usernameStatus === "valid" && !foundUser && username.length >= 3 && (
+                    <p className="text-xs text-emerald-400">Username exists! Click 'Review & Send' to continue.</p>
+                  )}
+                  {usernameStatus === "invalid" && username.length >= 3 && (
+                    <p className="text-xs text-red-400">Username doesn't exist.</p>
+                  )}
                   {foundUser && (
                     <div className="bg-emerald-900/30 border border-emerald-800 rounded-md p-2 text-sm text-emerald-400 flex items-center">
                       <CheckCircle2 size={16} className="mr-2" />
@@ -442,6 +516,7 @@ export default function SendPage() {
                           setUsername("");
                           setFoundUser(null);
                           setRecipient("");
+                          setUsernameStatus("idle");
                         }}
                       >
                         Clear
