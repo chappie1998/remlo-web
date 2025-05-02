@@ -60,24 +60,24 @@ export default function AccountDashboard() {
   const router = useRouter();
   const [showPasscodeModal, setShowPasscodeModal] = useState(false);
   const [passcode, setPasscode] = useState("");
-  const [recipient, setRecipient] = useState("");
-  const [recipientUsername, setRecipientUsername] = useState("");
-  const [isLookingUpUsername, setIsLookingUpUsername] = useState(false);
-  const [foundUser, setFoundUser] = useState<{ username: string, solanaAddress: string } | null>(null);
-  const [amount, setAmount] = useState("");
-  const [tokenType, setTokenType] = useState("usd"); // "usd" or "usdc"
-  const [swapAmount, setSwapAmount] = useState("");
-  const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
+  const [passcodeError, setPasscodeError] = useState("");
+  const [username, setUsername] = useState("");
+  const [recipient, setRecipient] = useState("");
+  const [amount, setAmount] = useState("");
+  const [foundUser, setFoundUser] = useState<{ username: string, solanaAddress: string } | null>(null);
+  const [isValidatingUsername, setIsValidatingUsername] = useState(false);
 
-  // Balance states
-  const [solBalance, setSolBalance] = useState("0.0");
-  const [usdsBalance, setUsdsBalance] = useState("0.0");
-  const [usdcBalance, setUsdcBalance] = useState("0.0");
-  const [transactions, setTransactions] = useState<Transaction[]>([]);
-  const [loadingBalance, setLoadingBalance] = useState(true);
+  // State variables for account details
   const [activeTab, setActiveTab] = useState("overview");
-  const [refreshing, setRefreshing] = useState(false);
+  const [solanaAddress, setSolanaAddress] = useState("");
+  const [solBalance, setSolBalance] = useState("0.0");
+  const [usdcBalance, setUsdcBalance] = useState("0.0");
+  const [usdsBalance, setUsdsBalance] = useState("0.0");
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [tokenType, setTokenType] = useState("usd"); // "usd" or "usdc"
+  const [isLoading, setIsLoading] = useState(false);
+  const [isAddressCopied, setIsAddressCopied] = useState(false);
 
   // Transaction filtering
   const [searchQuery, setSearchQuery] = useState("");
@@ -106,16 +106,9 @@ export default function AccountDashboard() {
     }
   }, [status, session, router]);
 
-  // Set default tokenType to "usdc" when swap tab is first activated
-  useEffect(() => {
-    if (activeTab === "swap") {
-      setTokenType("usdc");
-    }
-  }, [activeTab]); // This will only run when activeTab changes, not when tokenType changes
-
   const fetchBalances = async () => {
     try {
-      setLoadingBalance(true);
+      setIsLoading(true);
       // Fetch SOL balance
       const solResponse = await fetch("/api/wallet/balance");
       if (solResponse.ok) {
@@ -133,7 +126,7 @@ export default function AccountDashboard() {
     } catch (error) {
       console.error("Error fetching balances:", error);
     } finally {
-      setLoadingBalance(false);
+      setIsLoading(false);
     }
   };
 
@@ -150,20 +143,18 @@ export default function AccountDashboard() {
   };
 
   const refreshData = async () => {
-    setRefreshing(true);
     await Promise.all([fetchBalances(), fetchTransactions()]);
     toast.success("Account data refreshed");
-    setRefreshing(false);
   };
 
   // Look up a user by username
   const lookupUsername = async () => {
-    if (!recipientUsername || recipientUsername.trim() === "") {
+    if (!username || username.trim() === "") {
       setError("Username cannot be empty");
       return;
     }
 
-    setIsLookingUpUsername(true);
+    setIsValidatingUsername(true);
     setError("");
     setFoundUser(null);
 
@@ -174,7 +165,7 @@ export default function AccountDashboard() {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          username: recipientUsername,
+          username: username,
         }),
       });
 
@@ -197,17 +188,7 @@ export default function AccountDashboard() {
       setError(errorMessage);
       setRecipient(""); // Clear recipient address if lookup fails
     } finally {
-      setIsLookingUpUsername(false);
-    }
-  };
-
-  // Clear the username and found user when recipient address is manually changed
-  const handleRecipientChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setRecipient(e.target.value);
-    // If the user manually modifies the address, clear the username lookup
-    if (foundUser && e.target.value !== foundUser.solanaAddress) {
-      setRecipientUsername("");
-      setFoundUser(null);
+      setIsValidatingUsername(false);
     }
   };
 
@@ -231,10 +212,10 @@ export default function AccountDashboard() {
     }
 
     // Check if there are sufficient funds
-    if (tokenType === "usd" && parseFloat(amount) > parseFloat(usdsBalance)) {
+    if (foundUser && foundUser.solanaAddress && tokenType === "usd" && parseFloat(amount) > parseFloat(usdsBalance)) {
       setError("Insufficient balance");
       return false;
-    } else if (tokenType === "usdc" && parseFloat(amount) > parseFloat(usdcBalance)) {
+    } else if (foundUser && foundUser.solanaAddress && tokenType === "usdc" && parseFloat(amount) > parseFloat(usdcBalance)) {
       setError("Insufficient balance");
       return false;
     }
@@ -289,9 +270,7 @@ export default function AccountDashboard() {
 
     try {
       // Determine which endpoint to use based on token type
-      const endpoint = tokenType === "usdc"
-        ? "/api/wallet/send-token-transaction"
-        : "/api/wallet/send-transaction"; // Assuming USDs use the regular SOL transaction endpoint for now
+      const endpoint = foundUser && foundUser.solanaAddress ? "/api/wallet/send-token-transaction" : "/api/wallet/send-transaction";
 
       // Include username in the request if a user was found
       const requestData: {
@@ -333,7 +312,7 @@ export default function AccountDashboard() {
       setShowPasscodeModal(false);
       setPasscode("");
       setRecipient("");
-      setRecipientUsername("");
+      setUsername("");
       setFoundUser(null);
       setAmount("");
 
@@ -349,104 +328,20 @@ export default function AccountDashboard() {
     }
   };
 
-  // Replace the mock handleSwap function
-  const handleSwap = async (e: React.FormEvent) => {
-    e.preventDefault();
-    
-    if (!swapAmount || isNaN(parseFloat(swapAmount)) || parseFloat(swapAmount) <= 0) {
-      setError("Enter a valid amount to swap");
-      return;
-    }
-
-    // Check if user has enough balance for the swap
-    if (tokenType === "usdc") {
-      // USDC to USDs swap
-      if (parseFloat(swapAmount) > parseFloat(usdcBalance)) {
-        setError("Insufficient USDC balance for swap");
-        return;
-      }
-    } else {
-      // USDs to USDC swap
-      if (parseFloat(swapAmount) > parseFloat(usdsBalance)) {
-        setError("Insufficient USDs balance for swap");
-        return;
-      }
-    }
-
-    setIsLoading(true);
-
-    try {
-      // Determine which endpoint to use based on swap direction
-      const endpoint = tokenType === "usdc"
-        ? "/api/wallet/swap-usdc-to-usds"
-        : "/api/wallet/swap-usds-to-usdc";
-
-      const response = await fetch(endpoint, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          amount: swapAmount,
-          passcode,
-        }),
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || "Swap failed");
-      }
-
-      toast.success("Swap completed successfully!");
-      setShowPasscodeModal(false);
-      setPasscode("");
-      setSwapAmount("");
-
-      // Refresh balance and transactions
-      fetchBalances();
-      fetchTransactions();
-    } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : "Swap failed";
-      setError(errorMessage);
-      toast.error(errorMessage);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  // Add a new function to open the passcode modal for swaps
-  const handleSwapFormSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    setError("");
-
-    if (!swapAmount || isNaN(parseFloat(swapAmount)) || parseFloat(swapAmount) <= 0) {
-      setError("Enter a valid amount to swap");
-      return;
-    }
-
-    // Check if user has enough balance for the swap
-    if (tokenType === "usdc") {
-      // USDC to USDs swap
-      if (parseFloat(swapAmount) > parseFloat(usdcBalance)) {
-        setError("Insufficient USDC balance for swap");
-        return;
-      }
-    } else {
-      // USDs to USDC swap
-      if (parseFloat(swapAmount) > parseFloat(usdsBalance)) {
-        setError("Insufficient USDs balance for swap");
-        return;
-      }
-    }
-
-    setShowPasscodeModal(true);
-  };
-
   // Format transaction data for display
   const formatTxData = (txDataString: string) => {
     try {
       const txData = JSON.parse(txDataString);
+      
+      // Check if it's a swap transaction
+      if (txData.swap) {
+        if (txData.swap === "USDC_TO_USDS") {
+          return `Swapped ${txData.amount} USDC to USDs`;
+        } else if (txData.swap === "USDS_TO_USDC") {
+          return `Swapped ${txData.amount} USDs to USDC`;
+        }
+        return `Swapped ${txData.amount}`;
+      }
       
       // Check if the transaction includes a username
       if (txData.username) {
@@ -478,6 +373,29 @@ export default function AccountDashboard() {
         return <Clock className="text-yellow-500" size={16} />;
       default:
         return <XCircle className="text-red-500" size={16} />;
+    }
+  };
+
+  // Get transaction type icon
+  const getTransactionTypeIcon = (txDataString: string) => {
+    try {
+      const txData = JSON.parse(txDataString);
+      
+      // Swap transaction icon
+      if (txData.swap) {
+        return <ArrowLeftRight className="text-emerald-500" size={16} />;
+      }
+      
+      // Send transaction icon
+      if (txData.to) {
+        return <ArrowRight className="text-blue-500" size={16} />;
+      }
+      
+      // Receive transaction icon (default)
+      return <ArrowDown className="text-green-500" size={16} />;
+    } catch (e) {
+      // Unknown transaction type
+      return <CircleDashed className="text-gray-500" size={16} />;
     }
   };
 
@@ -522,10 +440,10 @@ export default function AccountDashboard() {
       
       // Apply transaction type filter
       if (txFilter !== "all") {
-        if (txFilter === "sent" && !txData.to) {
+        if (txFilter === "sent" && (!txData.to || txData.swap)) {
           return false;
         }
-        if (txFilter === "received" && txData.to) {
+        if (txFilter === "received" && (txData.to || txData.swap)) {
           return false;
         }
         if (txFilter === "swapped" && !txData.swap) {
@@ -570,14 +488,14 @@ export default function AccountDashboard() {
                 variant="outline"
                 className="text-gray-300 border-zinc-700 hover:bg-zinc-800"
                 onClick={refreshData}
-                disabled={refreshing}
+                disabled={isLoading}
               >
-                {refreshing ? (
+                {isLoading ? (
                   <RefreshCw className="h-4 w-4 animate-spin" />
                 ) : (
                   <RefreshCw className="h-4 w-4" />
                 )}
-                <span className="ml-1">{refreshing ? "Refreshing..." : "Refresh"}</span>
+                <span className="ml-1">{isLoading ? "Refreshing..." : "Refresh"}</span>
               </Button>
             </div>
           </div>
@@ -587,22 +505,44 @@ export default function AccountDashboard() {
               <h3 className="text-base font-medium text-white">Your Accounts</h3>
             </div>
             <div className="space-y-3">
-              {[
-                { name: "USDs Balance", balance: `$${usdsBalance}`, icon: <DollarSign size={18} className="text-emerald-400" /> },
-                { name: "USDC Balance", balance: `$${usdcBalance}`, icon: <DollarSign size={18} className="text-blue-400" /> }
-              ].map((item, index) => (
-                <div key={index} className="flex items-center justify-between p-3 rounded-lg bg-zinc-800">
-                  <div className="flex items-center">
-                    <div className="mr-3 p-2 rounded-full bg-zinc-700">
-                      {item.icon}
-                    </div>
-                    <div>
-                      <div className="font-medium text-white">{item.name}</div>
+              {/* USDs Balance with APY indicator */}
+              <div className="flex items-center justify-between p-3 rounded-lg bg-zinc-800 border-emerald-700/40 border">
+                <div className="flex items-center">
+                  <div className="mr-3 p-2 rounded-full bg-emerald-900/40">
+                    <DollarSign size={18} className="text-emerald-400" />
+                  </div>
+                  <div>
+                    <div className="font-medium text-white">USDs Balance</div>
+                    <div className="flex items-center text-xs text-emerald-400 mt-0.5">
+                      <TrendingUp size={10} className="mr-1" />
+                      Earning 4.2% APY
                     </div>
                   </div>
-                  <div className="text-lg font-semibold text-white">{item.balance}</div>
                 </div>
-              ))}
+                <div className="text-lg font-semibold text-white">${usdsBalance}</div>
+              </div>
+              
+              {/* USDC Balance */}
+              <div className="flex items-center justify-between p-3 rounded-lg bg-zinc-800">
+                <div className="flex items-center">
+                  <div className="mr-3 p-2 rounded-full bg-zinc-700">
+                    <DollarSign size={18} className="text-blue-400" />
+                  </div>
+                  <div>
+                    <div className="font-medium text-white">USDC Balance</div>
+                    <div className="flex items-center text-xs text-gray-400 mt-0.5">
+                      <Link 
+                        href="/wallet/swap" 
+                        className="text-blue-400 hover:text-blue-300 flex items-center transition-colors"
+                      >
+                        <ArrowLeftRight size={10} className="mr-1" />
+                        Swap to earn 4.2% APY
+                      </Link>
+                    </div>
+                  </div>
+                </div>
+                <div className="text-lg font-semibold text-white">${usdcBalance}</div>
+              </div>
             </div>
           </div>
         </div>
@@ -660,7 +600,7 @@ export default function AccountDashboard() {
         </div>
 
         {/* Tabs for different sections */}
-        <div className="flex border-b border-zinc-800 mb-6 overflow-x-auto">
+        <div className="flex overflow-x-auto border-b border-zinc-800 mb-6 no-scrollbar">
           <button
             className={`px-4 py-2 font-medium text-sm relative whitespace-nowrap ${
               activeTab === "overview"
@@ -683,16 +623,12 @@ export default function AccountDashboard() {
           >
             Receive
           </Link>
-          <button
-            className={`px-4 py-2 font-medium text-sm relative whitespace-nowrap ${
-              activeTab === "swap"
-                ? "text-emerald-400 border-b-2 border-emerald-400"
-                : "text-gray-400 hover:text-gray-300"
-            }`}
-            onClick={() => setActiveTab("swap")}
+          <Link
+            href="/wallet/swap"
+            className="px-4 py-2 font-medium text-sm relative whitespace-nowrap text-gray-400 hover:text-gray-300"
           >
             Swap
-          </button>
+          </Link>
           <button
             className={`px-4 py-2 font-medium text-sm relative whitespace-nowrap ${
               activeTab === "transactions"
@@ -725,13 +661,13 @@ export default function AccountDashboard() {
                     Convert your USDC to USDs and start earning 4.2% APY automatically. No lock-up period, no minimum deposit.
                   </p>
                 </div>
-                <Button
-                  onClick={() => setActiveTab("swap")}
-                  className="bg-emerald-600 hover:bg-emerald-500 text-white border-emerald-500 flex items-center gap-2 whitespace-nowrap"
+                <Link
+                  href="/wallet/swap"
+                  className="bg-emerald-600 hover:bg-emerald-500 text-white border-emerald-500 px-4 py-2 rounded flex items-center gap-2 whitespace-nowrap font-medium"
                 >
                   <TrendingUp size={16} />
                   Swap Now
-                </Button>
+                </Link>
               </div>
             </div>
 
@@ -760,15 +696,15 @@ export default function AccountDashboard() {
                     <span className="font-medium text-white">Receive</span>
                   </Link>
 
-                  <button
-                    onClick={() => setActiveTab("swap")}
+                  <Link
+                    href="/wallet/swap"
                     className="flex flex-col items-center justify-center p-4 bg-zinc-800 hover:bg-zinc-700 rounded-lg border-emerald-800 border transition group"
                   >
                     <div className="p-3 rounded-full bg-emerald-900/50 text-emerald-400 mb-3 group-hover:bg-emerald-900/60 transition">
                       <SwapIcon width={24} height={24} />
                     </div>
                     <span className="font-medium text-white">Swap</span>
-                  </button>
+                  </Link>
 
                   <Link href="/about" className="flex flex-col items-center justify-center p-4 bg-zinc-800 hover:bg-zinc-700 rounded-lg transition group">
                     <div className="p-3 rounded-full bg-zinc-700 text-gray-300 mb-3 group-hover:bg-zinc-600 transition">
@@ -795,8 +731,11 @@ export default function AccountDashboard() {
                   {transactions.length > 0 ? (
                     transactions.slice(0, 3).map((tx) => (
                       <div key={tx.id} className="flex items-center p-3 border border-zinc-800 rounded-lg hover:bg-zinc-800/50 transition">
-                        <div className="mr-3">
+                        <div className="mr-3 flex items-center">
                           {getStatusIcon(tx.status)}
+                          <div className="ml-2">
+                            {getTransactionTypeIcon(tx.txData)}
+                          </div>
                         </div>
                         <div className="flex-1 min-w-0">
                           <p className="text-sm font-medium truncate text-gray-200">{formatTxData(tx.txData)}</p>
@@ -842,173 +781,6 @@ export default function AccountDashboard() {
               <Link href="/wallet/receive" className="bg-emerald-700 hover:bg-emerald-600 text-white px-4 py-2 rounded inline-flex items-center gap-2 text-sm font-medium transition">
                 Go to Receive Page
               </Link>
-            </div>
-          </div>
-        )}
-
-        {/* Swap Tab */}
-        {activeTab === "swap" && (
-          <div className="max-w-lg mx-auto bg-zinc-900 border border-zinc-800 rounded-xl p-6 shadow-sm">
-            <div className="flex items-center mb-4">
-              <div className="p-3 rounded-full bg-emerald-900/50 text-emerald-400 mr-3">
-                <SwapIcon width={20} height={20} />
-              </div>
-              <div>
-                <h2 className="text-xl font-semibold text-white">
-                  {tokenType === "usdc" ? "Swap USDC to USDs" : "Swap USDs to USDC"}
-                </h2>
-                {tokenType === "usdc" && (
-                  <p className="text-xs text-emerald-400 flex items-center">
-                    <TrendingUp size={12} className="mr-1" /> Earn 4.2% APY on your stablecoins
-                  </p>
-                )}
-              </div>
-            </div>
-
-            {/* APY highlight banner for swap tab - only show for USDC to USDs direction */}
-            {tokenType === "usdc" && (
-              <div className="bg-gradient-to-r from-emerald-900/30 to-emerald-800/30 border border-emerald-800/50 rounded-lg p-4 mb-6">
-                <div className="flex items-start gap-3">
-                  <div className="p-2 rounded-full bg-emerald-800/50 text-emerald-300">
-                    <PiggyBank size={20} />
-                  </div>
-                  <div>
-                    <h3 className="font-bold text-emerald-300 text-sm">4.2% Annual Yield</h3>
-                    <p className="text-xs text-emerald-200/80">
-                      USDs automatically earns interest. In a real implementation, the swap would be performed through a Solana DEX like Jupiter or Orca.
-                    </p>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {error && (
-              <div className="p-3 rounded-lg bg-red-900/20 text-red-400 text-sm mb-4 flex items-start">
-                <XCircle size={16} className="mr-2 mt-0.5 flex-shrink-0" />
-                <p>{error}</p>
-              </div>
-            )}
-
-            <div className="bg-zinc-800 rounded-lg border border-zinc-700 p-4 mb-6">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-sm text-gray-400">From</span>
-                <span className="text-xs text-gray-500">
-                  Balance: {tokenType === "usdc" ? usdcBalance : usdsBalance} {tokenType === "usdc" ? "USDC" : "USDs"}
-                </span>
-              </div>
-              <div className="flex items-center bg-zinc-900 rounded-md p-3 border border-zinc-700">
-                <div className="pr-3 border-r border-zinc-700">
-                  <div className="flex items-center gap-2">
-                    {tokenType === "usdc" ? (
-                      <>
-                        <USDCIcon width={20} height={20} className="text-blue-400" />
-                        <span className="font-medium text-gray-200 flex items-center">
-                          USDC
-                          <ArrowRight size={14} className="ml-1 text-emerald-400 opacity-70" />
-                        </span>
-                      </>
-                    ) : (
-                      <>
-                        <USDsIcon width={20} height={20} className="text-emerald-400" />
-                        <span className="font-medium text-gray-200 flex items-center">
-                          USDs
-                          <ArrowRight size={14} className="ml-1 text-emerald-400 opacity-70" />
-                        </span>
-                      </>
-                    )}
-                  </div>
-                </div>
-                <input
-                  type="text"
-                  inputMode="decimal"
-                  placeholder="0.00"
-                  value={swapAmount}
-                  onChange={(e) => setSwapAmount(e.target.value)}
-                  className="flex-1 bg-transparent border-0 text-right text-lg focus:outline-none text-gray-200 px-3"
-                />
-              </div>
-            </div>
-
-            <div className="flex justify-center my-2">
-              <button 
-                className="p-2 rounded-full bg-emerald-900/20 border border-emerald-900/30 hover:bg-emerald-900/40 active:bg-emerald-800/30 transition-colors relative group overflow-hidden"
-                onClick={() => setTokenType(tokenType === "usdc" ? "usd" : "usdc")}
-                title="Switch swap direction"
-              >
-                <div className="transition-all duration-300 group-hover:rotate-180 transform-gpu">
-                  <ArrowLeftRight size={20} className="text-emerald-400" />
-                </div>
-                <div className="absolute inset-0 bg-emerald-500/20 opacity-0 group-active:opacity-100 rounded-full transition-opacity duration-200"></div>
-                <span className="absolute -top-8 left-1/2 transform -translate-x-1/2 bg-zinc-800 text-xs text-gray-300 py-1 px-2 rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap">
-                  Switch direction
-                </span>
-              </button>
-            </div>
-
-            <div className="bg-zinc-800 rounded-lg border border-zinc-700 p-4 mb-6">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-sm text-gray-400">To</span>
-                <span className="text-xs text-gray-500">
-                  Balance: {tokenType === "usdc" ? usdsBalance : usdcBalance} {tokenType === "usdc" ? "USDs" : "USDC"}
-                </span>
-              </div>
-              <div className="flex items-center bg-zinc-900 rounded-md p-3 border border-zinc-700">
-                <div className="pr-3 border-r border-zinc-700">
-                  <div className="flex items-center gap-2">
-                    {tokenType === "usdc" ? (
-                      <>
-                        <USDsIcon width={20} height={20} className="text-emerald-400" />
-                        <span className="font-medium text-gray-200 flex items-center">
-                          USDs
-                          <ArrowRight size={14} className="ml-1 text-emerald-400 opacity-70" />
-                        </span>
-                      </>
-                    ) : (
-                      <>
-                        <USDCIcon width={20} height={20} className="text-blue-400" />
-                        <span className="font-medium text-gray-200 flex items-center">
-                          USDC
-                          <ArrowRight size={14} className="ml-1 text-emerald-400 opacity-70" />
-                        </span>
-                      </>
-                    )}
-                  </div>
-                </div>
-                <div className="flex-1 text-right text-lg text-gray-200 px-3">
-                  {swapAmount ? (
-                    tokenType === "usdc" 
-                      ? (parseFloat(swapAmount) * 1.042).toFixed(6) // Apply bonus for USDC to USDs 
-                      : parseFloat(swapAmount).toFixed(6)           // No bonus for USDs to USDC
-                  ) : "0.00"}
-                </div>
-              </div>
-              {tokenType === "usdc" && (
-                <div className="mt-2 text-xs text-emerald-400 text-right">+4.2% bonus applied</div>
-              )}
-            </div>
-
-            <Button
-              onClick={handleSwapFormSubmit}
-              disabled={isLoading || !swapAmount}
-              className="w-full bg-emerald-600 hover:bg-emerald-700 text-white py-3 rounded-md font-medium flex justify-center items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {isLoading ? (
-                <>
-                  <RefreshCw size={16} className="animate-spin" />
-                  Swapping...
-                </>
-              ) : (
-                tokenType === "usdc" ? "Swap USDC to USDs" : "Swap USDs to USDC"
-              )}
-            </Button>
-
-            <div className="mt-4 bg-emerald-900/20 border border-emerald-900/30 rounded-md p-3 text-sm text-gray-300">
-              <p className="flex items-start gap-2">
-                <Info size={16} className="text-emerald-400 mt-0.5 flex-shrink-0" />
-                {tokenType === "usdc" 
-                  ? "By swapping USDC to USDs, you'll automatically earn 4.2% APY on your stablecoins."
-                  : "Swap back to USDC when you need funds for spending or transfers."}
-              </p>
             </div>
           </div>
         )}
@@ -1116,6 +888,9 @@ export default function AccountDashboard() {
                       <div className="flex items-center">
                         {getStatusIcon(tx.status)}
                         <span className="text-sm font-medium ml-2 text-gray-300">{tx.status}</span>
+                        <div className="ml-3">
+                          {getTransactionTypeIcon(tx.txData)}
+                        </div>
                       </div>
                       <span className="text-xs text-gray-500">
                         {formatDate(tx.createdAt)}
@@ -1174,18 +949,12 @@ export default function AccountDashboard() {
           <div className="fixed inset-0 flex items-center justify-center z-50 bg-black bg-opacity-75 p-4">
             <div className="bg-zinc-900 rounded-xl border border-zinc-800 p-6 w-full max-w-md">
               <h3 className="text-xl font-semibold text-white mb-4">
-                {recipient ? "Confirm Send" : "Confirm Swap"}
+                Confirm Send
               </h3>
               
-              {recipient ? (
-                <p className="text-gray-400 mb-6">
-                  Enter your 6-digit passcode to send {amount} {tokenType === "usdc" ? "USDC" : "USDs"} to {foundUser ? foundUser.username : shortenAddress(recipient)}
-                </p>
-              ) : (
-                <p className="text-gray-400 mb-6">
-                  Enter your 6-digit passcode to swap {swapAmount} {tokenType === "usdc" ? "USDC to USDs" : "USDs to USDC"}
-                </p>
-              )}
+              <p className="text-gray-400 mb-6">
+                Enter your 6-digit passcode to send {amount} {tokenType === "usdc" ? "USDC" : "USDs"} to {foundUser ? foundUser.username : shortenAddress(recipient)}
+              </p>
               
               {error && (
                 <div className="mb-4 p-3 bg-red-900/30 border border-red-900 rounded-md text-red-300 text-sm">
@@ -1193,7 +962,7 @@ export default function AccountDashboard() {
                 </div>
               )}
               
-              <form onSubmit={recipient ? handleSendTransaction : handleSwap}>
+              <form onSubmit={handleSendTransaction}>
                 <div className="mb-4">
                   <input
                     type="password"
@@ -1235,7 +1004,7 @@ export default function AccountDashboard() {
                         </span>
                       </>
                     ) : (
-                      <>{recipient ? "Send" : "Swap"}</>
+                      "Send"
                     )}
                   </Button>
                 </div>

@@ -225,8 +225,7 @@ export async function POST(req: NextRequest) {
       data: {
         txData: JSON.stringify({ 
           amount, 
-          swap: true, 
-          swapType: "USDC_TO_USDS" 
+          swap: "USDC_TO_USDS"
         }),
         status: "pending",
         user: {

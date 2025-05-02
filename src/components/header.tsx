@@ -14,7 +14,8 @@ import {
   Activity,
   DollarSign,
   Bell,
-  ArrowLeft
+  ArrowLeft,
+  ArrowLeftRight
 } from "lucide-react";
 
 interface HeaderProps {
@@ -98,6 +99,17 @@ export default function Header({ title, backUrl }: HeaderProps) {
                 }`}
               >
                 <span>Receive</span>
+              </Link>
+              <Link
+                href="/wallet/swap"
+                className={`px-3 py-2 rounded-md text-sm transition-colors flex items-center gap-1.5 ${
+                  isActive("/wallet/swap")
+                    ? "bg-emerald-950/50 text-emerald-400 font-medium"
+                    : "hover:bg-zinc-800 hover:text-gray-200 text-gray-400"
+                }`}
+              >
+                <ArrowLeftRight size={16} />
+                <span>Swap</span>
               </Link>
               <Link
                 href="/activity"
