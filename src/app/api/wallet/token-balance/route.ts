@@ -3,7 +3,7 @@ import { getServerSession } from "next-auth/next";
 import { PrismaClient } from "@prisma/client";
 import { RELAYER_URL } from "@/lib/solana";
 import { authOptions } from "@/lib/auth";
-import { fetchSplTokenBalance } from "@/lib/solana";
+import { fetchSplTokenBalance, fetchUsdsTokenBalance } from "@/lib/solana";
 import connectionPool from "@/lib/solana-connection-pool";
 
 const prisma = new PrismaClient();
@@ -100,14 +100,23 @@ export async function GET(req: NextRequest) {
     }
 
     try {
-      // First, try to fetch the token balance directly using our utility function
-      const { balance, formattedBalance } = await fetchSplTokenBalance(user.solanaAddress);
+      // Fetch both USDC and USDs token balances
+      const [usdcResult, usdsResult] = await Promise.all([
+        fetchSplTokenBalance(user.solanaAddress),
+        fetchUsdsTokenBalance(user.solanaAddress)
+      ]);
 
       return NextResponse.json(
         {
           address: user.solanaAddress,
-          balance,
-          formattedBalance,
+          usdc: {
+            balance: usdcResult.balance,
+            formattedBalance: usdcResult.formattedBalance
+          },
+          usds: {
+            balance: usdsResult.balance,
+            formattedBalance: usdsResult.formattedBalance
+          }
         },
         {
           headers: {
@@ -119,7 +128,7 @@ export async function GET(req: NextRequest) {
         }
       );
     } catch (error) {
-      console.error("Error fetching token balance directly:", error);
+      console.error("Error fetching token balances directly:", error);
 
       // Fallback: try to fetch from the relayer
       try {
@@ -130,8 +139,14 @@ export async function GET(req: NextRequest) {
           return NextResponse.json(
             {
               address: user.solanaAddress,
-              balance: data.balance,
-              formattedBalance: data.formattedBalance,
+              usdc: {
+                balance: data.balance,
+                formattedBalance: data.formattedBalance
+              },
+              usds: {
+                balance: 0,
+                formattedBalance: "0.000000"
+              }
             },
             {
               headers: {
@@ -153,9 +168,15 @@ export async function GET(req: NextRequest) {
         return NextResponse.json(
           {
             address: user.solanaAddress,
-            balance: 0,
-            formattedBalance: "0.000000000",
-            error: "Failed to fetch token balance",
+            usdc: {
+              balance: 0,
+              formattedBalance: "0.000000"
+            },
+            usds: {
+              balance: 0,
+              formattedBalance: "0.000000"
+            },
+            error: "Failed to fetch token balances"
           },
           {
             headers: {

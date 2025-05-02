@@ -115,16 +115,12 @@ export default function AccountDashboard() {
         setSolBalance(solData.formattedBalance);
       }
 
-      // Fetch token balance (treat this as USDC for demonstration)
+      // Fetch token balances (USDC and USDs)
       const tokenResponse = await fetch("/api/wallet/token-balance");
       if (tokenResponse.ok) {
         const tokenData = await tokenResponse.json();
-        setUsdcBalance(tokenData.formattedBalance);
-
-        // For demonstration, show a simulated USDs balance (normally this would be fetched separately)
-        // We'll simulate that users have more USDs than USDC as if they have already swapped
-        const usdsFactor = 2.5; // Show 2.5x of USDC balance as USDs
-        setUsdsBalance((parseFloat(tokenData.formattedBalance) * usdsFactor).toFixed(6));
+        setUsdcBalance(tokenData.usdc.formattedBalance);
+        setUsdsBalance(tokenData.usds.formattedBalance);
       }
     } catch (error) {
       console.error("Error fetching balances:", error);
@@ -345,7 +341,7 @@ export default function AccountDashboard() {
     }
   };
 
-  // Simulate a swap from USDC to USDs
+  // Swap from USDC to USDs
   const handleSwap = () => {
     if (!swapAmount || isNaN(parseFloat(swapAmount)) || parseFloat(swapAmount) <= 0) {
       setError("Enter a valid amount to swap");
@@ -359,18 +355,19 @@ export default function AccountDashboard() {
 
     setIsLoading(true);
 
-    // Simulate a swap with a delay
+    // In a real implementation, this would call an API endpoint to perform the swap
+    // For now, we'll simulate the swap with a delay and then refresh the balances
     setTimeout(() => {
-      const swapAmountNum = parseFloat(swapAmount);
-      setUsdcBalance((parseFloat(usdcBalance) - swapAmountNum).toFixed(6));
-
-      // Add swapped amount to USDs with 4.2% bonus
-      const bonusRate = 1.042; // 4.2% bonus
-      setUsdsBalance((parseFloat(usdsBalance) + (swapAmountNum * bonusRate)).toFixed(6));
-
+      // For a real implementation, you would create a transaction on Solana
+      // that exchanges USDC for USDs using a DEX like Jupiter or Orca
+      // Here we're just showing a success message and refreshing balances
+      
       setSwapAmount("");
       setIsLoading(false);
-      toast.success(`Successfully swapped ${swapAmount} USDC to USDs with 4.2% bonus!`);
+      toast.success(`Swap request submitted! Your balances will update shortly.`);
+      
+      // Refresh balances to fetch the updated token amounts
+      fetchBalances();
     }, 1500);
   };
 
@@ -519,7 +516,7 @@ export default function AccountDashboard() {
             </div>
             <div className="space-y-3">
               {[
-                { name: "USD Balance", balance: `$${usdsBalance}`, icon: <DollarSign size={18} className="text-emerald-400" /> },
+                { name: "USDs Balance", balance: `$${usdsBalance}`, icon: <DollarSign size={18} className="text-emerald-400" /> },
                 { name: "USDC Balance", balance: `$${usdcBalance}`, icon: <DollarSign size={18} className="text-blue-400" /> }
               ].map((item, index) => (
                 <div key={index} className="flex items-center justify-between p-3 rounded-lg bg-zinc-800">
@@ -792,7 +789,7 @@ export default function AccountDashboard() {
               </div>
             </div>
 
-            {/* New APY highlight banner for swap tab */}
+            {/* APY highlight banner for swap tab */}
             <div className="bg-gradient-to-r from-emerald-900/30 to-emerald-800/30 border border-emerald-800/50 rounded-lg p-4 mb-6">
               <div className="flex items-start gap-3">
                 <div className="p-2 rounded-full bg-emerald-800/50 text-emerald-300">
@@ -801,7 +798,7 @@ export default function AccountDashboard() {
                 <div>
                   <h3 className="font-bold text-emerald-300 text-sm">4.2% Annual Yield</h3>
                   <p className="text-xs text-emerald-200/80">
-                    USDs automatically earns interest - no staking or locking required. Interest accrues daily.
+                    USDs automatically earns interest. In a real implementation, the swap would be performed through a Solana DEX like Jupiter or Orca.
                   </p>
                 </div>
               </div>

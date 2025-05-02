@@ -47,6 +47,7 @@ export default function SendPage() {
   const [foundUser, setFoundUser] = useState<{ username: string, solanaAddress: string } | null>(null);
   const [usdsBalance, setUsdsBalance] = useState("0.0");
   const [usdcBalance, setUsdcBalance] = useState("0.0");
+  const [solBalance, setSolBalance] = useState("0.0");
   
   // Username validation states
   const [isValidatingUsername, setIsValidatingUsername] = useState(false);
@@ -122,18 +123,26 @@ export default function SendPage() {
   // Fetch token balances
   const fetchBalances = async () => {
     try {
-      // Fetch USDC balance
+      setIsLoading(true);
+      
+      // Fetch SOL balance
+      const solResponse = await fetch("/api/wallet/balance");
+      if (solResponse.ok) {
+        const solData = await solResponse.json();
+        setSolBalance(solData.formattedBalance);
+      }
+
+      // Fetch token balances (USDC and USDs)
       const tokenResponse = await fetch("/api/wallet/token-balance");
       if (tokenResponse.ok) {
         const tokenData = await tokenResponse.json();
-        setUsdcBalance(tokenData.formattedBalance);
-
-        // For demo purposes, simulated USDs balance
-        const usdsFactor = 2.5;
-        setUsdsBalance((parseFloat(tokenData.formattedBalance) * usdsFactor).toFixed(6));
+        setUsdcBalance(tokenData.usdc.formattedBalance);
+        setUsdsBalance(tokenData.usds.formattedBalance);
       }
     } catch (error) {
       console.error("Error fetching balances:", error);
+    } finally {
+      setIsLoading(false);
     }
   };
   
