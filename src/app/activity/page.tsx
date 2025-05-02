@@ -112,6 +112,22 @@ export default function ActivityPage() {
   const formatTxData = (txDataString: string) => {
     try {
       const txData = JSON.parse(txDataString);
+      
+      // Check if it's a swap transaction
+      if (txData.swap) {
+        if (txData.swap === "USDC_TO_USDS") {
+          return `Swapped ${txData.amount} USDC to USDs`;
+        } else if (txData.swap === "USDS_TO_USDC") {
+          return `Swapped ${txData.amount} USDs to USDC`;
+        }
+        return `Swapped ${txData.amount}`;
+      }
+      
+      // Regular transaction
+      if (txData.username) {
+        return `${txData.amount} ${txData.token ? 'USDC' : 'SOL'} to ${txData.username}`;
+      }
+      
       return `${txData.amount} ${txData.token ? 'USDC' : 'SOL'} to ${shortenAddress(txData.to)}`;
     } catch (e) {
       return "Unknown transaction";
@@ -133,6 +149,29 @@ export default function ActivityPage() {
         return <XCircle className="text-red-500" size={16} />;
       default:
         return <Clock className="text-gray-500" size={16} />;
+    }
+  };
+
+  // Get transaction type icon
+  const getTransactionTypeIcon = (txDataString: string) => {
+    try {
+      const txData = JSON.parse(txDataString);
+      
+      // Swap transaction icon
+      if (txData.swap) {
+        return <ArrowLeftRight className="text-emerald-500" size={16} />;
+      }
+      
+      // Send transaction icon
+      if (txData.to) {
+        return <SendMoneyIcon className="text-blue-500" width={16} height={16} />;
+      }
+      
+      // Receive transaction icon (default)
+      return <ReceiveIcon className="text-green-500" width={16} height={16} />;
+    } catch (e) {
+      // Unknown transaction type
+      return <Clock className="text-gray-500" size={16} />;
     }
   };
 
