@@ -31,7 +31,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Get request data
-    const { amount, tokenType, note, expiresIn } = await req.json();
+    const { amount, tokenType, note, expiresIn, recipientUsername } = await req.json();
 
     // Validate amount
     if (!amount || isNaN(parseFloat(amount)) || parseFloat(amount) <= 0) {
@@ -49,16 +49,31 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Find the user
-    const user = await prisma.user.findUnique({
+    // Find the creator user
+    const creator = await prisma.user.findUnique({
       where: { email: session.user.email }
     });
 
-    if (!user) {
+    if (!creator) {
       return NextResponse.json(
         { error: "User not found" },
         { status: 404 }
       );
+    }
+
+    // Find recipient user if username provided
+    let recipient = null;
+    if (recipientUsername) {
+      recipient = await prisma.user.findUnique({
+        where: { username: recipientUsername }
+      });
+
+      if (!recipient) {
+        return NextResponse.json(
+          { error: `User '${recipientUsername}' not found` },
+          { status: 404 }
+        );
+      }
     }
 
     // Log all tables for debugging
@@ -85,7 +100,8 @@ export async function POST(req: NextRequest) {
       amount,
       tokenType,
       note: note || "",
-      userId: user.id
+      userId: creator.id,
+      recipientId: recipient?.id || null,
     });
 
     let paymentRequest;
@@ -101,9 +117,17 @@ export async function POST(req: NextRequest) {
           expiresAt: expiresAt || null,
           creator: {
             connect: {
-              id: user.id
+              id: creator.id
             }
-          }
+          },
+          // Connect recipient if provided
+          ...(recipient ? {
+            recipient: {
+              connect: {
+                id: recipient.id
+              }
+            }
+          } : {})
         }
       });
       
@@ -138,7 +162,8 @@ export async function POST(req: NextRequest) {
         status: paymentRequest.status,
         expiresAt: paymentRequest.expiresAt,
         createdAt: paymentRequest.createdAt,
-        link: paymentLink
+        link: paymentLink,
+        recipientUsername: recipient?.username || null
       }
     });
   } catch (error) {

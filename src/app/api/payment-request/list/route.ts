@@ -46,10 +46,19 @@ export async function GET(req: NextRequest) {
     console.log("Database tables:", tableNames);
 
     // List all payment requests created by this user
-    const paymentRequests = await prisma.$transaction(async (tx) => {
+    const createdRequests = await prisma.$transaction(async (tx) => {
       return await (tx as any).PaymentRequest.findMany({
         where: {
           creatorId: user.id
+        },
+        include: {
+          recipient: {
+            select: {
+              id: true,
+              username: true,
+              email: true
+            }
+          }
         },
         orderBy: {
           createdAt: 'desc'
@@ -57,7 +66,28 @@ export async function GET(req: NextRequest) {
       });
     });
 
-    console.log(`Found ${paymentRequests.length} payment requests for user`);
+    // List all payment requests where this user is the recipient
+    const receivedRequests = await prisma.$transaction(async (tx) => {
+      return await (tx as any).PaymentRequest.findMany({
+        where: {
+          recipientId: user.id
+        },
+        include: {
+          creator: {
+            select: {
+              id: true,
+              username: true,
+              email: true
+            }
+          }
+        },
+        orderBy: {
+          createdAt: 'desc'
+        }
+      });
+    });
+
+    console.log(`Found ${createdRequests.length} created payment requests and ${receivedRequests.length} received payment requests for user`);
 
     // Count records for debugging
     const count = await prisma.$transaction(async (tx) => {
@@ -65,9 +95,9 @@ export async function GET(req: NextRequest) {
     });
     console.log("Total payment requests in database:", count);
 
-    return NextResponse.json({
-      success: true,
-      paymentRequests: paymentRequests.map((pr: any) => ({
+    // Combine the requests and format them
+    const allPaymentRequests = [
+      ...createdRequests.map((pr: any) => ({
         id: pr.id,
         shortId: pr.shortId,
         amount: pr.amount,
@@ -76,8 +106,30 @@ export async function GET(req: NextRequest) {
         status: pr.status,
         expiresAt: pr.expiresAt,
         createdAt: pr.createdAt,
-        link: `${process.env.NEXT_PUBLIC_BASE_URL || req.nextUrl.origin}/pay/${pr.shortId}`
+        link: `${process.env.NEXT_PUBLIC_BASE_URL || req.nextUrl.origin}/pay/${pr.shortId}`,
+        type: 'created',
+        recipientUsername: pr.recipient?.username || null,
+        recipientEmail: pr.recipient?.email || null
+      })),
+      ...receivedRequests.map((pr: any) => ({
+        id: pr.id,
+        shortId: pr.shortId,
+        amount: pr.amount,
+        tokenType: pr.tokenType,
+        note: pr.note,
+        status: pr.status,
+        expiresAt: pr.expiresAt,
+        createdAt: pr.createdAt,
+        link: `${process.env.NEXT_PUBLIC_BASE_URL || req.nextUrl.origin}/pay/${pr.shortId}`,
+        type: 'received',
+        requesterUsername: pr.creator?.username || null,
+        requesterEmail: pr.creator?.email || null
       }))
+    ].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+    return NextResponse.json({
+      success: true,
+      paymentRequests: allPaymentRequests
     });
   } catch (error) {
     console.error("Error listing payment requests:", error);
