@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import Header from "@/components/header";
 import { Button } from "@/components/ui/button";
 import { USDsIcon, USDCIcon } from "@/components/icons";
-import { Clock, Link, Copy, ExternalLink } from "lucide-react";
+import { Clock, Link, Copy, ExternalLink, UserRound, User, LinkIcon, Share2, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 interface PaymentRequest {
@@ -19,6 +19,10 @@ interface PaymentRequest {
   expiresAt?: string;
   createdAt: string;
   link: string;
+  type: string;
+  requesterUsername?: string;
+  requesterEmail?: string;
+  recipientUsername?: string;
 }
 
 export default function PaymentRequestsPage() {
@@ -58,6 +62,79 @@ export default function PaymentRequestsPage() {
   const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text);
     toast.success("Link copied to clipboard");
+  };
+
+  // Add the missing functions
+  const handleCancelRequest = async (id: string) => {
+    try {
+      // Call the API to cancel the payment request
+      const response = await fetch('/api/payment-request/cancel', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          paymentRequestId: id
+        }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        console.error('Error cancelling payment request:', error);
+        throw new Error(error.error || 'Failed to cancel payment request');
+      }
+
+      const result = await response.json();
+      console.log('Payment request cancelled:', result);
+
+      if (result.success) {
+        // Refresh the payment requests list
+        const fetchPaymentRequests = async () => {
+          setIsLoading(true);
+          try {
+            const response = await fetch("/api/payment-request/list");
+            
+            if (!response.ok) {
+              const data = await response.json();
+              throw new Error(data.error || "Failed to fetch payment requests");
+            }
+            
+            const data = await response.json();
+            setPaymentRequests(data.paymentRequests);
+          } catch (error) {
+            console.error("Error fetching payment requests:", error);
+            setError(error instanceof Error ? error.message : "Failed to load payment requests");
+          } finally {
+            setIsLoading(false);
+          }
+        };
+        
+        fetchPaymentRequests();
+        toast.success("Payment request cancelled");
+      } else {
+        throw new Error('Failed to cancel payment request');
+      }
+    } catch (error) {
+      console.error('Cancel payment request error:', error);
+      toast.error(error instanceof Error ? error.message : "Failed to cancel payment request");
+    }
+  };
+
+  const handleShareRequest = async (link: string) => {
+    try {
+      if (navigator.share) {
+        await navigator.share({
+          title: "Payment Request",
+          text: "Please pay this request using Remlo",
+          url: link,
+        });
+      } else {
+        await copyToClipboard(link);
+        toast.success("Payment link copied to clipboard");
+      }
+    } catch (error) {
+      toast.error("Failed to share payment request");
+    }
   };
 
   // Not authenticated
@@ -134,35 +211,72 @@ export default function PaymentRequestsPage() {
                   </div>
                 </div>
                 
+                {/* Request Type Indicators */}
+                {pr.type === 'received' && (
+                  <div className="bg-emerald-900/30 text-emerald-400 px-3 py-2 rounded-md mb-3 flex items-center">
+                    <UserRound size={14} className="mr-2" />
+                    <span className="text-sm">
+                      Requested by {pr.requesterUsername || pr.requesterEmail || 'Someone'}
+                    </span>
+                  </div>
+                )}
+                
+                {pr.type === 'created' && pr.recipientUsername && (
+                  <div className="bg-blue-900/30 text-blue-400 px-3 py-2 rounded-md mb-3 flex items-center">
+                    <User size={14} className="mr-2" />
+                    <span className="text-sm">
+                      Requested from {pr.recipientUsername}
+                    </span>
+                  </div>
+                )}
+                
+                {pr.type === 'created' && !pr.recipientUsername && (
+                  <div className="bg-gray-800 text-gray-300 px-3 py-2 rounded-md mb-3 flex items-center">
+                    <LinkIcon size={14} className="mr-2" />
+                    <span className="text-sm">
+                      General payment request
+                    </span>
+                  </div>
+                )}
+                
                 {pr.note && (
                   <div className="bg-zinc-800 rounded p-2 mb-3 text-sm text-gray-300">
                     {pr.note}
                   </div>
                 )}
                 
-                <div className="flex justify-between items-center">
-                  <div className="text-sm text-gray-400">
-                    Status: <span className="text-yellow-500">{pr.status}</span>
-                  </div>
+                <div className="flex flex-wrap gap-2">
+                  <Button 
+                    size="sm" 
+                    variant="ghost" 
+                    className="bg-zinc-800 hover:bg-zinc-700 text-gray-300"
+                    onClick={() => copyToClipboard(pr.link)}
+                  >
+                    <Copy size={14} className="mr-1" />
+                    Copy Link
+                  </Button>
                   
-                  <div className="flex space-x-2">
+                  <Button 
+                    size="sm" 
+                    variant="ghost" 
+                    className="bg-zinc-800 hover:bg-zinc-700 text-gray-300"
+                    onClick={() => window.open(pr.link, "_blank")}
+                  >
+                    <ExternalLink size={14} className="mr-1" />
+                    Open
+                  </Button>
+                  
+                  {pr.status.toLowerCase() === "pending" && (
                     <Button 
                       size="sm" 
-                      variant="outline" 
-                      className="border-zinc-700 hover:bg-zinc-800 text-gray-300"
-                      onClick={() => copyToClipboard(pr.link)}
+                      variant="ghost" 
+                      className="bg-red-900/30 hover:bg-red-900/50 text-red-400"
+                      onClick={() => handleCancelRequest(pr.id)}
                     >
-                      <Copy size={14} className="mr-1" /> Copy
+                      <Trash2 size={14} className="mr-1" />
+                      Cancel
                     </Button>
-                    <Button 
-                      size="sm" 
-                      variant="outline" 
-                      className="border-zinc-700 hover:bg-zinc-800 text-gray-300"
-                      onClick={() => window.open(pr.link, "_blank")}
-                    >
-                      <ExternalLink size={14} className="mr-1" /> Open
-                    </Button>
-                  </div>
+                  )}
                 </div>
               </div>
             ))}
