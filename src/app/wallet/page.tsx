@@ -34,7 +34,8 @@ import {
   CopyIcon,
   Search,
   SlidersHorizontal,
-  User
+  User,
+  ArrowRight
 } from "lucide-react";
 import { USDsIcon, USDCIcon, SwapIcon, ReceiveIcon, SendMoneyIcon, RemloIcon, ActivityIcon } from "@/components/icons";
 
@@ -104,6 +105,13 @@ export default function AccountDashboard() {
       router.push("/wallet/setup");
     }
   }, [status, session, router]);
+
+  // Set default tokenType to "usdc" when swap tab is first activated
+  useEffect(() => {
+    if (activeTab === "swap") {
+      setTokenType("usdc");
+    }
+  }, [activeTab]); // This will only run when activeTab changes, not when tokenType changes
 
   const fetchBalances = async () => {
     try {
@@ -341,34 +349,98 @@ export default function AccountDashboard() {
     }
   };
 
-  // Swap from USDC to USDs
-  const handleSwap = () => {
+  // Replace the mock handleSwap function
+  const handleSwap = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
     if (!swapAmount || isNaN(parseFloat(swapAmount)) || parseFloat(swapAmount) <= 0) {
       setError("Enter a valid amount to swap");
       return;
     }
 
-    if (parseFloat(swapAmount) > parseFloat(usdcBalance)) {
-      setError("Insufficient USDC balance for swap");
-      return;
+    // Check if user has enough balance for the swap
+    if (tokenType === "usdc") {
+      // USDC to USDs swap
+      if (parseFloat(swapAmount) > parseFloat(usdcBalance)) {
+        setError("Insufficient USDC balance for swap");
+        return;
+      }
+    } else {
+      // USDs to USDC swap
+      if (parseFloat(swapAmount) > parseFloat(usdsBalance)) {
+        setError("Insufficient USDs balance for swap");
+        return;
+      }
     }
 
     setIsLoading(true);
 
-    // In a real implementation, this would call an API endpoint to perform the swap
-    // For now, we'll simulate the swap with a delay and then refresh the balances
-    setTimeout(() => {
-      // For a real implementation, you would create a transaction on Solana
-      // that exchanges USDC for USDs using a DEX like Jupiter or Orca
-      // Here we're just showing a success message and refreshing balances
-      
+    try {
+      // Determine which endpoint to use based on swap direction
+      const endpoint = tokenType === "usdc"
+        ? "/api/wallet/swap-usdc-to-usds"
+        : "/api/wallet/swap-usds-to-usdc";
+
+      const response = await fetch(endpoint, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          amount: swapAmount,
+          passcode,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "Swap failed");
+      }
+
+      toast.success("Swap completed successfully!");
+      setShowPasscodeModal(false);
+      setPasscode("");
       setSwapAmount("");
-      setIsLoading(false);
-      toast.success(`Swap request submitted! Your balances will update shortly.`);
-      
-      // Refresh balances to fetch the updated token amounts
+
+      // Refresh balance and transactions
       fetchBalances();
-    }, 1500);
+      fetchTransactions();
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : "Swap failed";
+      setError(errorMessage);
+      toast.error(errorMessage);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Add a new function to open the passcode modal for swaps
+  const handleSwapFormSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    setError("");
+
+    if (!swapAmount || isNaN(parseFloat(swapAmount)) || parseFloat(swapAmount) <= 0) {
+      setError("Enter a valid amount to swap");
+      return;
+    }
+
+    // Check if user has enough balance for the swap
+    if (tokenType === "usdc") {
+      // USDC to USDs swap
+      if (parseFloat(swapAmount) > parseFloat(usdcBalance)) {
+        setError("Insufficient USDC balance for swap");
+        return;
+      }
+    } else {
+      // USDs to USDC swap
+      if (parseFloat(swapAmount) > parseFloat(usdsBalance)) {
+        setError("Insufficient USDs balance for swap");
+        return;
+      }
+    }
+
+    setShowPasscodeModal(true);
   };
 
   // Format transaction data for display
@@ -782,27 +854,33 @@ export default function AccountDashboard() {
                 <SwapIcon width={20} height={20} />
               </div>
               <div>
-                <h2 className="text-xl font-semibold text-white">Swap USDC to USDs</h2>
-                <p className="text-xs text-emerald-400 flex items-center">
-                  <TrendingUp size={12} className="mr-1" /> Earn 4.2% APY on your stablecoins
-                </p>
+                <h2 className="text-xl font-semibold text-white">
+                  {tokenType === "usdc" ? "Swap USDC to USDs" : "Swap USDs to USDC"}
+                </h2>
+                {tokenType === "usdc" && (
+                  <p className="text-xs text-emerald-400 flex items-center">
+                    <TrendingUp size={12} className="mr-1" /> Earn 4.2% APY on your stablecoins
+                  </p>
+                )}
               </div>
             </div>
 
-            {/* APY highlight banner for swap tab */}
-            <div className="bg-gradient-to-r from-emerald-900/30 to-emerald-800/30 border border-emerald-800/50 rounded-lg p-4 mb-6">
-              <div className="flex items-start gap-3">
-                <div className="p-2 rounded-full bg-emerald-800/50 text-emerald-300">
-                  <PiggyBank size={20} />
-                </div>
-                <div>
-                  <h3 className="font-bold text-emerald-300 text-sm">4.2% Annual Yield</h3>
-                  <p className="text-xs text-emerald-200/80">
-                    USDs automatically earns interest. In a real implementation, the swap would be performed through a Solana DEX like Jupiter or Orca.
-                  </p>
+            {/* APY highlight banner for swap tab - only show for USDC to USDs direction */}
+            {tokenType === "usdc" && (
+              <div className="bg-gradient-to-r from-emerald-900/30 to-emerald-800/30 border border-emerald-800/50 rounded-lg p-4 mb-6">
+                <div className="flex items-start gap-3">
+                  <div className="p-2 rounded-full bg-emerald-800/50 text-emerald-300">
+                    <PiggyBank size={20} />
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-emerald-300 text-sm">4.2% Annual Yield</h3>
+                    <p className="text-xs text-emerald-200/80">
+                      USDs automatically earns interest. In a real implementation, the swap would be performed through a Solana DEX like Jupiter or Orca.
+                    </p>
+                  </div>
                 </div>
               </div>
-            </div>
+            )}
 
             {error && (
               <div className="p-3 rounded-lg bg-red-900/20 text-red-400 text-sm mb-4 flex items-start">
@@ -814,13 +892,30 @@ export default function AccountDashboard() {
             <div className="bg-zinc-800 rounded-lg border border-zinc-700 p-4 mb-6">
               <div className="flex items-center justify-between mb-2">
                 <span className="text-sm text-gray-400">From</span>
-                <span className="text-xs text-gray-500">Balance: {usdcBalance} USDC</span>
+                <span className="text-xs text-gray-500">
+                  Balance: {tokenType === "usdc" ? usdcBalance : usdsBalance} {tokenType === "usdc" ? "USDC" : "USDs"}
+                </span>
               </div>
               <div className="flex items-center bg-zinc-900 rounded-md p-3 border border-zinc-700">
                 <div className="pr-3 border-r border-zinc-700">
                   <div className="flex items-center gap-2">
-                    <USDCIcon width={20} height={20} className="text-blue-400" />
-                    <span className="font-medium text-gray-200">USDC</span>
+                    {tokenType === "usdc" ? (
+                      <>
+                        <USDCIcon width={20} height={20} className="text-blue-400" />
+                        <span className="font-medium text-gray-200 flex items-center">
+                          USDC
+                          <ArrowRight size={14} className="ml-1 text-emerald-400 opacity-70" />
+                        </span>
+                      </>
+                    ) : (
+                      <>
+                        <USDsIcon width={20} height={20} className="text-emerald-400" />
+                        <span className="font-medium text-gray-200 flex items-center">
+                          USDs
+                          <ArrowRight size={14} className="ml-1 text-emerald-400 opacity-70" />
+                        </span>
+                      </>
+                    )}
                   </div>
                 </div>
                 <input
@@ -835,32 +930,65 @@ export default function AccountDashboard() {
             </div>
 
             <div className="flex justify-center my-2">
-              <div className="p-2 rounded-full bg-emerald-900/20 border border-emerald-900/30">
-                <ArrowDown size={20} className="text-emerald-400" />
-              </div>
+              <button 
+                className="p-2 rounded-full bg-emerald-900/20 border border-emerald-900/30 hover:bg-emerald-900/40 active:bg-emerald-800/30 transition-colors relative group overflow-hidden"
+                onClick={() => setTokenType(tokenType === "usdc" ? "usd" : "usdc")}
+                title="Switch swap direction"
+              >
+                <div className="transition-all duration-300 group-hover:rotate-180 transform-gpu">
+                  <ArrowLeftRight size={20} className="text-emerald-400" />
+                </div>
+                <div className="absolute inset-0 bg-emerald-500/20 opacity-0 group-active:opacity-100 rounded-full transition-opacity duration-200"></div>
+                <span className="absolute -top-8 left-1/2 transform -translate-x-1/2 bg-zinc-800 text-xs text-gray-300 py-1 px-2 rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap">
+                  Switch direction
+                </span>
+              </button>
             </div>
 
             <div className="bg-zinc-800 rounded-lg border border-zinc-700 p-4 mb-6">
               <div className="flex items-center justify-between mb-2">
                 <span className="text-sm text-gray-400">To</span>
-                <span className="text-xs text-gray-500">Balance: {usdsBalance} USDs</span>
+                <span className="text-xs text-gray-500">
+                  Balance: {tokenType === "usdc" ? usdsBalance : usdcBalance} {tokenType === "usdc" ? "USDs" : "USDC"}
+                </span>
               </div>
               <div className="flex items-center bg-zinc-900 rounded-md p-3 border border-zinc-700">
                 <div className="pr-3 border-r border-zinc-700">
                   <div className="flex items-center gap-2">
-                    <USDsIcon width={20} height={20} className="text-emerald-400" />
-                    <span className="font-medium text-gray-200">USDs</span>
+                    {tokenType === "usdc" ? (
+                      <>
+                        <USDsIcon width={20} height={20} className="text-emerald-400" />
+                        <span className="font-medium text-gray-200 flex items-center">
+                          USDs
+                          <ArrowRight size={14} className="ml-1 text-emerald-400 opacity-70" />
+                        </span>
+                      </>
+                    ) : (
+                      <>
+                        <USDCIcon width={20} height={20} className="text-blue-400" />
+                        <span className="font-medium text-gray-200 flex items-center">
+                          USDC
+                          <ArrowRight size={14} className="ml-1 text-emerald-400 opacity-70" />
+                        </span>
+                      </>
+                    )}
                   </div>
                 </div>
                 <div className="flex-1 text-right text-lg text-gray-200 px-3">
-                  {swapAmount ? (parseFloat(swapAmount) * 1.042).toFixed(6) : "0.00"}
+                  {swapAmount ? (
+                    tokenType === "usdc" 
+                      ? (parseFloat(swapAmount) * 1.042).toFixed(6) // Apply bonus for USDC to USDs 
+                      : parseFloat(swapAmount).toFixed(6)           // No bonus for USDs to USDC
+                  ) : "0.00"}
                 </div>
               </div>
-              <div className="mt-2 text-xs text-emerald-400 text-right">+4.2% bonus applied</div>
+              {tokenType === "usdc" && (
+                <div className="mt-2 text-xs text-emerald-400 text-right">+4.2% bonus applied</div>
+              )}
             </div>
 
             <Button
-              onClick={handleSwap}
+              onClick={handleSwapFormSubmit}
               disabled={isLoading || !swapAmount}
               className="w-full bg-emerald-600 hover:bg-emerald-700 text-white py-3 rounded-md font-medium flex justify-center items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
             >
@@ -870,14 +998,16 @@ export default function AccountDashboard() {
                   Swapping...
                 </>
               ) : (
-                "Swap USDC to USDs"
+                tokenType === "usdc" ? "Swap USDC to USDs" : "Swap USDs to USDC"
               )}
             </Button>
 
             <div className="mt-4 bg-emerald-900/20 border border-emerald-900/30 rounded-md p-3 text-sm text-gray-300">
               <p className="flex items-start gap-2">
                 <Info size={16} className="text-emerald-400 mt-0.5 flex-shrink-0" />
-                By swapping USDC to USDs, you'll automatically earn 4.2% APY on your stablecoins.
+                {tokenType === "usdc" 
+                  ? "By swapping USDC to USDs, you'll automatically earn 4.2% APY on your stablecoins."
+                  : "Swap back to USDC when you need funds for spending or transfers."}
               </p>
             </div>
           </div>
@@ -1039,88 +1169,73 @@ export default function AccountDashboard() {
           </div>
         )}
 
-        {/* Passcode Modal */}
+        {/* Passcode modal */}
         {showPasscodeModal && (
-          <div className="fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-50 backdrop-blur-sm">
-            <div className="bg-zinc-900 rounded-xl p-6 w-full max-w-md shadow-xl border border-zinc-800 animate-in fade-in-0 zoom-in-95">
-              <div className="flex items-center mb-6">
-                <div className="p-3 rounded-full bg-emerald-900/50 text-emerald-400 mr-3">
-                  <CheckCircle2 size={24} />
-                </div>
-                <div>
-                  <h2 className="text-xl font-bold text-white">Confirm Transaction</h2>
-                  <p className="text-sm text-gray-400">Enter your 6-digit passcode</p>
-                </div>
-              </div>
-
-              <div className="bg-zinc-800 p-4 rounded-lg mb-5 border border-zinc-700">
-                <div className="flex justify-between text-sm mb-2">
-                  <span className="text-gray-400">Amount</span>
-                  <span className="font-medium text-white">{amount} {tokenType.toUpperCase()}</span>
-                </div>
-                <div className="flex justify-between text-sm">
-                  <span className="text-gray-400">To</span>
-                  <span className="font-mono text-xs text-gray-300">{shortenAddress(recipient)}</span>
-                </div>
-              </div>
-
+          <div className="fixed inset-0 flex items-center justify-center z-50 bg-black bg-opacity-75 p-4">
+            <div className="bg-zinc-900 rounded-xl border border-zinc-800 p-6 w-full max-w-md">
+              <h3 className="text-xl font-semibold text-white mb-4">
+                {recipient ? "Confirm Send" : "Confirm Swap"}
+              </h3>
+              
+              {recipient ? (
+                <p className="text-gray-400 mb-6">
+                  Enter your 6-digit passcode to send {amount} {tokenType === "usdc" ? "USDC" : "USDs"} to {foundUser ? foundUser.username : shortenAddress(recipient)}
+                </p>
+              ) : (
+                <p className="text-gray-400 mb-6">
+                  Enter your 6-digit passcode to swap {swapAmount} {tokenType === "usdc" ? "USDC to USDs" : "USDs to USDC"}
+                </p>
+              )}
+              
               {error && (
-                <div className="p-3 rounded-lg bg-red-900/20 text-red-400 text-sm mb-4 flex items-start">
-                  <XCircle size={16} className="mr-2 mt-0.5 flex-shrink-0" />
-                  <p>{error}</p>
+                <div className="mb-4 p-3 bg-red-900/30 border border-red-900 rounded-md text-red-300 text-sm">
+                  {error}
                 </div>
               )}
-
-              <form onSubmit={handleSendTransaction} className="space-y-4">
-                <div>
-                  <label htmlFor="passcode" className="text-sm font-medium block mb-2 text-gray-300">
-                    Passcode
-                  </label>
-                  <div className="relative">
-                    <input
-                      id="passcode"
-                      type="password"
-                      inputMode="numeric"
-                      maxLength={6}
-                      required
-                      value={passcode}
-                      onChange={(e) => setPasscode(e.target.value.replace(/[^0-9]/g, '').slice(0, 6))}
-                      className="w-full p-3 rounded-md border border-zinc-700 bg-zinc-800 text-gray-200 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 text-center text-xl tracking-[1em] font-mono"
-                      placeholder="······"
-                      autoFocus
-                    />
-                  </div>
-                  <p className="text-xs text-gray-500 mt-1">
-                    Enter the 6-digit passcode you set up with your wallet
-                  </p>
+              
+              <form onSubmit={recipient ? handleSendTransaction : handleSwap}>
+                <div className="mb-4">
+                  <input
+                    type="password"
+                    maxLength={6}
+                    pattern="[0-9]*"
+                    inputMode="numeric"
+                    placeholder="Enter 6-digit passcode"
+                    value={passcode}
+                    onChange={(e) => setPasscode(e.target.value.replace(/[^0-9]/g, '').slice(0, 6))}
+                    className="w-full p-3 bg-zinc-800 border border-zinc-700 rounded-md text-white text-center text-xl tracking-wider"
+                    autoFocus
+                  />
                 </div>
-
-                <div className="flex space-x-3 pt-2">
+                
+                <div className="flex gap-3">
                   <Button
                     type="button"
                     variant="outline"
-                    className="flex-1 border-zinc-700 hover:bg-zinc-800 text-gray-300"
+                    className="flex-1 border-zinc-700 text-gray-300 hover:bg-zinc-800"
                     onClick={() => {
                       setShowPasscodeModal(false);
                       setPasscode("");
                       setError("");
                     }}
-                    disabled={isLoading}
                   >
                     Cancel
                   </Button>
+                  
                   <Button
                     type="submit"
                     className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white"
-                    disabled={isLoading}
+                    disabled={isLoading || !isValidPasscode(passcode)}
                   >
                     {isLoading ? (
-                      <span className="flex items-center">
-                        <RefreshCw size={16} className="animate-spin mr-2" />
-                        Processing...
-                      </span>
+                      <>
+                        <span className="mr-2">Processing</span>
+                        <span className="animate-spin">
+                          <CircleDashed size={16} />
+                        </span>
+                      </>
                     ) : (
-                      "Confirm & Send"
+                      <>{recipient ? "Send" : "Swap"}</>
                     )}
                   </Button>
                 </div>
