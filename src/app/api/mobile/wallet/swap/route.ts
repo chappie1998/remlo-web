@@ -72,9 +72,10 @@ export async function POST(req: NextRequest) {
     
     // Get authorization header
     const authHeader = req.headers.get('authorization');
-    console.log('Authorization header:', authHeader);
+    console.log('Authorization header:', authHeader ? 'Present' : 'Missing');
     
     if (!authHeader?.startsWith('Bearer ')) {
+      console.log('Invalid authorization header format');
       return NextResponse.json(
         { error: "Authorization header missing or invalid" },
         { 
@@ -86,6 +87,7 @@ export async function POST(req: NextRequest) {
     
     // Extract the token
     const token = authHeader.substring(7);
+    console.log('Extracted token:', token.substring(0, 10) + '...');
     
     // Find the session in the database directly
     const dbSession = await prisma.session.findUnique({
@@ -96,6 +98,7 @@ export async function POST(req: NextRequest) {
     console.log('Database session lookup result:', dbSession ? 'Found' : 'Not found');
     
     if (!dbSession?.user || dbSession.expires <= new Date()) {
+      console.log('Session invalid or expired:', dbSession?.expires);
       return NextResponse.json(
         { error: "Invalid or expired session token" },
         { 
@@ -110,7 +113,13 @@ export async function POST(req: NextRequest) {
     console.log('Authenticated user:', user.email);
     
     // Get request data
-    const { amount, passcode, fromToken, toToken } = await req.json();
+    const requestData = await req.json();
+    console.log('Received swap request data:', { 
+      ...requestData, 
+      passcode: '******' // Hide passcode in logs
+    });
+    
+    const { amount, passcode, fromToken, toToken } = requestData;
     
     // Validate inputs
     if (!amount || isNaN(parseFloat(amount)) || parseFloat(amount) <= 0) {
