@@ -256,15 +256,15 @@ export default function PaymentRequestsPage() {
                     Copy Link
                   </Button>
                   
-                  <Button 
-                    size="sm" 
+                    <Button 
+                      size="sm" 
                     variant="ghost" 
                     className="bg-zinc-800 hover:bg-zinc-700 text-gray-300"
                     onClick={() => window.open(pr.link, "_blank")}
-                  >
+                    >
                     <ExternalLink size={14} className="mr-1" />
                     Open
-                  </Button>
+                    </Button>
                   
                   {pr.status.toLowerCase() === "pending" && (
                     <Button 

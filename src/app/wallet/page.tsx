@@ -524,11 +524,11 @@ export default function AccountDashboard() {
               
               {/* USDC Balance */}
               <div className="flex items-center justify-between p-3 rounded-lg bg-zinc-800">
-                <div className="flex items-center">
-                  <div className="mr-3 p-2 rounded-full bg-zinc-700">
+                  <div className="flex items-center">
+                    <div className="mr-3 p-2 rounded-full bg-zinc-700">
                     <DollarSign size={18} className="text-blue-400" />
-                  </div>
-                  <div>
+                    </div>
+                    <div>
                     <div className="font-medium text-white">USDC Balance</div>
                     <div className="flex items-center text-xs text-gray-400 mt-0.5">
                       <Link 
@@ -955,28 +955,28 @@ export default function AccountDashboard() {
               <p className="text-gray-400 mb-6">
                 Enter your 6-digit passcode to send {amount} {tokenType === "usdc" ? "USDC" : "USDs"} to {foundUser ? foundUser.username : shortenAddress(recipient)}
               </p>
-              
+
               {error && (
                 <div className="mb-4 p-3 bg-red-900/30 border border-red-900 rounded-md text-red-300 text-sm">
                   {error}
                 </div>
               )}
-              
+
               <form onSubmit={handleSendTransaction}>
                 <div className="mb-4">
-                  <input
-                    type="password"
-                    maxLength={6}
+                    <input
+                      type="password"
+                      maxLength={6}
                     pattern="[0-9]*"
                     inputMode="numeric"
                     placeholder="Enter 6-digit passcode"
-                    value={passcode}
-                    onChange={(e) => setPasscode(e.target.value.replace(/[^0-9]/g, '').slice(0, 6))}
+                      value={passcode}
+                      onChange={(e) => setPasscode(e.target.value.replace(/[^0-9]/g, '').slice(0, 6))}
                     className="w-full p-3 bg-zinc-800 border border-zinc-700 rounded-md text-white text-center text-xl tracking-wider"
-                    autoFocus
-                  />
+                      autoFocus
+                    />
                 </div>
-                
+
                 <div className="flex gap-3">
                   <Button
                     type="button"
@@ -1001,7 +1001,7 @@ export default function AccountDashboard() {
                         <span className="mr-2">Processing</span>
                         <span className="animate-spin">
                           <CircleDashed size={16} />
-                        </span>
+                      </span>
                       </>
                     ) : (
                       "Send"
