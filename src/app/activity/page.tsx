@@ -171,7 +171,7 @@ export default function ActivityPage() {
       return <ReceiveIcon className="text-green-500" width={16} height={16} />;
     } catch (e) {
       // Unknown transaction type
-      return <Clock className="text-gray-500" size={16} />;
+        return <Clock className="text-gray-500" size={16} />;
     }
   };
 

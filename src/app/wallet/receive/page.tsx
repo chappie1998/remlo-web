@@ -923,7 +923,7 @@ export default function ReceivePage() {
                           )}
                           <span className="text-lg font-medium">
                             ${pr.amount} {pr.tokenType.toUpperCase()}
-                          </span>
+                            </span>
                         </div>
                         <div className="flex items-center space-x-1">
                           {getStatusIcon(pr.status)}
@@ -937,7 +937,7 @@ export default function ReceivePage() {
                           <UserRound size={14} className="mr-2" />
                           <span className="text-sm">
                             Requested by {pr.requesterUsername || pr.requesterEmail || 'Someone'}
-                          </span>
+                            </span>
                         </div>
                       )}
                       
@@ -946,8 +946,8 @@ export default function ReceivePage() {
                           <User size={14} className="mr-2" />
                           <span className="text-sm">
                             Requested from {pr.recipientUsername}
-                          </span>
-                        </div>
+                            </span>
+                          </div>
                       )}
                       
                       {pr.note && (
@@ -955,7 +955,7 @@ export default function ReceivePage() {
                           "{pr.note}"
                         </div>
                       )}
-                      
+                        
                       <div className="text-xs text-gray-500 mb-3">
                         Created {formatDate(pr.createdAt)}
                       </div>
@@ -976,22 +976,22 @@ export default function ReceivePage() {
                           variant="ghost" 
                           className="bg-zinc-700 hover:bg-zinc-600 text-gray-300"
                           onClick={() => handleShareRequest(pr.link)}
-                        >
+                          >
                           <Share2 size={14} className="mr-1" />
                           Share
                         </Button>
-                        
+                          
                         {pr.status === "pending" && (
                           <Button 
                             size="sm" 
                             variant="ghost" 
                             className="bg-red-900/30 text-red-400 hover:bg-red-900/50"
                             onClick={() => handleCancelRequest(pr.id)}
-                          >
+                            >
                             <Trash2 size={14} className="mr-1" />
                             Cancel
                           </Button>
-                        )}
+                          )}
                       </div>
                     </div>
                   ))}
