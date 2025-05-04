@@ -26,7 +26,15 @@ export async function POST(req: NextRequest) {
     if (!authHeader?.startsWith('Bearer ')) {
       return NextResponse.json(
         { error: "Authorization header missing or invalid" },
-        { status: 401 }
+        { 
+          status: 401,
+          headers: {
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Methods': 'POST, OPTIONS',
+            'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+            'Access-Control-Allow-Credentials': 'true',
+          }
+        }
       );
     }
     
@@ -44,7 +52,15 @@ export async function POST(req: NextRequest) {
     if (!dbSession?.user || dbSession.expires <= new Date()) {
       return NextResponse.json(
         { error: "Invalid or expired session token" },
-        { status: 401 }
+        { 
+          status: 401,
+          headers: {
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Methods': 'POST, OPTIONS',
+            'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+            'Access-Control-Allow-Credentials': 'true',
+          }
+        }
       );
     }
     
@@ -59,7 +75,15 @@ export async function POST(req: NextRequest) {
     if (!amount || isNaN(parseFloat(amount)) || parseFloat(amount) <= 0) {
       return NextResponse.json(
         { error: "Invalid amount" },
-        { status: 400 }
+        { 
+          status: 400,
+          headers: {
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Methods': 'POST, OPTIONS',
+            'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+            'Access-Control-Allow-Credentials': 'true',
+          }
+        }
       );
     }
     
@@ -67,7 +91,15 @@ export async function POST(req: NextRequest) {
     if (!["usds", "usdc"].includes(tokenType.toLowerCase())) {
       return NextResponse.json(
         { error: "Invalid token type. Supported types: usds, usdc" },
-        { status: 400 }
+        { 
+          status: 400,
+          headers: {
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Methods': 'POST, OPTIONS',
+            'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+            'Access-Control-Allow-Credentials': 'true',
+          }
+        }
       );
     }
     
@@ -75,7 +107,15 @@ export async function POST(req: NextRequest) {
     if (!recipientUsername) {
       return NextResponse.json(
         { error: "Recipient username is required" },
-        { status: 400 }
+        { 
+          status: 400,
+          headers: {
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Methods': 'POST, OPTIONS',
+            'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+            'Access-Control-Allow-Credentials': 'true',
+          }
+        }
       );
     }
     
@@ -87,7 +127,15 @@ export async function POST(req: NextRequest) {
     if (!recipient) {
       return NextResponse.json(
         { error: `User '${recipientUsername}' not found` },
-        { status: 404 }
+        { 
+          status: 404,
+          headers: {
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Methods': 'POST, OPTIONS',
+            'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+            'Access-Control-Allow-Credentials': 'true',
+          }
+        }
       );
     }
     
@@ -146,12 +194,27 @@ export async function POST(req: NextRequest) {
         link: paymentLink,
         recipientUsername: recipient.username
       }
+    }, {
+      headers: {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'POST, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+        'Access-Control-Allow-Credentials': 'true',
+      }
     });
   } catch (error) {
     console.error("Error creating payment request:", error);
     return NextResponse.json(
       { error: "Failed to create payment request", details: error instanceof Error ? error.message : String(error) },
-      { status: 500 }
+      { 
+        status: 500,
+        headers: {
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Methods': 'POST, OPTIONS',
+          'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+          'Access-Control-Allow-Credentials': 'true',
+        }
+      }
     );
   } finally {
     await prisma.$disconnect();
