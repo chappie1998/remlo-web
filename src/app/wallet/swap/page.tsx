@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useSession } from "next-auth/react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import Header from "@/components/header";
@@ -24,10 +24,11 @@ import Link from "next/link";
 export default function SwapPage() {
   const { data: session, status } = useSession();
   const router = useRouter();
+  const searchParams = useSearchParams();
   
   // Form inputs
   const [swapAmount, setSwapAmount] = useState("");
-  const [tokenType, setTokenType] = useState("usdc"); // "usdc" = USDC to USDs, "usd" = USDs to USDC
+  const [tokenType, setTokenType] = useState(searchParams.get('from') === 'usds' ? 'usd' : 'usdc'); // "usdc" = USDC to USDs, "usd" = USDs to USDC
   const [passcode, setPasscode] = useState("");
   
   // UI states
@@ -196,6 +197,8 @@ export default function SwapPage() {
     );
   }
 
+  const pageTitle = tokenType === "usdc" ? "Earn 4.2% APY" : "Convert USDs to USDC";
+
   return (
     <div className="min-h-screen flex flex-col bg-black text-white">
       <Header />
@@ -211,14 +214,14 @@ export default function SwapPage() {
                 Back to Wallet
               </span>
             </Link>
-            <h1 className="text-xl font-medium text-white">Swap Tokens</h1>
+            <h1 className="text-xl font-medium text-white">{pageTitle}</h1>
           </div>
           
           {/* Swap card */}
           <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-6 shadow-sm mb-6">
             <div className="flex items-center mb-6">
-              <div className="p-3 rounded-full bg-emerald-900/50 text-emerald-400 mr-3">
-                <ArrowLeftRight size={20} />
+              <div className={`p-3 rounded-full ${tokenType === "usdc" ? "bg-emerald-900/50 text-emerald-400" : "bg-blue-900/50 text-blue-400"} mr-3`}>
+                {tokenType === "usdc" ? <PiggyBank size={20} /> : <ArrowLeftRight size={20} />}
               </div>
               <div>
                 <h2 className="text-xl font-semibold text-white">
@@ -227,6 +230,11 @@ export default function SwapPage() {
                 {tokenType === "usdc" && (
                   <p className="text-xs text-emerald-400 flex items-center">
                     <TrendingUp size={12} className="mr-1" /> Earn 4.2% APY on your stablecoins
+                  </p>
+                )}
+                {tokenType === "usd" && (
+                  <p className="text-xs text-gray-400 flex items-center">
+                    <Info size={12} className="mr-1" /> Convert back to USDC for spending
                   </p>
                 )}
               </div>
@@ -243,6 +251,23 @@ export default function SwapPage() {
                     <h3 className="font-bold text-emerald-300 text-sm">4.2% Annual Yield</h3>
                     <p className="text-xs text-emerald-200/80">
                       USDs automatically earns interest. Swap your stablecoins to start earning.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+            
+            {/* Spending banner for USDs to USDC */}
+            {tokenType === "usd" && (
+              <div className="bg-gradient-to-r from-blue-900/30 to-blue-800/30 border border-blue-800/50 rounded-lg p-4 mb-6">
+                <div className="flex items-start gap-3">
+                  <div className="p-2 rounded-full bg-blue-800/50 text-blue-300">
+                    <ArrowLeftRight size={20} />
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-blue-300 text-sm">Access Your Funds</h3>
+                    <p className="text-xs text-blue-200/80">
+                      Convert USDs back to USDC when you need funds for spending or transfers.
                     </p>
                   </div>
                 </div>
@@ -282,7 +307,7 @@ export default function SwapPage() {
                           <USDsIcon width={20} height={20} className="text-emerald-400" />
                           <span className="font-medium text-gray-200 flex items-center">
                             USDs
-                            <ArrowRight size={14} className="ml-1 text-emerald-400 opacity-70" />
+                            <ArrowRight size={14} className="ml-1 text-blue-400 opacity-70" />
                           </span>
                         </>
                       )}
@@ -358,25 +383,38 @@ export default function SwapPage() {
               <Button
                 type="submit"
                 disabled={isLoading || !swapAmount}
-                className="w-full bg-emerald-600 hover:bg-emerald-700 text-white py-3 rounded-md font-medium flex justify-center items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                className={`w-full py-3 rounded-md font-medium flex justify-center items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed
+                  ${tokenType === "usdc" ? "bg-emerald-600 hover:bg-emerald-700 text-white" : "bg-blue-600 hover:bg-blue-700 text-white"}`}
               >
                 {isLoading ? (
                   <>
                     <RefreshCw size={16} className="animate-spin" />
-                    Swapping...
+                    Processing...
                   </>
                 ) : (
-                  tokenType === "usdc" ? "Swap USDC to USDs" : "Swap USDs to USDC"
+                  tokenType === "usdc" ? (
+                    <>
+                      <TrendingUp size={16} />
+                      Start Earning 4.2% APY
+                    </>
+                  ) : (
+                    <>
+                      <ArrowLeftRight size={16} />
+                      Convert USDs to USDC
+                    </>
+                  )
                 )}
               </Button>
               
               {/* Information note */}
-              <div className="mt-4 bg-emerald-900/20 border border-emerald-900/30 rounded-md p-3 text-sm text-gray-300">
+              <div className={`mt-4 border rounded-md p-3 text-sm 
+                ${tokenType === "usdc" ? "bg-emerald-900/20 border-emerald-900/30 text-gray-300" : "bg-blue-900/20 border-blue-900/30 text-gray-300"}`}
+              >
                 <p className="flex items-start gap-2">
-                  <Info size={16} className="text-emerald-400 mt-0.5 flex-shrink-0" />
+                  <Info size={16} className={`${tokenType === "usdc" ? "text-emerald-400" : "text-blue-400"} mt-0.5 flex-shrink-0`} />
                   {tokenType === "usdc" 
-                    ? "By swapping USDC to USDs, you'll automatically earn 4.2% APY on your stablecoins."
-                    : "Swap back to USDC when you need funds for spending or transfers."}
+                    ? "By swapping USDC to USDs, you'll automatically earn 4.2% APY on your stablecoins. No lock-up period required."
+                    : "Swap back to USDC whenever you need funds for spending or transfers. Your remaining USDs will continue earning."}
                 </p>
               </div>
             </form>
@@ -389,7 +427,7 @@ export default function SwapPage() {
         <div className="fixed inset-0 flex items-center justify-center z-50 bg-black bg-opacity-75 p-4">
           <div className="bg-zinc-900 rounded-xl border border-zinc-800 p-6 w-full max-w-md">
             <h3 className="text-xl font-semibold text-white mb-4">
-              Confirm Swap
+              {tokenType === "usdc" ? "Start Earning 4.2% APY" : "Convert USDs to USDC"}
             </h3>
             
             <p className="text-gray-400 mb-6">
@@ -433,7 +471,7 @@ export default function SwapPage() {
                 
                 <Button
                   type="submit"
-                  className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white"
+                  className={`flex-1 text-white ${tokenType === "usdc" ? "bg-emerald-600 hover:bg-emerald-700" : "bg-blue-600 hover:bg-blue-700"}`}
                   disabled={isLoading || !isValidPasscode(passcode)}
                 >
                   {isLoading ? (
@@ -444,7 +482,7 @@ export default function SwapPage() {
                       </span>
                     </>
                   ) : (
-                    "Swap"
+                    "Confirm"
                   )}
                 </Button>
               </div>

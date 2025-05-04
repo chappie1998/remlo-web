@@ -101,7 +101,7 @@ export default function Header({ title, backUrl }: HeaderProps) {
                 <span>Receive</span>
               </Link>
               <Link
-                href="/wallet/swap"
+                href="/wallet/swap?from=usdc"
                 className={`px-3 py-2 rounded-md text-sm transition-colors flex items-center gap-1.5 ${
                   isActive("/wallet/swap")
                     ? "bg-emerald-950/50 text-emerald-400 font-medium"
@@ -109,7 +109,7 @@ export default function Header({ title, backUrl }: HeaderProps) {
                 }`}
               >
                 <ArrowLeftRight size={16} />
-                <span>Swap</span>
+                <span>Earn</span>
               </Link>
               <Link
                 href="/activity"
