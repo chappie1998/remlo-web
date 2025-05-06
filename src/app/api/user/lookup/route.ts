@@ -38,14 +38,16 @@ export async function POST(req: NextRequest) {
     // Check if we found a user and it has a Solana address
     // @ts-ignore - safely ignore type errors because we're using raw queries
     if (!users || users.length === 0 || !users[0].solanaAddress) {
-      return NextResponse.json(
-        { error: "User not found" },
-        { status: 404 }
-      );
+      // Instead of returning a 404 error, return a success response with a found flag
+      return NextResponse.json({
+        found: false,
+        message: "User not found"
+      });
     }
 
     // Return the user information
     return NextResponse.json({
+      found: true,
       // @ts-ignore - safely ignore type errors because we're using raw queries
       username: users[0].username,
       // @ts-ignore - safely ignore type errors because we're using raw queries
