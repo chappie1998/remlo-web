@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { PrismaClient } from "@prisma/client";
 import { PublicKey } from "@solana/web3.js";
-import { SPL_TOKEN_ADDRESS, RELAYER_URL, isValidSolanaAddress, getSolanaConnection } from "@/lib/solana";
+import { SPL_TOKEN_ADDRESS, USDS_TOKEN_ADDRESS, RELAYER_URL, isValidSolanaAddress, getSolanaConnection } from "@/lib/solana";
 import { isValidPasscode } from "@/lib/utils";
 import { prepareMPCSigningKeypair } from "@/lib/mpc";
 import { authOptions } from "@/lib/auth";
@@ -78,8 +78,8 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Extract the recipient address, amount, and passcode from the request
-    const { to, amount, passcode, username, backupShare, recoveryShare } = await req.json();
+    // Extract the recipient address, amount, passcode, and tokenType from the request
+    const { to, amount, passcode, username, backupShare, recoveryShare, tokenType } = await req.json();
 
     if (!to || !amount) {
       return NextResponse.json(
@@ -216,9 +216,18 @@ export async function POST(req: NextRequest) {
     }
 
     // Create a record of the transaction request
+    // Determine which token address to use based on tokenType
+    let tokenAddress = SPL_TOKEN_ADDRESS; // Default to USDC
+    if (tokenType && tokenType.toLowerCase() === 'usds') {
+      tokenAddress = USDS_TOKEN_ADDRESS; // Use USDS if specified
+      console.log(`Using USDS token address: ${USDS_TOKEN_ADDRESS}`);
+    } else {
+      console.log(`Using USDC token address: ${SPL_TOKEN_ADDRESS}`);
+    }
+
     const transaction = await prisma.transaction.create({
       data: {
-        txData: JSON.stringify({ to, amount, token: SPL_TOKEN_ADDRESS, username }),
+        txData: JSON.stringify({ to, amount, token: tokenAddress, username, tokenType }),
         status: "pending",
         user: {
           connect: { id: user.id }
@@ -230,7 +239,7 @@ export async function POST(req: NextRequest) {
     const TOKEN_DECIMALS = 6;
     const amountInUnits = Math.floor(Number(amount) * (10 ** TOKEN_DECIMALS));
 
-    console.log(`Creating token transfer: ${amount} tokens (${amountInUnits} units with ${TOKEN_DECIMALS} decimals)`);
+    console.log(`Creating token transfer: ${amount} ${tokenType || 'usdc'} tokens (${amountInUnits} units with ${TOKEN_DECIMALS} decimals)`);
 
     // Step 2: Request the transaction data from the relayer
     const createTransferResponse = await fetch(`${RELAYER_URL}/api/create-transfer`, {
@@ -243,6 +252,7 @@ export async function POST(req: NextRequest) {
         toAddress: to,
         amount: amount,  // This is the human-readable amount, e.g. "1.5"
         amountInRawUnits: amountInUnits,  // Add the raw token units
+        tokenType: tokenType || 'usdc'  // Pass the tokenType to the relayer
       }),
     });
 

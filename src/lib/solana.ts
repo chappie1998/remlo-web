@@ -25,7 +25,7 @@ export const SPL_TOKEN_ADDRESS = 'Gh9ZwEmdLJ8DscKNTkTqPbNwLNNBjuSzaG9Vp2KGtKJr';
 export const USDS_TOKEN_ADDRESS = '5jMCx4W5425TPRj23KRng5nbyaZkZiD47yLXDkk5tLAV';
 
 // Relayer service URL
-export const RELAYER_URL = process.env.NEXT_PUBLIC_RELAYER_URL || 'http://localhost:3001';
+export const RELAYER_URL = process.env.NEXT_PUBLIC_RELAYER_URL || 'http://192.168.1.106:3001';
 
 /**
  * Gets a Connection for Solana from the connection pool
