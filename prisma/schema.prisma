@@ -13,7 +13,8 @@ datasource db {
 model User {
   id            String    @id @default(cuid())
   name          String?
-  email         String?   @unique
+  username      String?   @unique  // Username for user-friendly identification
+  email         String    @unique
   phone         String?   @unique
   emailVerified DateTime?
   phoneVerified DateTime?
@@ -23,14 +24,28 @@ model User {
 
   // Account abstraction related fields
   solanaAddress    String?   @unique  // Public address (public key)
-  encryptedKeypair String?           // Encrypted keypair
+  encryptedKeypair String?           // Encrypted keypair (legacy field)
   hasPasscode      Boolean   @default(false)
   passcodeSetAt    DateTime?
+  passcodeHash     String?
+  recoveryKey      String?
+
+  // MPC related fields
+  mpcServerShare   String?            // Encrypted server share for MPC
+  mpcSalt          String?            // Salt used for passcode derivation
+  mpcBackupShare   String?            // Backup share for recovery (ideally stored elsewhere)
+  usesMPC          Boolean   @default(false) // Whether the user is using MPC
 
   // Relations
-  accounts      Account[]
-  sessions      Session[]
-  transactions  Transaction[]
+  accounts        Account[]
+  sessions        Session[]
+  transactions    Transaction[]
+  paymentRequests PaymentRequest[] // Payment requests created by this user
+  requestedPayments PaymentRequest[] @relation("RequestedPayments") // Payment requests where this user is the recipient
+  sentPayments    Payment[]        @relation("SentPayments")
+  contacts        Contact[]        @relation("UserContacts")
+  savedTemplates  SavedTemplate[]  @relation("UserTemplates")
+  paymentLinks    PaymentLink[]    @relation("CreatedPaymentLinks") // Payment links created by this user
 }
 
 model Account {
@@ -62,7 +77,7 @@ model Session {
 
 model VerificationToken {
   identifier String
-  token      String
+  token      String   @unique
   expires    DateTime
 
   @@unique([identifier, token])
@@ -88,4 +103,92 @@ model PaymasterInfo {
   lastSponsoredAt DateTime?
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
+}
+
+// Payment request model for tracking link-based payment requests
+model PaymentRequest {
+  id            String    @id @default(cuid())
+  shortId       String    @unique // Short ID for URLs (e.g., pr_123abc)
+  creatorId     String    // User who created the request
+  recipientId   String?   // Optional User who is being requested to pay
+  amount        String    // Amount requested (as string to preserve decimal precision)
+  tokenType     String    // "usds", "usdc", etc.
+  note          String?   // Optional note about the payment
+  status        String    // "pending", "completed", "cancelled", "expired"
+  expiresAt     DateTime? // Optional expiration date
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  
+  // Relations
+  creator       User      @relation(fields: [creatorId], references: [id], onDelete: Cascade)
+  recipient     User?     @relation("RequestedPayments", fields: [recipientId], references: [id], onDelete: SetNull)
+  payment       Payment?  // The payment fulfilling this request, if any
+}
+
+// NEW: Payment link model for token delegation with OTP verification
+model PaymentLink {
+  id               String    @id @default(cuid())
+  shortId          String    @unique // Short ID for URLs (e.g., pl_123abc)
+  creatorId        String    // User who created the link
+  amount           String    // Amount approved (as string to preserve decimal precision)
+  tokenType        String    // "usds", "usdc", etc.
+  note             String?   // Optional note about the payment
+  status           String    // "active", "claimed", "expired", "revoked"
+  verificationData String    // HMAC signature for OTP verification (not storing OTP directly)
+  delegationTx     String?   // The transaction signature for the token delegation
+  claimedBy        String?   // Solana address of the recipient who claimed the payment
+  claimedAt        DateTime? // When the payment was claimed
+  expiresAt        DateTime  // Expiration date (required)
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  
+  // Relations
+  creator          User      @relation("CreatedPaymentLinks", fields: [creatorId], references: [id], onDelete: Cascade)
+}
+
+// Payment model for tracking payments made to fulfill requests
+model Payment {
+  id              String   @id @default(cuid())
+  payerId         String   // User who made the payment
+  paymentRequestId String  @unique // The payment request being fulfilled
+  transactionSignature String? // Solana transaction signature
+  status          String   // "pending", "confirmed", "failed"
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  // Relations
+  payer           User     @relation("SentPayments", fields: [payerId], references: [id], onDelete: Cascade)
+  paymentRequest  PaymentRequest @relation(fields: [paymentRequestId], references: [id], onDelete: Cascade)
+}
+
+// Contact model for saving frequently used recipients
+model Contact {
+  id            String    @id @default(cuid())
+  nickname      String
+  username      String?
+  solanaAddress String
+  isFavorite    Boolean   @default(false)
+  lastUsed      DateTime  @default(now())
+  createdAt     DateTime  @default(now())
+
+  user          User      @relation("UserContacts", fields: [userId], references: [id], onDelete: Cascade)
+  userId        String
+  
+  @@unique([userId, solanaAddress])
+}
+
+// SavedTemplate model for recurring payments
+model SavedTemplate {
+  id            String    @id @default(cuid())
+  name          String
+  recipient     String    // Can be address or username
+  amount        String
+  tokenType     String    // "usd" or "usdc"
+  description   String?
+  frequency     String?   // "once", "daily", "weekly", "monthly"
+  createdAt     DateTime  @default(now())
+  lastUsed      DateTime  @default(now())
+
+  user          User      @relation("UserTemplates", fields: [userId], references: [id], onDelete: Cascade)
+  userId        String
 }

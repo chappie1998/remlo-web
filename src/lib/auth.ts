@@ -87,6 +87,7 @@ export const authOptions: NextAuthOptions = {
             email: true,
             solanaAddress: true,
             hasPasscode: true,
+            username: true,
           },
         });
 
@@ -95,6 +96,7 @@ export const authOptions: NextAuthOptions = {
           id: token.userId as string,
           solanaAddress: userData?.solanaAddress || null,
           hasPasscode: userData?.hasPasscode || false,
+          username: userData?.username || null,
         };
       }
       return session;

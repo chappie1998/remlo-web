@@ -7,8 +7,8 @@ import AuthProvider from "@/components/providers/AuthProvider";
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "Solana Passcode Wallet",
-  description: "A wallet using passcode authentication for Solana",
+  title: "Remlo - Send money instantly",
+  description: "Send and receive money instantly, simply, and securely with Remlo.",
 };
 
 export default function RootLayout({
@@ -18,7 +18,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className="dark">
-      <body className={`${inter.className} bg-background text-foreground`}>
+      <body className={`${inter.className} bg-black text-white`}>
         <AuthProvider>
           {children}
           <Toaster position="top-right" richColors theme="dark" />
