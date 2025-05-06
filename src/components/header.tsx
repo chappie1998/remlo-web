@@ -15,7 +15,8 @@ import {
   DollarSign,
   Bell,
   ArrowLeft,
-  ArrowLeftRight
+  ArrowLeftRight,
+  LinkIcon
 } from "lucide-react";
 
 interface HeaderProps {
@@ -112,15 +113,15 @@ export default function Header({ title, backUrl }: HeaderProps) {
                 <span>Earn</span>
               </Link>
               <Link
-                href="/activity"
+                href="/payment-links"
                 className={`px-3 py-2 rounded-md text-sm transition-colors flex items-center gap-1.5 ${
-                  isActive("/activity")
+                  isActive("/payment-links")
                     ? "bg-emerald-950/50 text-emerald-400 font-medium"
                     : "hover:bg-zinc-800 hover:text-gray-200 text-gray-400"
                 }`}
               >
-                <Activity size={16} />
-                <span>Activity</span>
+                <LinkIcon size={16} />
+                <span>Links</span>
               </Link>
               <Link
                 href="/payment-requests"
@@ -131,7 +132,18 @@ export default function Header({ title, backUrl }: HeaderProps) {
                 }`}
               >
                 <DollarSign size={16} />
-                <span>Payments</span>
+                <span>Requests</span>
+              </Link>
+              <Link
+                href="/activity"
+                className={`px-3 py-2 rounded-md text-sm transition-colors flex items-center gap-1.5 ${
+                  isActive("/activity")
+                    ? "bg-emerald-950/50 text-emerald-400 font-medium"
+                    : "hover:bg-zinc-800 hover:text-gray-200 text-gray-400"
+                }`}
+              >
+                <Activity size={16} />
+                <span>Activity</span>
               </Link>
             </nav>
           )}

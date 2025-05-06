@@ -39,15 +39,46 @@ export function isValidPasscode(passcode: string): boolean {
 }
 
 /**
+ * Format a number as a currency string
+ * @param value The number to format
+ * @returns Formatted currency string (e.g. "1,234.56")
+ */
+export function formatCurrency(value: string | number): string {
+  const numValue = typeof value === 'string' ? parseFloat(value) : value;
+  
+  if (isNaN(numValue)) {
+    return '0.00';
+  }
+  
+  return numValue.toLocaleString(undefined, {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 6
+  });
+}
+
+/**
  * Copies text to clipboard
  */
-export async function copyToClipboard(text: string): Promise<boolean> {
+export function copyToClipboard(text: string): Promise<boolean> {
+  if (navigator.clipboard) {
+    return navigator.clipboard.writeText(text)
+      .then(() => true)
+      .catch(() => false);
+  }
+  
   try {
-    await navigator.clipboard.writeText(text);
-    return true;
-  } catch (error) {
-    console.error("Failed to copy:", error);
-    return false;
+    // Fallback for older browsers
+    const textArea = document.createElement('textarea');
+    textArea.value = text;
+    textArea.style.position = 'fixed';
+    document.body.appendChild(textArea);
+    textArea.focus();
+    textArea.select();
+    const successful = document.execCommand('copy');
+    document.body.removeChild(textArea);
+    return Promise.resolve(successful);
+  } catch (err) {
+    return Promise.resolve(false);
   }
 }
 

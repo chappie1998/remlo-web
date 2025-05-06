@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import Header from "@/components/header";
 import { SendMoneyIcon, RequestMoneyIcon, ActivityIcon } from "@/components/icons";
-import { ArrowRight, CreditCard, Smartphone, ShieldCheck } from "lucide-react";
+import { ArrowRight, CreditCard, Smartphone, ShieldCheck, LinkIcon } from "lucide-react";
 
 export default function Home() {
   const { data: session, status } = useSession();
@@ -47,7 +47,7 @@ export default function Home() {
         </div>
 
         {/* Feature blocks */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 p-6 md:p-10 max-w-6xl mx-auto w-full">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 p-6 md:p-10 max-w-7xl mx-auto w-full">
           <div className="bg-zinc-900 p-6 rounded-xl border border-zinc-800 flex flex-col">
             <div className="h-12 w-12 bg-zinc-800 rounded-full flex items-center justify-center mb-4">
               <SendMoneyIcon className="h-6 w-6 text-emerald-400" />
@@ -66,6 +66,22 @@ export default function Home() {
 
           <div className="bg-zinc-900 p-6 rounded-xl border border-zinc-800 flex flex-col">
             <div className="h-12 w-12 bg-zinc-800 rounded-full flex items-center justify-center mb-4">
+              <LinkIcon className="h-6 w-6 text-emerald-400" />
+            </div>
+            <h3 className="text-xl font-bold mb-2 text-white">Send via Links</h3>
+            <p className="text-gray-400 mb-4 flex-1">
+              Create payment links with OTP verification to share with anyone, even if they don't have an account.
+            </p>
+            <Button variant="ghost" asChild className="mt-auto justify-start px-0 text-emerald-400 hover:text-emerald-300 hover:bg-transparent">
+              <Link href={status === "authenticated" ? "/payment-links" : "/auth/signin"} className="flex items-center gap-1">
+                Create Payment Link
+                <ArrowRight size={16} />
+              </Link>
+            </Button>
+          </div>
+
+          <div className="bg-zinc-900 p-6 rounded-xl border border-zinc-800 flex flex-col">
+            <div className="h-12 w-12 bg-zinc-800 rounded-full flex items-center justify-center mb-4">
               <RequestMoneyIcon className="h-6 w-6 text-emerald-400" />
             </div>
             <h3 className="text-xl font-bold mb-2 text-white">Request Payments</h3>
@@ -73,7 +89,7 @@ export default function Home() {
               Split bills, collect money, or request payments from anyone in just a few taps.
             </p>
             <Button variant="ghost" asChild className="mt-auto justify-start px-0 text-emerald-400 hover:text-emerald-300 hover:bg-transparent">
-              <Link href={status === "authenticated" ? "/wallet/receive" : "/auth/signin"} className="flex items-center gap-1">
+              <Link href={status === "authenticated" ? "/payment-requests" : "/auth/signin"} className="flex items-center gap-1">
                 Request Money 
                 <ArrowRight size={16} />
               </Link>

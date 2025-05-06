@@ -45,6 +45,7 @@ model User {
   sentPayments    Payment[]        @relation("SentPayments")
   contacts        Contact[]        @relation("UserContacts")
   savedTemplates  SavedTemplate[]  @relation("UserTemplates")
+  paymentLinks    PaymentLink[]    @relation("CreatedPaymentLinks") // Payment links created by this user
 }
 
 model Account {
@@ -122,6 +123,27 @@ model PaymentRequest {
   creator       User      @relation(fields: [creatorId], references: [id], onDelete: Cascade)
   recipient     User?     @relation("RequestedPayments", fields: [recipientId], references: [id], onDelete: SetNull)
   payment       Payment?  // The payment fulfilling this request, if any
+}
+
+// NEW: Payment link model for token delegation with OTP verification
+model PaymentLink {
+  id               String    @id @default(cuid())
+  shortId          String    @unique // Short ID for URLs (e.g., pl_123abc)
+  creatorId        String    // User who created the link
+  amount           String    // Amount approved (as string to preserve decimal precision)
+  tokenType        String    // "usds", "usdc", etc.
+  note             String?   // Optional note about the payment
+  status           String    // "active", "claimed", "expired", "revoked"
+  verificationData String    // HMAC signature for OTP verification (not storing OTP directly)
+  delegationTx     String?   // The transaction signature for the token delegation
+  claimedBy        String?   // Solana address of the recipient who claimed the payment
+  claimedAt        DateTime? // When the payment was claimed
+  expiresAt        DateTime  // Expiration date (required)
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  
+  // Relations
+  creator          User      @relation("CreatedPaymentLinks", fields: [creatorId], references: [id], onDelete: Cascade)
 }
 
 // Payment model for tracking payments made to fulfill requests
