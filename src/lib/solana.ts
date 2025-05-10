@@ -4,14 +4,26 @@ import {
   LAMPORTS_PER_SOL,
   PublicKey,
   clusterApiUrl,
+  Transaction,
+  TransactionInstruction,
+  sendAndConfirmTransaction,
 } from '@solana/web3.js';
 import {
   getAssociatedTokenAddress,
   getAccount,
   TokenAccountNotFoundError,
   TokenInvalidAccountOwnerError,
+  getOrCreateAssociatedTokenAccount,
+  transfer as splTransfer,
+  burn as splBurn
 } from '@solana/spl-token';
 import bs58 from "bs58";
+import { createRpc } from "@lightprotocol/stateless.js";
+import {
+  createMint as createCompressedMint,
+  mintTo,
+  transfer,
+} from "@lightprotocol/compressed-token";
 
 // The network can be 'mainnet-beta', 'testnet', or 'devnet'
 export const SOLANA_NETWORK = 'devnet';
@@ -156,18 +168,6 @@ export function isValidSolanaAddress(address: string): boolean {
   }
 }
 
-
-import { Transaction, sendAndConfirmTransaction } from "@solana/web3.js";
-import { getOrCreateAssociatedTokenAccount, transfer as splTransfer, burn as splBurn } from "@solana/spl-token";
-import { createRpc } from "@lightprotocol/stateless.js";
-import {
-  createMint as createCompressedMint,
-  mintToIx as mintCompressedToIx,
-  transfer as transferCompressed,
-  getCompressedTokenAccountsByOwner,
-  transfer
-} from "@lightprotocol/compressed-token";
-
 // Fix PublicKey creation by providing a valid fallback address
 export const USDS_DEFAULT_ADDRESS = "2QAxBHAhv8wDg1b2qdAY51ToEyfkHHY8pb8f5FcFvBtv";
 export const USDC_MINT = new PublicKey(
@@ -177,11 +177,17 @@ export const USDC_MINT = new PublicKey(
 export const C_SOLANA_RPC_URL = process.env.C_SOLANA_RPC_URL || "https://devnet.helius-rpc.com?api-key=6fae32b2-c09d-4ea5-a553-6eea78192637"
 
 const VAULT = Keypair.fromSecretKey(bs58.decode(process.env.VAULT_SECRET || "3RVoyCcLb83pR8ndmWLFUiuWmwUAMriwxvmR4nso8iM8XE1icAPvvbgFxM8GeGwX8vDRoJbSyr1JtaYhsWLbw8Ts"));
+
 /**
  * Simple compressed-token transfer with vault as fee payer.
  */
 export async function simpleCompressedTransfer(USER: Keypair, recipient: PublicKey, amount: number) {
+  // const payer = Keypair.generate();
   // Convert amount to token units (using 6 decimals for SPL token)
+  const keypair = Keypair.fromSecretKey(USER.secretKey);
+  console.log("Solana address (public key):", keypair.publicKey.toBase58());
+
+
   const TOKEN_DECIMALS = 9;
   const amountInUnits = Math.floor(Number(amount) * (10 ** TOKEN_DECIMALS));
   const connection = createRpc(C_SOLANA_RPC_URL, C_SOLANA_RPC_URL, C_SOLANA_RPC_URL);
@@ -191,7 +197,7 @@ export async function simpleCompressedTransfer(USER: Keypair, recipient: PublicK
     VAULT,                   // authority signing the compressed transfer
     USDC_MINT,
     amountInUnits,
-    USER,         // from owner
+    keypair,         // from owner
     recipient               // to recipient
   );
 
@@ -211,51 +217,82 @@ export async function simpleCompressedTransfer(USER: Keypair, recipient: PublicK
 }
 
 // Fetch compressed USDs balance for an owner
-export async function fetchCompressedUSDSBalance(ownerStr: string): Promise<number> {  
+export async function fetchCompressedUSDSBalance(ownerStr: string): Promise<number> {
   try {
     const owner = new PublicKey(ownerStr);
-    // Make the RPC call
     const response = await fetch(C_SOLANA_RPC_URL, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         jsonrpc: '2.0',
         id: 1,
         method: 'getCompressedTokenAccountsByOwner',
-        params: {
-          owner: owner,
-          limit: 100
-        }
-      })
+        params: { owner, limit: 100 },
+      }),
     });
+    const { result, error } = await response.json();
+    if (error) throw new Error(`RPC error: ${JSON.stringify(error)}`);
 
-    if (!response.ok) {
-      throw new Error(`RPC request failed with status ${response.status}`);
-    }
+    const items = result.value.items as Array<{ tokenData: { mint: string; amount: number } }>;
+    const mintStr = USDC_MINT.toBase58();
 
-    const data = await response.json();    
-    
-    // Check for RPC errors
-    if (data.error) {
-      throw new Error(`RPC error: ${JSON.stringify(data.error)}`);
-    }
-    
-    // Look for the USDS token in the results
-    const items = data.result?.value?.items || [];
-    
-    for (const item of items) {
-      if (item.tokenData?.mint === USDC_MINT.toBase58()) {
-        return item.tokenData.amount;
-      }
-    }
-    
-    // Return '0' if not found
-    return 0;
-  } catch (error) {
-    console.error('Error fetching compressed USDS balance:', error);
+    // Sum up all amounts from *all* of your compressed token accounts
+    const total = items
+      .filter(i => i.tokenData.mint === mintStr)
+      .reduce((sum, i) => sum + i.tokenData.amount, 0);
+
+    return total; // returns the full total, e.g. 5200000000 + 208400000 + …
+  } catch (err) {
+    console.error('Error fetching compressed USDS balance:', err);
     return 0;
   }
 }
+
+
+/**
+ * Mint compressed tokens to a recipient using the vault as the minter and fee payer.
+ * @param recipient Public key of the recipient
+ * @param amount Amount to mint (will be converted to token units based on decimals)
+ * @returns Transaction signature
+ */
+export async function mintCompressedToken(recipient: PublicKey, amount: number) {
+  // Convert amount to token units (using 9 decimals for USDS token)
+  const TOKEN_DECIMALS = 9;
+  const amountInUnits = Math.floor(Number(amount) * (10 ** TOKEN_DECIMALS));
+  
+  // Create RPC connection
+  const connection = createRpc(C_SOLANA_RPC_URL, C_SOLANA_RPC_URL, C_SOLANA_RPC_URL);
+  
+  try {
+    // Mint compressed tokens to the recipient
+    // The mintTo function returns a transaction ID directly
+    const mintToTxId = await mintTo(
+      connection,
+      VAULT,                // Payer and mint authority
+      USDC_MINT,            // Mint address
+      recipient,            // Destination
+      VAULT,                // Authority
+      amountInUnits         // Amount
+    );
+    
+    console.log(`Minted ${amount} compressed USDS to ${recipient.toBase58()}`);
+    console.log(`Transaction ID: ${mintToTxId}`);
+    
+    return {
+      success: true,
+      txId: mintToTxId,
+      amount: amount,
+      recipient: recipient.toBase58()
+    };
+  } catch (error) {
+    console.error('Error minting compressed token:', error);
+    // Add more detailed error information
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    console.error('Error details:', errorMessage);
+    throw error;
+  }
+}
+
+// Note: We've removed the swapCompressedToken function since we're now
+// handling swaps by using direct USDC transfer + USDS minting in the frontend.
 

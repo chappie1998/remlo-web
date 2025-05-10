@@ -53,6 +53,7 @@ export default function WalletDashboard() {
   const [swapAmount, setSwapAmount] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
+  const [currentOperation, setCurrentOperation] = useState<"send" | "swap">("send");
 
   // Balance states
   const [solBalance, setSolBalance] = useState("0.0");
@@ -193,8 +194,18 @@ export default function WalletDashboard() {
     );
   }
 
-  const handleSendTransaction = async (e: React.FormEvent) => {
+  const handleSendFormSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    setError("");
+
+    if (validateSendForm()) {
+      setCurrentOperation("send");
+      setShowPasscodeModal(true);
+    }
+  };
+
+  const handleSendTransaction = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
     setError("");
 
     if (!isValidPasscode(passcode)) {
@@ -258,21 +269,90 @@ export default function WalletDashboard() {
       return;
     }
 
+    // Set current operation to swap and open passcode modal
+    setCurrentOperation("swap");
+    setShowPasscodeModal(true);
+  };
+
+  // Add a function to handle swap with passcode
+  const handleSwapWithPasscode = async () => {
+    if (!isValidPasscode(passcode)) {
+      setError("Passcode must be exactly 6 digits");
+      return;
+    }
+
     setIsLoading(true);
+    setError("");
 
-    // Simulate a swap with a delay
-    setTimeout(() => {
+    try {
+      // Define the vault/treasury address - this is where USDC will be sent
+      // In a real implementation, this should be fetched from backend or env
+      const vaultAddress = "DvBWJucbGXMhjNgN8BTzBUQtGNfVYfYXc1jhbmRNGNvH"; // Example address
+
+      // Calculate received amount with 4.2% bonus
       const swapAmountNum = parseFloat(swapAmount);
-      setUsdcBalance((parseFloat(usdcBalance) - swapAmountNum).toFixed(6));
+      const receivedAmount = swapAmountNum * 1.042;
 
-      // Add swapped amount to USDs with 4.2% bonus
-      const bonusRate = 1.042; // 4.2% bonus
-      setUsdsBalance((parseFloat(usdsBalance) + (swapAmountNum * bonusRate)).toFixed(6));
+      // Step 1: Send USDC to the vault using the regular token transfer API
+      console.log(`Step 1: Sending ${swapAmount} USDC to vault ${vaultAddress}`);
+      const usdcTransferResponse = await fetch("/api/wallet/send-token-transaction", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          to: vaultAddress,
+          amount: swapAmount,
+          passcode,
+        }),
+      });
 
+      const usdcTransferData = await usdcTransferResponse.json();
+
+      if (!usdcTransferResponse.ok) {
+        throw new Error(usdcTransferData.error || "USDC transfer failed");
+      }
+
+      // Step 2: Mint USDs to the user through the swap API
+      console.log(`Step 2: Minting ${receivedAmount.toFixed(6)} USDS to user`);
+      const mintResponse = await fetch("/api/wallet/mint-compressed-token", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          to: session?.user?.solanaAddress,
+          amount: receivedAmount.toFixed(6),
+          adminKey: "admin-secret-key", // This should be stored securely in a real app
+          passcode,
+        }),
+      });
+
+      const mintData = await mintResponse.json();
+
+      if (!mintResponse.ok) {
+        // If minting fails, we need to log it but the USDC transfer already happened
+        console.error("Minting USDs failed:", mintData.error);
+        toast.error(`USDC sent but failed to receive USDs: ${mintData.error}`);
+        setIsLoading(false);
+        return;
+      }
+
+      toast.success(`Successfully swapped ${swapAmount} USDC to ${receivedAmount.toFixed(6)} USDs with 4.2% bonus!`);
+      setShowPasscodeModal(false);
+      setPasscode("");
       setSwapAmount("");
+
+      // Refresh balance and transactions
+      fetchBalances();
+      fetchTransactions();
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : "Swap failed";
+      setError(errorMessage);
+      toast.error(errorMessage);
+    } finally {
       setIsLoading(false);
-      toast.success(`Successfully swapped ${swapAmount} USDC to USDs with 4.2% bonus!`);
-    }, 1500);
+    }
   };
 
   // Format transaction data for display
@@ -282,16 +362,6 @@ export default function WalletDashboard() {
       return `${txData.amount} ${txData.token ? 'USDC' : 'SOL'} to ${shortenAddress(txData.to)}`;
     } catch (e) {
       return "Unknown transaction";
-    }
-  };
-
-  // Open passcode modal when submitting the send form
-  const handleSendFormSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    setError("");
-
-    if (validateSendForm()) {
-      setShowPasscodeModal(true);
     }
   };
 
@@ -840,10 +910,10 @@ export default function WalletDashboard() {
                   </div>
                 </div>
                 <div className="flex-1 text-right text-lg text-gray-200 px-3">
-                  {swapAmount ? (parseFloat(swapAmount) * 1.042).toFixed(6) : "0.00"}
+                  {swapAmount ? (parseFloat(swapAmount) ).toFixed(6) : "0.00"}
                 </div>
               </div>
-              <div className="mt-2 text-xs text-emerald-400 text-right">+4.2% bonus applied</div>
+              {/* <div className="mt-2 text-xs text-emerald-400 text-right">+4.2% bonus applied</div> */}
             </div>
 
             <Button
@@ -941,14 +1011,33 @@ export default function WalletDashboard() {
               </div>
 
               <div className="bg-zinc-800 p-4 rounded-lg mb-5 border border-zinc-700">
-                <div className="flex justify-between text-sm mb-2">
-                  <span className="text-gray-400">Amount</span>
-                  <span className="font-medium text-white">{amount} {tokenType.toUpperCase()}</span>
-                </div>
-                <div className="flex justify-between text-sm">
-                  <span className="text-gray-400">To</span>
-                  <span className="font-mono text-xs text-gray-300">{shortenAddress(recipient)}</span>
-                </div>
+                {currentOperation === "send" && (
+                  <>
+                    <div className="flex justify-between text-sm mb-2">
+                      <span className="text-gray-400">Amount</span>
+                      <span className="font-medium text-white">{amount} {tokenType.toUpperCase()}</span>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-gray-400">To</span>
+                      <span className="font-medium text-white">{shortenAddress(recipient)}</span>
+                    </div>
+                  </>
+                )}
+                
+                {currentOperation === "swap" && (
+                  <>
+                    <div className="flex justify-between text-sm mb-2">
+                      <span className="text-gray-400">Swap</span>
+                      <span className="font-medium text-white">{swapAmount} USDC</span>
+                    </div>
+                    <div className="flex justify-between text-sm mb-2">
+                      <span className="text-gray-400">Receive</span>
+                      <span className="font-medium text-white">
+                        {parseFloat(swapAmount) * 1.042} USDs <span className="text-xs text-emerald-400">(+4.2%)</span>
+                      </span>
+                    </div>
+                  </>
+                )}
               </div>
 
               {error && (
@@ -958,60 +1047,49 @@ export default function WalletDashboard() {
                 </div>
               )}
 
-              <form onSubmit={handleSendTransaction} className="space-y-4">
-                <div>
-                  <label htmlFor="passcode" className="text-sm font-medium block mb-2 text-gray-300">
-                    Passcode
-                  </label>
-                  <div className="relative">
-                    <input
-                      id="passcode"
-                      type="password"
-                      inputMode="numeric"
-                      maxLength={6}
-                      required
-                      value={passcode}
-                      onChange={(e) => setPasscode(e.target.value.replace(/[^0-9]/g, '').slice(0, 6))}
-                      className="w-full p-3 rounded-md border border-zinc-700 bg-zinc-800 text-gray-200 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 text-center text-xl tracking-[1em] font-mono"
-                      placeholder="······"
-                      autoFocus
-                    />
-                  </div>
-                  <p className="text-xs text-gray-500 mt-1">
-                    Enter the 6-digit passcode you set up with your wallet
-                  </p>
-                </div>
+              <div className="mb-4">
+                <label htmlFor="passcode" className="block text-sm font-medium text-gray-400 mb-2">
+                  Passcode
+                </label>
+                <input
+                  type="password"
+                  inputMode="numeric"
+                  id="passcode"
+                  maxLength={6}
+                  placeholder="6-digit passcode"
+                  value={passcode}
+                  onChange={(e) => setPasscode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                  className="w-full bg-zinc-800 border border-zinc-700 p-3 rounded-md text-white focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+                />
+              </div>
 
-                <div className="flex space-x-3 pt-2">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="flex-1 border-zinc-700 hover:bg-zinc-800 text-gray-300"
-                    onClick={() => {
-                      setShowPasscodeModal(false);
-                      setPasscode("");
-                      setError("");
-                    }}
-                    disabled={isLoading}
-                  >
-                    Cancel
-                  </Button>
-                  <Button
-                    type="submit"
-                    className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white"
-                    disabled={isLoading}
-                  >
-                    {isLoading ? (
-                      <span className="flex items-center">
-                        <RefreshCw size={16} className="animate-spin mr-2" />
-                        Processing...
-                      </span>
-                    ) : (
-                      "Confirm & Send"
-                    )}
-                  </Button>
-                </div>
-              </form>
+              <div className="flex space-x-3">
+                <Button
+                  onClick={() => {
+                    setShowPasscodeModal(false);
+                    setPasscode("");
+                    setError("");
+                  }}
+                  variant="outline"
+                  className="flex-1 bg-zinc-800 border-zinc-700 hover:bg-zinc-700 text-gray-300"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  onClick={currentOperation === "send" ? handleSendTransaction : handleSwapWithPasscode}
+                  disabled={isLoading || passcode.length !== 6}
+                  className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white disabled:opacity-50"
+                >
+                  {isLoading ? (
+                    <div className="flex items-center justify-center">
+                      <RefreshCw size={16} className="animate-spin mr-2" />
+                      Processing...
+                    </div>
+                  ) : (
+                    `Confirm ${currentOperation === "send" ? "Send" : "Swap"}`
+                  )}
+                </Button>
+              </div>
             </div>
           </div>
         )}

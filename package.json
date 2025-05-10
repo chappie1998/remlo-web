@@ -11,9 +11,9 @@
   },
   "dependencies": {
     "@auth/prisma-adapter": "^2.8.0",
-    "@lightprotocol/compressed-token": "^0.20.9",
-    "@lightprotocol/stateless.js": "^0.20.9",
-    "@lightprotocol/zk-compression-cli": "^0.23.0",
+    "@lightprotocol/compressed-token": "^0.21.0",
+    "@lightprotocol/stateless.js": "^0.21.0",
+    "@lightprotocol/zk-compression-cli": "^0.20.4",
     "@noble/hashes": "^1.7.2",
     "@prisma/client": "^6.6.0",
     "@radix-ui/react-slot": "^1.2.0",
@@ -42,6 +42,11 @@
     "tailwindcss-animate": "^1.0.7",
     "tss-js": "^2.0.0",
     "tweetnacl": "^1.0.3"
+  },
+  "overrides": {
+    "@lightprotocol/zk-compression-cli": {
+      "@lightprotocol/compressed-token": "^0.21.0"
+    }
   },
   "devDependencies": {
     "@biomejs/biome": "1.9.4",
