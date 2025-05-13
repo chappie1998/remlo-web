@@ -289,9 +289,9 @@ export default function WalletDashboard() {
       // In a real implementation, this should be fetched from backend or env
       const vaultAddress = "DvBWJucbGXMhjNgN8BTzBUQtGNfVYfYXc1jhbmRNGNvH"; // Example address
 
-      // Calculate received amount with 4.2% bonus
+      // Calculate received amount for a 1:1 swap
       const swapAmountNum = parseFloat(swapAmount);
-      const receivedAmount = swapAmountNum * 1.042;
+      const receivedAmount = swapAmountNum; // Changed from swapAmountNum * 1.042
 
       // Step 1: Send USDC to the vault using the regular token transfer API
       console.log(`Step 1: Sending ${swapAmount} USDC to vault ${vaultAddress}`);
@@ -338,7 +338,7 @@ export default function WalletDashboard() {
         return;
       }
 
-      toast.success(`Successfully swapped ${swapAmount} USDC to ${receivedAmount.toFixed(6)} USDs with 4.2% bonus!`);
+      toast.success(`Successfully swapped ${swapAmount} USDC to ${receivedAmount.toFixed(6)} USDs!`); // Removed "with 4.2% bonus!"
       setShowPasscodeModal(false);
       setPasscode("");
       setSwapAmount("");
@@ -910,10 +910,9 @@ export default function WalletDashboard() {
                   </div>
                 </div>
                 <div className="flex-1 text-right text-lg text-gray-200 px-3">
-                  {swapAmount ? (parseFloat(swapAmount) ).toFixed(6) : "0.00"}
+                  {swapAmount ? (parseFloat(swapAmount)).toFixed(6) : "0.00"} 
                 </div>
               </div>
-              {/* <div className="mt-2 text-xs text-emerald-400 text-right">+4.2% bonus applied</div> */}
             </div>
 
             <Button
@@ -934,7 +933,7 @@ export default function WalletDashboard() {
             <div className="mt-4 bg-emerald-900/20 border border-emerald-900/30 rounded-md p-3 text-sm text-gray-300">
               <p className="flex items-start gap-2">
                 <Info size={16} className="text-emerald-400 mt-0.5 flex-shrink-0" />
-                By swapping USDC to USDs, you'll automatically earn 4.2% APY on your stablecoins.
+                Swap your USDC to USDs for direct use within the ecosystem.
               </p>
             </div>
           </div>
@@ -1033,7 +1032,7 @@ export default function WalletDashboard() {
                     <div className="flex justify-between text-sm mb-2">
                       <span className="text-gray-400">Receive</span>
                       <span className="font-medium text-white">
-                        {parseFloat(swapAmount) * 1.042} USDs <span className="text-xs text-emerald-400">(+4.2%)</span>
+                        {parseFloat(swapAmount).toFixed(6)} USDs 
                       </span>
                     </div>
                   </>

@@ -7,6 +7,7 @@ import {
   Transaction,
   TransactionInstruction,
   sendAndConfirmTransaction,
+  ComputeBudgetProgram,
 } from '@solana/web3.js';
 import {
   getAssociatedTokenAddress,
@@ -18,11 +19,12 @@ import {
   burn as splBurn
 } from '@solana/spl-token';
 import bs58 from "bs58";
-import { createRpc } from "@lightprotocol/stateless.js";
+import { createRpc, bn, Rpc, sendAndConfirmTx as lightSendAndConfirmTx, buildAndSignTx } from "@lightprotocol/stateless.js";
 import {
   createMint as createCompressedMint,
   mintTo,
-  transfer,
+  CompressedTokenProgram,
+  selectMinCompressedTokenAccountsForTransfer,
 } from "@lightprotocol/compressed-token";
 
 // The network can be 'mainnet-beta', 'testnet', or 'devnet'
@@ -176,44 +178,66 @@ export const USDC_MINT = new PublicKey(
 
 export const C_SOLANA_RPC_URL = process.env.C_SOLANA_RPC_URL || "https://devnet.helius-rpc.com?api-key=6fae32b2-c09d-4ea5-a553-6eea78192637"
 
-const VAULT = Keypair.fromSecretKey(bs58.decode(process.env.VAULT_SECRET || "3RVoyCcLb83pR8ndmWLFUiuWmwUAMriwxvmR4nso8iM8XE1icAPvvbgFxM8GeGwX8vDRoJbSyr1JtaYhsWLbw8Ts"));
+export const VAULT = Keypair.fromSecretKey(bs58.decode(process.env.VAULT_SECRET || "3RVoyCcLb83pR8ndmWLFUiuWmwUAMriwxvmR4nso8iM8XE1icAPvvbgFxM8GeGwX8vDRoJbSyr1JtaYhsWLbw8Ts"));
 
 /**
- * Simple compressed-token transfer with vault as fee payer.
+ * Creates a transfer instruction for compressed tokens.
+ * VAULT will be set as the payer for the transaction later.
+ * USER must sign to authorize moving their tokens.
  */
-export async function simpleCompressedTransfer(USER: Keypair, recipient: PublicKey, amount: number) {
-  // const payer = Keypair.generate();
-  // Convert amount to token units (using 6 decimals for SPL token)
-  const keypair = Keypair.fromSecretKey(USER.secretKey);
-  console.log("Solana address (public key):", keypair.publicKey.toBase58());
+export async function createCompressedTokenTransferInstruction(
+  lightConnection: Rpc, 
+  USER_publicKey: PublicKey, 
+  recipient_publicKey: PublicKey, 
+  amountToSend: number
+): Promise<TransactionInstruction> {
+  
+  const TOKEN_DECIMALS = 9; // Assuming USDC_MINT has 9 decimals for compressed version
+  const amountInUnits = bn(Math.floor(Number(amountToSend) * (10 ** TOKEN_DECIMALS)));
 
+  // 1. Fetch latest token account state for the USER (owner)
+  const compressedTokenAccounts = await lightConnection.getCompressedTokenAccountsByOwner(USER_publicKey, {
+    mint: USDC_MINT, 
+  });
 
-  const TOKEN_DECIMALS = 9;
-  const amountInUnits = Math.floor(Number(amount) * (10 ** TOKEN_DECIMALS));
-  const connection = createRpc(C_SOLANA_RPC_URL, C_SOLANA_RPC_URL, C_SOLANA_RPC_URL);
-  // Build compressed transfer instruction
-  const ix = await transfer(
-    connection,
-    VAULT,                   // authority signing the compressed transfer
-    USDC_MINT,
-    amountInUnits,
-    keypair,         // from owner
-    recipient               // to recipient
+  if (!compressedTokenAccounts || !compressedTokenAccounts.items || compressedTokenAccounts.items.length === 0) {
+    throw new Error(`No compressed token accounts found for owner ${USER_publicKey.toBase58()} and mint ${USDC_MINT.toBase58()}`);
+  }
+
+  // 2. Select accounts to transfer from based on the transfer amount
+  const [inputAccounts, changeAmount] = selectMinCompressedTokenAccountsForTransfer(
+    compressedTokenAccounts.items,
+    amountInUnits
   );
 
-  // // Send transaction with vault paying fees
-  // const tx = new Transaction({ feePayer: VAULT.publicKey });
-  // tx.add(ix);
-  // tx.partialSign(USER);
-  // const sig = await sendAndConfirmTransaction(
-  //   connection,
-  //   tx,
-  //   [VAULT],    // vault signs here
-  //   { preflightCommitment: "confirmed" }
-  // );  
-  // console.log(`Transferred ${amount} compressed USDs to ${recipient.toBase58()}`);
-  // console.log(`Transferred ${amount} USDs → ${recipient.toBase58()}  sig=${sig}`);
-  return ix;
+  if (!inputAccounts || inputAccounts.length === 0) {
+    throw new Error("Insufficient balance or could not select accounts for transfer.");
+  }
+  
+  // 3. Fetch recent validity proof
+  const proof = await lightConnection.getValidityProof(
+    inputAccounts.map((account) => account.compressedAccount.hash)
+  );
+
+  if (!proof || !proof.compressedProof || !proof.rootIndices) {
+    throw new Error("Failed to fetch validity proof.");
+  }
+
+  // 4. Create transfer instruction
+  // The `payer` for CompressedTokenProgram.transfer covers Merkle tree changes. VAULT will be the feePayer for the overall transaction.
+  // The USER (owner of the tokens) must sign the transaction that includes this instruction.
+  const transferIx = await CompressedTokenProgram.transfer({
+    payer: VAULT.publicKey, // VAULT pays for on-ledger state changes (e.g., Merkle tree updates).
+    inputCompressedTokenAccounts: inputAccounts,
+    toAddress: recipient_publicKey,
+    amount: amountInUnits,
+    recentInputStateRootIndices: proof.rootIndices,
+    recentValidityProof: proof.compressedProof,
+    // changeAmount: changeAmount, // Removed, library might handle this or it's optional
+    // newAccountOwner: recipient_publicKey, // Removed, library might handle this or it's optional
+  });
+
+  return transferIx;
 }
 
 // Fetch compressed USDs balance for an owner
