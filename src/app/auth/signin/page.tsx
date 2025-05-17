@@ -16,7 +16,7 @@ export default function SignIn() {
           <h1 className="text-2xl font-bold">Sign In</h1>
         </div>
 
-        <Button type="button" onClick={() => signIn("google", { callbackUrl })} className="w-full">
+        <Button type="button" onClick={() => signIn("google", { callbackUrl, prompt: "select_account" })} className="w-full">
           Login with google
         </Button>
       </div>
