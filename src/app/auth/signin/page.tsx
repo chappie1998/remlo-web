@@ -4,8 +4,9 @@ import { signIn } from "next-auth/react";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
+import { Suspense } from "react";
 
-export default function SignIn() {
+function SignInContent() {
   const searchParams = useSearchParams();
   const callbackUrl = searchParams.get("callbackUrl") ?? "/wallet";
 
@@ -27,5 +28,22 @@ export default function SignIn() {
         </Link>
       </div>
     </div>
+  );
+}
+
+export default function SignIn() {
+  return (
+    <Suspense fallback={
+      <div className="flex min-h-screen flex-col items-center justify-center p-4">
+        <div className="w-full max-w-md p-8 space-y-8 bg-card rounded-lg border">
+          <div className="text-center">
+            <h1 className="text-2xl font-bold">Sign In</h1>
+            <p className="mt-2">Loading...</p>
+          </div>
+        </div>
+      </div>
+    }>
+      <SignInContent />
+    </Suspense>
   );
 }
