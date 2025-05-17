@@ -1,59 +1,105 @@
 import { NextAuthOptions } from "next-auth";
-import CredentialsProvider from "next-auth/providers/credentials";
+// import CredentialsProvider from "next-auth/providers/credentials";
 import { PrismaAdapter } from "@auth/prisma-adapter";
 import { PrismaClient } from "@prisma/client";
+import GoogleProvider from "next-auth/providers/google";
 
 const prisma = new PrismaClient();
 
 export const authOptions: NextAuthOptions = {
   adapter: PrismaAdapter(prisma),
+  // providers: [
+  //   CredentialsProvider({
+  //     id: "otp-login",
+  //     name: "OTP Login",
+  //     credentials: {
+  //       email: { label: "Email", type: "email" },
+  //       otp: { label: "OTP", type: "text" },
+  //     },
+  //     async authorize(credentials) {
+  //       if (!credentials?.email || !credentials?.otp) {
+  //         return null;
+  //       }
+
+  //       try {
+  //         // Find the OTP in the database
+  //         const otpRecord = await prisma.verificationToken.findFirst({
+  //           where: {
+  //             identifier: credentials.email,
+  //             token: credentials.otp,
+  //             expires: {
+  //               gt: new Date(),
+  //             },
+  //           },
+  //         });
+
+  //         if (!otpRecord) {
+  //           return null;
+  //         }
+
+  //         // Delete the OTP record to prevent reuse
+  //         await prisma.verificationToken.delete({
+  //           where: {
+  //             identifier_token: {
+  //               identifier: credentials.email,
+  //               token: credentials.otp,
+  //             },
+  //           },
+  //         });
+
+  //         // Get or create user
+  //         const user = await prisma.user.upsert({
+  //           where: { email: credentials.email },
+  //           update: {
+  //             emailVerified: new Date(),
+  //           },
+  //           create: {
+  //             email: credentials.email,
+  //             emailVerified: new Date(),
+  //           },
+  //         });
+
+  //         return {
+  //           id: user.id,
+  //           email: user.email,
+  //           name: user.name,
+  //         };
+  //       } catch (error) {
+  //         console.error("Error during OTP verification:", error);
+  //         return null;
+  //       }
+  //     },
+  //   }),
+  // ],
   providers: [
-    CredentialsProvider({
-      id: "otp-login",
-      name: "OTP Login",
-      credentials: {
-        email: { label: "Email", type: "email" },
-        otp: { label: "OTP", type: "text" },
+    GoogleProvider({
+      clientId: process.env.GOOGLE_ID!,
+      clientSecret: process.env.GOOGLE_SECRET!,
+      authorization: {
+        params: {
+          prompt: "consent",
+          access_type: "offline",
+          response_type: "code",
+        },
       },
-      async authorize(credentials) {
-        if (!credentials?.email || !credentials?.otp) {
-          return null;
-        }
+    }),
+  ],
+  secret: process.env.NEXTAUTH_SECRET,
+  callbacks: {
+    async signIn({ account, profile }) {
+      if (account?.provider === "google") {
+        console.log("acc", account, profile);
+        // return profile?.email_verified && profile.email.endsWith("@example.com");
 
         try {
-          // Find the OTP in the database
-          const otpRecord = await prisma.verificationToken.findFirst({
-            where: {
-              identifier: credentials.email,
-              token: credentials.otp,
-              expires: {
-                gt: new Date(),
-              },
-            },
-          });
-
-          if (!otpRecord) {
-            return null;
-          }
-
-          // Delete the OTP record to prevent reuse
-          await prisma.verificationToken.delete({
-            where: {
-              identifier_token: {
-                identifier: credentials.email,
-                token: credentials.otp,
-              },
-            },
-          });
-
           // Get or create user
           const user = await prisma.user.upsert({
-            where: { email: credentials.email },
+            where: { email: profile?.email },
             update: {
               emailVerified: new Date(),
             },
             create: {
-              email: credentials.email,
+              email: profile?.email || "",
               emailVerified: new Date(),
             },
           });
@@ -67,10 +113,9 @@ export const authOptions: NextAuthOptions = {
           console.error("Error during OTP verification:", error);
           return null;
         }
-      },
-    }),
-  ],
-  callbacks: {
+      }
+      return true; // Do different verification for other providers that don't have `email_verified`
+    },
     jwt: async ({ token, user }) => {
       if (user) {
         token.userId = user.id;
