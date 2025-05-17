@@ -10,6 +10,15 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// Waitlist model for coming soon page email collection
+model Waitlist {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  referrer  String?  // Optional referral source
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
 model User {
   id            String    @id @default(cuid())
   name          String?
