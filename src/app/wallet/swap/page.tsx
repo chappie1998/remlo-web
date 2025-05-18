@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, Suspense } from "react";
 import { useSession } from "next-auth/react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
@@ -21,7 +21,7 @@ import { USDsIcon, USDCIcon } from "@/components/icons";
 import { isValidPasscode } from "@/lib/utils";
 import Link from "next/link";
 
-export default function SwapPage() {
+function SwapPageContent() {
   const { data: session, status } = useSession();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -491,5 +491,25 @@ export default function SwapPage() {
         </div>
       )}
     </div>
+  );
+}
+
+export default function SwapPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen flex flex-col bg-black text-white">
+        <Header />
+        <div className="flex-1 flex items-center justify-center">
+          <div className="flex flex-col items-center space-y-4">
+            <div className="animate-spin">
+              <RefreshCw size={32} className="text-emerald-400" />
+            </div>
+            <p className="text-lg text-gray-300">Loading...</p>
+          </div>
+        </div>
+      </div>
+    }>
+      <SwapPageContent />
+    </Suspense>
   );
 } 

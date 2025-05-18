@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useSession } from "next-auth/react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import Header from "@/components/header";
 import { copyToClipboard, formatDate, shortenAddress } from "@/lib/utils";
@@ -47,7 +47,16 @@ interface PaymentRequest {
 export default function ReceivePage() {
   const { data: session, status } = useSession();
   const router = useRouter();
-  const [activeTab, setActiveTab] = useState("username");
+  const searchParams = useSearchParams();
+  
+  // Initialize activeTab from URL query param
+  const [activeTab, setActiveTab] = useState(() => {
+    const tabParam = searchParams.get("tab");
+    return (tabParam === "username" || tabParam === "address" || tabParam === "link" || tabParam === "request") 
+      ? tabParam 
+      : "username";
+  });
+  
   const [tokenType, setTokenType] = useState("usds");
   const [amount, setAmount] = useState("");
   const [note, setNote] = useState("");
@@ -201,6 +210,36 @@ export default function ReceivePage() {
     } else {
       setUsernameStatus("idle");
       setFoundUser(null);
+    }
+  };
+
+  // Handle tab change with URL update
+  const handleTabChange = (tab: string) => {
+    setActiveTab(tab);
+    
+    // Update URL query parameter
+    const url = new URL(window.location.href);
+    url.searchParams.set("tab", tab);
+    window.history.pushState({}, "", url.toString());
+    
+    // Reset form values when switching tabs
+    setAmount("");
+    setNote("");
+    setNewRequestId(null);
+    setNewRequestLink(null);
+    
+    // Reset tab-specific fields
+    if (tab === "username") {
+      // No specific fields to reset for username tab
+    } else if (tab === "address") {
+      // No specific fields to reset for address tab
+    } else if (tab === "link") {
+      // Reset username-specific fields
+      setRecipientUsername("");
+      setFoundUser(null);
+      setUsernameStatus("idle");
+    } else if (tab === "request") {
+      // No need to reset username fields for request tab as they're used there
     }
   };
 
@@ -463,7 +502,7 @@ export default function ReceivePage() {
               className={`flex-1 py-4 text-center font-medium ${
                 activeTab === "username" ? "text-emerald-400 border-b-2 border-emerald-400" : "text-gray-400"
               }`}
-              onClick={() => setActiveTab("username")}
+              onClick={() => handleTabChange("username")}
             >
               <div className="flex items-center justify-center gap-2">
                 <AtSign size={16} />
@@ -474,7 +513,7 @@ export default function ReceivePage() {
               className={`flex-1 py-4 text-center font-medium ${
                 activeTab === "address" ? "text-emerald-400 border-b-2 border-emerald-400" : "text-gray-400"
               }`}
-              onClick={() => setActiveTab("address")}
+              onClick={() => handleTabChange("address")}
             >
               <div className="flex items-center justify-center gap-2">
                 <CreditCard size={16} />
@@ -483,9 +522,9 @@ export default function ReceivePage() {
             </button>
             <button
               className={`flex-1 py-4 text-center font-medium ${
-                activeTab === "request" ? "text-emerald-400 border-b-2 border-emerald-400" : "text-gray-400"
+                activeTab === "link" ? "text-emerald-400 border-b-2 border-emerald-400" : "text-gray-400"
               }`}
-              onClick={() => setActiveTab("request")}
+              onClick={() => handleTabChange("link")}
             >
               <div className="flex items-center justify-center gap-2">
                 <LinkIcon size={16} />
@@ -494,9 +533,9 @@ export default function ReceivePage() {
             </button>
             <button
               className={`flex-1 py-4 text-center font-medium ${
-                activeTab === "request-user" ? "text-emerald-400 border-b-2 border-emerald-400" : "text-gray-400"
+                activeTab === "request" ? "text-emerald-400 border-b-2 border-emerald-400" : "text-gray-400"
               }`}
-              onClick={() => setActiveTab("request-user")}
+              onClick={() => handleTabChange("request")}
             >
               <div className="flex items-center justify-center gap-2">
                 <UserRound size={16} />
@@ -589,7 +628,7 @@ export default function ReceivePage() {
               </div>
             )}
 
-            {activeTab === "request" && (
+            {activeTab === "link" && (
               <div>
                 {newRequestLink ? (
                   <div className="space-y-6">
@@ -649,7 +688,7 @@ export default function ReceivePage() {
                     </div>
                   </div>
                 ) : (
-                  <form onSubmit={handleCreatePaymentRequest} className="space-y-6">
+                  <form onSubmit={handleCreateLinkRequest} className="space-y-6">
                     {/* Token Selection */}
                     <div className="flex items-center space-x-2 mb-4">
                       <Button
@@ -729,7 +768,7 @@ export default function ReceivePage() {
               </div>
             )}
 
-            {activeTab === "request-user" && (
+            {activeTab === "request" && (
               <div>
                 {newRequestId ? (
                   <div className="space-y-6">
