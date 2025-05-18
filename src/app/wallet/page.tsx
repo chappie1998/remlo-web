@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { useSession } from "next-auth/react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
@@ -58,6 +58,7 @@ interface TokenBalance {
 export default function AccountDashboard() {
   const { data: session, status } = useSession();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [showPasscodeModal, setShowPasscodeModal] = useState(false);
   const [passcode, setPasscode] = useState("");
   const [error, setError] = useState("");
@@ -69,7 +70,13 @@ export default function AccountDashboard() {
   const [isValidatingUsername, setIsValidatingUsername] = useState(false);
 
   // State variables for account details
-  const [activeTab, setActiveTab] = useState("overview");
+  const [activeTab, setActiveTab] = useState(() => {
+    const tabParam = searchParams.get("tab");
+    return (tabParam === "overview" || tabParam === "transactions" || tabParam === "receive") 
+      ? tabParam 
+      : "overview";
+  });
+  
   const [solanaAddress, setSolanaAddress] = useState("");
   const [solBalance, setSolBalance] = useState("0.0");
   const [usdcBalance, setUsdcBalance] = useState("0.0");
@@ -145,6 +152,16 @@ export default function AccountDashboard() {
   const refreshData = async () => {
     await Promise.all([fetchBalances(), fetchTransactions()]);
     toast.success("Account data refreshed");
+  };
+
+  // Handle tab change with URL update
+  const handleTabChange = (tab: string) => {
+    setActiveTab(tab);
+    
+    // Update URL query parameter
+    const url = new URL(window.location.href);
+    url.searchParams.set("tab", tab);
+    window.history.pushState({}, "", url.toString());
   };
 
   // Look up a user by username
@@ -583,7 +600,7 @@ export default function AccountDashboard() {
           <Button 
             variant="outline" 
             className="flex flex-col items-center p-4 h-auto bg-zinc-900 hover:bg-zinc-800 border-zinc-800"
-            onClick={() => setActiveTab("receive")}
+            onClick={() => handleTabChange("receive")}
           >
             <ReceiveIcon width={24} height={24} className="text-emerald-400 mb-2" />
             <span>Request Money</span>
@@ -607,7 +624,7 @@ export default function AccountDashboard() {
                 ? "text-emerald-400 border-b-2 border-emerald-400"
                 : "text-gray-400 hover:text-gray-300"
             }`}
-            onClick={() => setActiveTab("overview")}
+            onClick={() => handleTabChange("overview")}
           >
             Overview
           </button>
@@ -635,7 +652,7 @@ export default function AccountDashboard() {
                 ? "text-emerald-400 border-b-2 border-emerald-400"
                 : "text-gray-400 hover:text-gray-300"
             }`}
-            onClick={() => setActiveTab("transactions")}
+            onClick={() => handleTabChange("transactions")}
           >
             Transactions
           </button>
@@ -721,7 +738,7 @@ export default function AccountDashboard() {
                   <h2 className="text-xl font-semibold text-white">Recent Transactions</h2>
                   <button
                     className="text-xs text-emerald-400 hover:underline flex items-center gap-1"
-                    onClick={() => setActiveTab("transactions")}
+                    onClick={() => handleTabChange("transactions")}
                   >
                     View all <ArrowLeftRight size={12} />
                   </button>
