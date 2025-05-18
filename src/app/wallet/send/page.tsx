@@ -294,8 +294,9 @@ export default function SendPage() {
     setIsLoading(true);
 
     try {
-      // Determine which endpoint to use based on token type
-      const endpoint = tokenType === "usdc"
+      // Use token transaction endpoint for both USDC and USDs
+      // Only use send-transaction endpoint if somehow tokenType is something else
+      const endpoint = (tokenType === "usdc" || tokenType === "usd")
         ? "/api/wallet/send-token-transaction"
         : "/api/wallet/send-transaction";
 
@@ -305,11 +306,17 @@ export default function SendPage() {
         amount: string;
         passcode: string;
         username?: string;
+        tokenType?: string;
       } = {
         to: recipient,
         amount,
         passcode,
       };
+      
+      // If using token transaction endpoint, include the token type
+      if (endpoint === "/api/wallet/send-token-transaction") {
+        requestData.tokenType = tokenType;
+      }
       
       // If sending to a user found by username, include the username in the transaction data
       if (foundUser) {
