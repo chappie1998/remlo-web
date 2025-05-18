@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, Suspense } from "react";
 import { useSession } from "next-auth/react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
@@ -24,7 +24,8 @@ import {
   CreditCard,
   User,
   UserRound,
-  Search
+  Search,
+  CircleDashed
 } from "lucide-react";
 import { USDsIcon, USDCIcon, SolanaIcon } from "@/components/icons";
 
@@ -44,7 +45,34 @@ interface PaymentRequest {
   note?: string;
 }
 
-export default function ReceivePage() {
+// Main wrapper component with Suspense
+export default function ReceivePageWrapper() {
+  return (
+    <Suspense fallback={<ReceiveLoadingState />}>
+      <ReceivePage />
+    </Suspense>
+  );
+}
+
+// Loading state component
+function ReceiveLoadingState() {
+  return (
+    <div className="min-h-screen flex flex-col bg-black text-white">
+      <Header />
+      <div className="flex-1 flex items-center justify-center">
+        <div className="flex flex-col items-center space-y-4">
+          <div className="animate-spin">
+            <CircleDashed className="h-10 w-10 text-blue-500" />
+          </div>
+          <p className="text-lg">Loading receive options...</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Original component now as a separate function
+function ReceivePage() {
   const { data: session, status } = useSession();
   const router = useRouter();
   const searchParams = useSearchParams();

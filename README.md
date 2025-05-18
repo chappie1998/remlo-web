@@ -39,7 +39,7 @@ Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/bui
 
 This project implements connection pooling for Solana RPC connections to improve performance and reduce rate limiting issues.
 
-### Key Features
+### Key Features 
 
 - Reuses Solana connections across requests instead of creating new ones for each API call
 - Caches connections based on endpoint, commitment level, and configuration

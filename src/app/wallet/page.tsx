@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, Suspense } from "react";
 import { useSession } from "next-auth/react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
@@ -55,7 +55,34 @@ interface TokenBalance {
   icon: React.ReactNode;
 }
 
-export default function AccountDashboard() {
+// Main component wrapper with Suspense
+export default function WalletPage() {
+  return (
+    <Suspense fallback={<WalletLoadingState />}>
+      <AccountDashboard />
+    </Suspense>
+  );
+}
+
+// Loading state component
+function WalletLoadingState() {
+  return (
+    <div className="min-h-screen flex flex-col bg-black text-white">
+      <Header />
+      <div className="flex-1 flex items-center justify-center">
+        <div className="flex flex-col items-center space-y-4">
+          <div className="animate-spin">
+            <CircleDashed className="h-10 w-10 text-blue-500" />
+          </div>
+          <p className="text-lg">Loading wallet...</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Original component now as a separate function
+function AccountDashboard() {
   const { data: session, status } = useSession();
   const router = useRouter();
   const searchParams = useSearchParams();
