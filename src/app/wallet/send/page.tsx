@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, Suspense } from "react";
 import { useSession } from "next-auth/react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import Header from "@/components/header";
@@ -15,7 +15,8 @@ import {
   AtSign,
   User,
   CreditCard,
-  TabletSmartphone
+  TabletSmartphone,
+  CircleDashed
 } from "lucide-react";
 import { USDsIcon, USDCIcon } from "@/components/icons";
 import { shortenAddress, isValidPasscode } from "@/lib/utils";
@@ -23,12 +24,43 @@ import { isValidSolanaAddress } from "@/lib/solana";
 import Link from "next/link";
 import debounce from "lodash/debounce";
 
-export default function SendPage() {
+// Main wrapper component with Suspense
+export default function SendPageWrapper() {
+  return (
+    <Suspense fallback={<SendLoadingState />}>
+      <SendPage />
+    </Suspense>
+  );
+}
+
+// Loading state component
+function SendLoadingState() {
+  return (
+    <div className="min-h-screen flex flex-col bg-black text-white">
+      <Header />
+      <div className="flex-1 flex items-center justify-center">
+        <div className="flex flex-col items-center space-y-4">
+          <div className="animate-spin">
+            <CircleDashed className="h-10 w-10 text-blue-500" />
+          </div>
+          <p className="text-lg">Loading send options...</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Original component now as a separate function
+function SendPage() {
   const { data: session, status } = useSession();
   const router = useRouter();
+  const searchParams = useSearchParams();
   
-  // Tab control
-  const [activeTab, setActiveTab] = useState<"username" | "address">("username");
+  // Tab control - read initial value from URL query parameter
+  const [activeTab, setActiveTab] = useState<"username" | "address">(() => {
+    const tabParam = searchParams.get("tab");
+    return (tabParam === "username" || tabParam === "address") ? tabParam : "username";
+  });
   
   // Form inputs
   const [username, setUsername] = useState("");
@@ -290,8 +322,9 @@ export default function SendPage() {
     setIsLoading(true);
 
     try {
-      // Determine which endpoint to use based on token type
-      const endpoint = tokenType === "usdc"
+      // Use token transaction endpoint for both USDC and USDs
+      // Only use send-transaction endpoint if somehow tokenType is something else
+      const endpoint = (tokenType === "usdc" || tokenType === "usd")
         ? "/api/wallet/send-token-transaction"
         : "/api/wallet/send-transaction";
 
@@ -301,11 +334,17 @@ export default function SendPage() {
         amount: string;
         passcode: string;
         username?: string;
+        tokenType?: string;
       } = {
         to: recipient,
         amount,
         passcode,
       };
+      
+      // If using token transaction endpoint, include the token type
+      if (endpoint === "/api/wallet/send-token-transaction") {
+        requestData.tokenType = tokenType;
+      }
       
       // If sending to a user found by username, include the username in the transaction data
       if (foundUser) {
@@ -355,25 +394,36 @@ export default function SendPage() {
     }
   };
   
-  // Handle tab change
+  // Handle tab change with URL update
   const handleTabChange = (tab: "username" | "address") => {
     setActiveTab(tab);
-    setError("");
-    setUsernameStatus("idle");
     
-    // Reset fields when switching tabs
-    if (tab === "address") {
+    // Update URL query parameter
+    const url = new URL(window.location.href);
+    url.searchParams.set("tab", tab);
+    window.history.pushState({}, "", url.toString());
+    
+    // Reset form fields and errors
+    setError("");
+    
+    if (tab === "username") {
+      setRecipient("");
+    } else {
       setUsername("");
       setFoundUser(null);
-    } else {
-      setRecipient("");
+      setUsernameStatus("idle");
     }
   };
   
-  // Clear the found user when recipient is changed manually
+  // Handle recipient address input change
   const handleRecipientChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setRecipient(e.target.value);
-    setFoundUser(null);
+    const value = e.target.value;
+    setRecipient(value);
+    
+    // Clear error when user starts typing
+    if (error && error.includes("address")) {
+      setError("");
+    }
   };
   
   // Loading state
@@ -559,24 +609,38 @@ export default function SendPage() {
             
             {/* Common fields for both tabs */}
             <div className="pt-2 border-t border-zinc-800">
-              {/* Token selection */}
+              {/* Token selection - one-click buttons */}
               <div className="space-y-2 mb-4">
-                <label htmlFor="token-selector" className="text-sm font-medium flex items-center text-gray-300">
+                <label className="text-sm font-medium flex items-center text-gray-300">
                   Token <span className="text-red-400 ml-1">*</span>
                 </label>
-                <div className="relative">
-                  <select
-                    id="token-selector"
-                    value={tokenType}
-                    onChange={(e) => setTokenType(e.target.value)}
-                    className="w-full p-3 rounded-md border border-zinc-700 bg-zinc-800 text-gray-200 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 appearance-none"
+                <div className="flex items-center space-x-2">
+                  <Button
+                    type="button"
+                    variant={tokenType === "usd" ? "default" : "outline"}
+                    className={`flex-1 flex items-center justify-center ${
+                      tokenType === "usd" 
+                        ? "bg-emerald-600 hover:bg-emerald-700" 
+                        : "bg-zinc-800 border-zinc-700 text-gray-300 hover:bg-zinc-700"
+                    }`}
+                    onClick={() => setTokenType("usd")}
                   >
-                    <option value="usd">USDs</option>
-                    <option value="usdc">USDC</option>
-                  </select>
-                  <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
-                    <ChevronDown size={18} className="text-gray-400" />
-                  </div>
+                    <USDsIcon width={16} height={16} className="mr-2" />
+                    USDs
+                  </Button>
+                  <Button
+                    type="button"
+                    variant={tokenType === "usdc" ? "default" : "outline"}
+                    className={`flex-1 flex items-center justify-center ${
+                      tokenType === "usdc" 
+                        ? "bg-blue-600 hover:bg-blue-700" 
+                        : "bg-zinc-800 border-zinc-700 text-gray-300 hover:bg-zinc-700"
+                    }`}
+                    onClick={() => setTokenType("usdc")}
+                  >
+                    <USDCIcon width={16} height={16} className="mr-2" />
+                    USDC
+                  </Button>
                 </div>
                 <p className="text-xs text-gray-500 flex justify-between">
                   <span>Selected token to send</span>

@@ -164,7 +164,12 @@ export async function POST(req: NextRequest) {
     }
 
     // Code to generate the keypair from MPC shares
-    const keypair = await prepareMPCSigningKeypair(user.mpcSalt, passcode, user.mpcServerShare);
+    const keypair = await prepareMPCSigningKeypair(
+      passcode, 
+      user.mpcServerShare, 
+      user.mpcSalt, 
+      user.mpcBackupShare || undefined
+    );
     if (!keypair) {
       return NextResponse.json(
         { error: "Failed to derive wallet from passcode" },

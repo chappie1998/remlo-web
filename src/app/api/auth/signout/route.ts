@@ -1,17 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
-import { PrismaClient } from "@prisma/client";
-
-const prisma = new PrismaClient();
+import prisma from "@/lib/prisma";
+import { cookies } from "next/headers";
 
 // Handle OPTIONS request for CORS preflight
 export async function OPTIONS() {
   return new NextResponse(null, {
     status: 200,
     headers: {
-      'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Methods': 'POST, OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-      'Access-Control-Allow-Credentials': 'true',
+      "Access-Control-Allow-Origin": "*",
+      "Access-Control-Allow-Methods": "POST, OPTIONS",
+      "Access-Control-Allow-Headers": "Content-Type, Authorization",
+      "Access-Control-Allow-Credentials": "true",
     },
   });
 }
@@ -19,30 +18,33 @@ export async function OPTIONS() {
 export async function POST(request: NextRequest) {
   try {
     // Get token from request header
-    const authHeader = request.headers.get('Authorization');
+    const cookieStore = await cookies();
 
-    if (authHeader && authHeader.startsWith('Bearer ')) {
-      const sessionToken = authHeader.substring(7); // Remove 'Bearer ' prefix
+    // Adjust for HTTPS/production if needed
+    const sessionToken = cookieStore.get("next-auth.session-token")?.value ?? cookieStore.get("__Secure-next-auth.session-token")?.value;
 
+    if (sessionToken) {
       // Delete the session
-      await prisma.session.delete({
-        where: {
-          sessionToken,
-        },
-      }).catch(() => {
-        // Ignore errors if session doesn't exist
-      });
+      await prisma.session
+        .delete({
+          where: {
+            sessionToken,
+          },
+        })
+        .catch(() => {
+          // Ignore errors if session doesn't exist
+        });
     }
 
     return NextResponse.json(
       { success: true },
       {
         headers: {
-          'Access-Control-Allow-Origin': '*',
-          'Access-Control-Allow-Methods': 'POST, OPTIONS',
-          'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-          'Access-Control-Allow-Credentials': 'true',
-        }
+          "Access-Control-Allow-Origin": "*",
+          "Access-Control-Allow-Methods": "POST, OPTIONS",
+          "Access-Control-Allow-Headers": "Content-Type, Authorization",
+          "Access-Control-Allow-Credentials": "true",
+        },
       }
     );
   } catch (error) {
@@ -51,11 +53,11 @@ export async function POST(request: NextRequest) {
       { success: true }, // Return success anyway as the client will clear local storage
       {
         headers: {
-          'Access-Control-Allow-Origin': '*',
-          'Access-Control-Allow-Methods': 'POST, OPTIONS',
-          'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-          'Access-Control-Allow-Credentials': 'true',
-        }
+          "Access-Control-Allow-Origin": "*",
+          "Access-Control-Allow-Methods": "POST, OPTIONS",
+          "Access-Control-Allow-Headers": "Content-Type, Authorization",
+          "Access-Control-Allow-Credentials": "true",
+        },
       }
     );
   }
