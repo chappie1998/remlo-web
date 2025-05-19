@@ -38,6 +38,7 @@ import {
   ArrowRight
 } from "lucide-react";
 import { USDsIcon, USDCIcon, SwapIcon, ReceiveIcon, SendMoneyIcon, RemloIcon, ActivityIcon } from "@/components/icons";
+import FaucetButton from '@/components/FaucetButton';
 
 // Define interfaces
 interface Transaction {
@@ -567,25 +568,33 @@ function AccountDashboard() {
               </div>
               
               {/* USDC Balance */}
-              <div className="flex items-center justify-between p-3 rounded-lg bg-zinc-800">
+              <div className="flex flex-col p-3 rounded-lg bg-zinc-800">
+                <div className="flex items-center justify-between mb-2">
                   <div className="flex items-center">
                     <div className="mr-3 p-2 rounded-full bg-zinc-700">
-                    <DollarSign size={18} className="text-blue-400" />
+                      <DollarSign size={18} className="text-blue-400" />
                     </div>
                     <div>
-                    <div className="font-medium text-white">USDC Balance</div>
-                    <div className="flex items-center text-xs text-gray-400 mt-0.5">
-                      <Link 
-                        href="/wallet/swap" 
-                        className="text-blue-400 hover:text-blue-300 flex items-center transition-colors"
-                      >
-                        <ArrowLeftRight size={10} className="mr-1" />
-                        Swap to earn 4.2% APY
-                      </Link>
+                      <div className="font-medium text-white">USDC Balance</div>
+                      <div className="flex items-center text-xs text-gray-400 mt-0.5">
+                        <Link 
+                          href="/wallet/swap" 
+                          className="text-blue-400 hover:text-blue-300 flex items-center transition-colors"
+                        >
+                          <ArrowLeftRight size={10} className="mr-1" />
+                          Swap to earn 4.2% APY
+                        </Link>
+                      </div>
                     </div>
                   </div>
+                  <div className="text-lg font-semibold text-white">${usdcBalance}</div>
                 </div>
-                <div className="text-lg font-semibold text-white">${usdcBalance}</div>
+                
+                {/* Add FaucetButton within the USDC balance section */}
+                <FaucetButton 
+                  usdcBalance={parseFloat(usdcBalance)} 
+                  onFaucetComplete={refreshData} 
+                />
               </div>
             </div>
           </div>
@@ -714,6 +723,29 @@ function AccountDashboard() {
                 </Link>
               </div>
             </div>
+
+            {/* Faucet Button for users with low USDC balance */}
+            {parseFloat(usdcBalance) < 1 && (
+              <div className="bg-gradient-to-r from-blue-900/30 to-blue-800/30 border border-blue-700/30 rounded-xl p-6 shadow-md">
+                <div className="flex flex-col md:flex-row items-start md:items-center gap-4">
+                  <div className="p-3 bg-blue-800/50 rounded-full text-blue-300">
+                    <DollarSign size={30} />
+                  </div>
+                  <div className="flex-1">
+                    <h3 className="text-xl font-bold text-blue-100">
+                      Need USDC for Testing?
+                    </h3>
+                    <p className="text-blue-200 mt-1">
+                      Your USDC balance is low. Get free USDC from our faucet for testing the wallet.
+                    </p>
+                  </div>
+                  <FaucetButton 
+                    usdcBalance={parseFloat(usdcBalance)} 
+                    onFaucetComplete={refreshData} 
+                  />
+                </div>
+              </div>
+            )}
 
             <div className="grid md:grid-cols-2 gap-6">
               {/* Quick Actions */}
@@ -1056,6 +1088,28 @@ function AccountDashboard() {
             </div>
           </div>
         )}
+
+        {/* Wallet Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+          {/* SOL Card */}
+          <div className="bg-gradient-to-r from-purple-900/20 to-indigo-900/20 border border-purple-800/30 backdrop-blur-sm rounded-xl p-6 relative overflow-hidden hover:shadow-lg hover:border-purple-700/50 transition-all duration-300">
+            {/* ... existing SOL card content ... */}
+          </div>
+
+          {/* Token Cards */}
+          {tokenBalances.map((token) => (
+            <div 
+              key={token.tokenSymbol}
+              className={`${
+                token.tokenSymbol === "USDs" 
+                  ? "bg-gradient-to-r from-emerald-900/20 to-green-900/20 border-emerald-800/30 hover:border-emerald-700/50" 
+                  : "bg-gradient-to-r from-blue-900/20 to-sky-900/20 border-blue-800/30 hover:border-blue-700/50"
+              } border backdrop-blur-sm rounded-xl p-6 relative overflow-hidden hover:shadow-lg transition-all duration-300`}
+            >
+              {/* ... existing token card content ... */}
+            </div>
+          ))}
+        </div>
       </main>
     </div>
   );
