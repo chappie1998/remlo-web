@@ -143,7 +143,8 @@ export default function PaymentPage() {
         body: JSON.stringify({
           to: paymentRequest.requesterAddress,
           amount: paymentRequest.amount,
-          passcode: passcode
+          passcode: passcode,
+          tokenType: paymentRequest.tokenType
         }),
         signal: abortController.signal
       }).catch(err => {
