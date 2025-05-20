@@ -4,7 +4,7 @@ import { PrismaClient } from "@prisma/client";
 import { authOptions } from "@/lib/auth";
 import { generatePaymentLink } from "@/lib/config";
 
-const prisma = new PrismaClient();
+// const prisma = new PrismaClient(); // Removed global instance
 
 export async function OPTIONS() {
   return new NextResponse(null, {
@@ -19,6 +19,7 @@ export async function OPTIONS() {
 }
 
 export async function GET(req: NextRequest) {
+  const prisma = new PrismaClient(); // Instantiate here
   try {
     // Get the session from NextAuth
     const session = await getServerSession(authOptions);
@@ -42,54 +43,48 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    // List all payment requests created by this user
-    const createdRequests = await prisma.$transaction(async (tx) => {
-      return await (tx as any).PaymentRequest.findMany({
-        where: {
-          creatorId: user.id
-        },
-        include: {
-          recipient: {
-            select: {
-              id: true,
-              username: true,
-              email: true
-            }
+    // List all payment requests created by this user - without using transaction
+    const createdRequests = await (prisma as any).PaymentRequest.findMany({
+      where: {
+        creatorId: user.id
+      },
+      include: {
+        recipient: {
+          select: {
+            id: true,
+            username: true,
+            email: true
           }
-        },
-        orderBy: {
-          createdAt: 'desc'
         }
-      });
+      },
+      orderBy: {
+        createdAt: 'desc'
+      }
     });
 
-    // List all payment requests where this user is the recipient
-    const receivedRequests = await prisma.$transaction(async (tx) => {
-      return await (tx as any).PaymentRequest.findMany({
-        where: {
-          recipientId: user.id
-        },
-        include: {
-          creator: {
-            select: {
-              id: true,
-              username: true,
-              email: true
-            }
+    // List all payment requests where this user is the recipient - without using transaction
+    const receivedRequests = await (prisma as any).PaymentRequest.findMany({
+      where: {
+        recipientId: user.id
+      },
+      include: {
+        creator: {
+          select: {
+            id: true,
+            username: true,
+            email: true
           }
-        },
-        orderBy: {
-          createdAt: 'desc'
         }
-      });
+      },
+      orderBy: {
+        createdAt: 'desc'
+      }
     });
 
     console.log(`Found ${createdRequests.length} created payment requests and ${receivedRequests.length} received payment requests for user`);
 
-    // Count records for debugging
-    const count = await prisma.$transaction(async (tx) => {
-      return await (tx as any).PaymentRequest.count();
-    });
+    // Count records for debugging - without using transaction
+    const count = await (prisma as any).PaymentRequest.count();
     console.log("Total payment requests in database:", count);
 
     // Combine the requests and format them

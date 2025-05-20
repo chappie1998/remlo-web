@@ -5,7 +5,7 @@ import { authOptions } from "@/lib/auth";
 import { randomBytes } from "crypto";
 import { generatePaymentLink } from "@/lib/config";
 
-const prisma = new PrismaClient();
+// const prisma = new PrismaClient(); // Removed global instance
 
 export async function OPTIONS() {
   return new NextResponse(null, {
@@ -20,6 +20,7 @@ export async function OPTIONS() {
 }
 
 export async function POST(req: NextRequest) {
+  const prisma = new PrismaClient(); // Instantiate here
   try {
     // Get the session from NextAuth
     const session = await getServerSession(authOptions);

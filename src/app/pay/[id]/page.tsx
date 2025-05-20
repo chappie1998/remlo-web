@@ -47,20 +47,6 @@ export default function PaymentPage() {
   const [showQrCode, setShowQrCode] = useState(true);
   const [processingStage, setProcessingStage] = useState("idle");
 
-  // Add check to verify session on mount and refresh
-  useEffect(() => {
-    // Force a session update after 1 second
-    const timer = setTimeout(() => {
-      // This is a simple hack to force re-evaluation of the session state
-      setIsLoading(prev => {
-        if (!prev) return prev;
-        return false;
-      });
-    }, 1000);
-    
-    return () => clearTimeout(timer);
-  }, []);
-
   // Add console logging to debug session state
   useEffect(() => {
     console.log("Session status:", status);
@@ -88,14 +74,7 @@ export default function PaymentPage() {
         setPaymentRequest(data);
       } catch (error) {
         console.error("Error fetching payment request:", error);
-        // Don't show toast error immediately - try again silently
-        // Implement retry logic with a small delay
-        setTimeout(() => {
-          if (!paymentRequest && isLoading) {
-            // Only show error toast if retry fails and still loading
-            toast.error(error instanceof Error ? error.message : "Failed to load payment request");
-          }
-        }, 3000);
+        toast.error(error instanceof Error ? error.message : "Failed to load payment request");
       } finally {
         setIsLoading(false);
       }
@@ -104,16 +83,7 @@ export default function PaymentPage() {
     if (requestId) {
       fetchPaymentRequest();
     }
-
-    // Add a backup fetch after 1 second in case of errors
-    const retryTimer = setTimeout(() => {
-      if (!paymentRequest && isLoading) {
-        fetchPaymentRequest();
-      }
-    }, 1000);
-
-    return () => clearTimeout(retryTimer);
-  }, [requestId, paymentRequest, isLoading]);
+  }, [requestId]);
 
   // This function will be used to refetch the payment request
   const refreshPaymentRequest = async () => {
@@ -424,7 +394,7 @@ export default function PaymentPage() {
                   <p className="text-xs">Scan with Remlo App</p>
                 </div>
               </div>
-              {/* <div className="bg-zinc-900 rounded p-3 mt-2">
+              <div className="bg-zinc-900 rounded p-3 mt-2">
                 <p className="text-xs text-gray-400 text-center font-medium">Recipient Address</p>
                 <div className="flex items-center justify-center mt-1">
                   <p className="text-xs text-gray-300 font-mono truncate max-w-[80%]">
@@ -441,7 +411,7 @@ export default function PaymentPage() {
                     <Copy size={14} className="text-gray-400" />
                   </button>
                 </div>
-              </div> */}
+              </div>
             </div>
           )}
           

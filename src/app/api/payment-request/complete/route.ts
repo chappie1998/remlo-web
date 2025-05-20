@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth";
-import prisma from "@/lib/prisma";
+// import prisma from "@/lib/prisma"; // Use local instance instead
+import { PrismaClient } from "@prisma/client";
 
 export async function POST(req: NextRequest) {
+  const prisma = new PrismaClient(); // Instantiate here
   try {
     // Get the session from NextAuth
     const session = await getServerSession(authOptions);

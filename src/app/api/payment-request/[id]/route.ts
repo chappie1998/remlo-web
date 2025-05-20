@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { PrismaClient } from "@prisma/client";
 
-const prisma = new PrismaClient();
+// Remove global prisma instance
+// const prisma = new PrismaClient();
 
 export async function OPTIONS() {
   return new NextResponse(null, {
@@ -17,6 +18,7 @@ export async function OPTIONS() {
 
 // Fixed for Next.js 15 - using proper parameter handling
 export async function GET(request: NextRequest, context: any) {
+  const prisma = new PrismaClient(); // Instantiate Prisma Client here
   try {
     // Extract the ID without accessing params.id directly
     const segments = request.nextUrl.pathname.split('/');
@@ -37,25 +39,23 @@ export async function GET(request: NextRequest, context: any) {
     let paymentRequest;
     try {
       // First try to find by shortId
-      paymentRequest = await prisma.$transaction(async (tx) => {
-        return (tx as any).PaymentRequest.findFirst({
-          where: { 
-            OR: [
-              { shortId: requestId },
-              { id: requestId }
-            ]
-          },
-          include: {
-            creator: {
-              select: {
-                id: true,
-                name: true,
-                email: true,
-                solanaAddress: true,
-              }
+      paymentRequest = await (prisma as any).PaymentRequest.findFirst({
+        where: { 
+          OR: [
+            { shortId: requestId },
+            { id: requestId }
+          ]
+        },
+        include: {
+          creator: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              solanaAddress: true,
             }
           }
-        });
+        }
       });
     } catch (e) {
       console.error("Prisma query error:", e);
