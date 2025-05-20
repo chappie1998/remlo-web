@@ -33,14 +33,6 @@ export async function GET(request: NextRequest, context: any) {
 
     console.log(`Using Prisma to find payment request with shortId: ${requestId}`);
     
-    // Log all the table names to verify PaymentRequest exists
-    try {
-      const tableInfo = await prisma.$queryRaw`SELECT name FROM sqlite_master WHERE type='table'`;
-      console.log("Available tables:", tableInfo);
-    } catch (e) {
-      console.error("Error checking tables:", e);
-    }
-
     // Try both ways to find the payment request
     let paymentRequest;
     try {

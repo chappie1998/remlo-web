@@ -44,7 +44,7 @@ export default function PaymentPage() {
   const [showPasscodeModal, setShowPasscodeModal] = useState(false);
   const [passcode, setPasscode] = useState("");
   const [error, setError] = useState("");
-  const [showQrCode, setShowQrCode] = useState(false);
+  const [showQrCode, setShowQrCode] = useState(true);
   const [processingStage, setProcessingStage] = useState("idle");
 
   // Add check to verify session on mount and refresh
@@ -88,7 +88,14 @@ export default function PaymentPage() {
         setPaymentRequest(data);
       } catch (error) {
         console.error("Error fetching payment request:", error);
-        toast.error(error instanceof Error ? error.message : "Failed to load payment request");
+        // Don't show toast error immediately - try again silently
+        // Implement retry logic with a small delay
+        setTimeout(() => {
+          if (!paymentRequest && isLoading) {
+            // Only show error toast if retry fails and still loading
+            toast.error(error instanceof Error ? error.message : "Failed to load payment request");
+          }
+        }, 3000);
       } finally {
         setIsLoading(false);
       }
@@ -97,7 +104,16 @@ export default function PaymentPage() {
     if (requestId) {
       fetchPaymentRequest();
     }
-  }, [requestId]);
+
+    // Add a backup fetch after 1 second in case of errors
+    const retryTimer = setTimeout(() => {
+      if (!paymentRequest && isLoading) {
+        fetchPaymentRequest();
+      }
+    }, 1000);
+
+    return () => clearTimeout(retryTimer);
+  }, [requestId, paymentRequest, isLoading]);
 
   // This function will be used to refetch the payment request
   const refreshPaymentRequest = async () => {
@@ -376,18 +392,19 @@ export default function PaymentPage() {
             <button 
               className="flex items-center mt-4 px-4 py-2 rounded-md bg-zinc-800 hover:bg-zinc-700 transition-all text-sm"
               onClick={() => setShowQrCode(!showQrCode)}
+              aria-expanded={showQrCode}
             >
-              <QrCode size={14} className="mr-2" />
+              <QrCode size={14} className={`mr-2 ${showQrCode ? 'text-emerald-400' : ''}`} />
               {showQrCode ? "Hide QR Code" : "Show QR Code"}
             </button>
           </div>
           
           {/* QR Code for direct payment */}
           {showQrCode && (
-            <div className="bg-zinc-800 rounded-lg border border-zinc-700 p-4 mb-6">
+            <div className="bg-zinc-800 rounded-lg border border-zinc-700 p-4 mb-6 transition-all duration-300">
               <div className="flex flex-col items-center text-center mb-4">
-                <p className="text-sm text-gray-400 mb-4">Scan to automatically fill payment details</p>
-                <div className="bg-white p-4 rounded-lg mb-2">
+                <p className="text-sm text-gray-300 mb-4 font-medium">Scan QR Code to Pay</p>
+                <div className="bg-white p-4 rounded-lg mb-2 shadow-lg">
                   <QRCode
                     value={JSON.stringify({
                       action: "send",
@@ -396,15 +413,19 @@ export default function PaymentPage() {
                       token: paymentRequest.tokenType,
                       note: paymentRequest.note || ""
                     })}
-                    size={150}
+                    size={180}
                     style={{ height: "auto", maxWidth: "100%", width: "100%" }}
                     viewBox={`0 0 256 256`}
+                    fgColor="#000000"
+                    bgColor="#FFFFFF"
                   />
                 </div>
-                <p className="text-xs text-gray-500">This QR contains payment information</p>
+                <div className="flex items-center mt-2 text-emerald-400">
+                  <p className="text-xs">Scan with Remlo App</p>
+                </div>
               </div>
-              <div className="bg-zinc-900 rounded p-2 mt-2">
-                <p className="text-xs text-gray-400 text-center">Recipient Address</p>
+              {/* <div className="bg-zinc-900 rounded p-3 mt-2">
+                <p className="text-xs text-gray-400 text-center font-medium">Recipient Address</p>
                 <div className="flex items-center justify-center mt-1">
                   <p className="text-xs text-gray-300 font-mono truncate max-w-[80%]">
                     {paymentRequest.requesterAddress}
@@ -415,11 +436,12 @@ export default function PaymentPage() {
                       copyToClipboard(paymentRequest.requesterAddress);
                       toast.success("Address copied to clipboard");
                     }}
+                    aria-label="Copy address"
                   >
                     <Copy size={14} className="text-gray-400" />
                   </button>
                 </div>
-              </div>
+              </div> */}
             </div>
           )}
           
