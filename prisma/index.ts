@@ -1,15 +1,30 @@
 import { PrismaClient } from '@prisma/client';
 
-// Add PaymentLink to PrismaClient type
-declare global {
-  var prisma: PrismaClient;
+// For development environment, we'll still use a global instance to prevent too many connections
+// But in production (serverless), we'll create a new instance per request
+const globalForPrisma = global as unknown as { prisma: PrismaClient };
+
+// Function to get a new PrismaClient instance
+export function getPrismaClient() {
+  // For production (serverless environment), create a new instance each time
+  if (process.env.NODE_ENV === 'production') {
+    return new PrismaClient();
+  }
+  
+  // For development, reuse the same instance
+  if (!globalForPrisma.prisma) {
+    globalForPrisma.prisma = new PrismaClient();
+  }
+  
+  return globalForPrisma.prisma;
 }
 
-// Use a single instance of Prisma to prevent too many connections
-export const prisma = global.prisma || new PrismaClient();
+// Legacy export for backward compatibility
+export const prisma = globalForPrisma.prisma || new PrismaClient();
 
+// Update global in development
 if (process.env.NODE_ENV !== 'production') {
-  global.prisma = prisma;
+  globalForPrisma.prisma = prisma;
 }
 
-export default prisma; 
+export default getPrismaClient; 

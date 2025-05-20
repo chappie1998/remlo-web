@@ -1,12 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
-import { PrismaClient } from "@prisma/client";
+import prisma from "@/lib/prisma";
 import { isValidPasscode, generateRandomUsername } from "@/lib/utils";
 import { validateMnemonic } from "@/lib/crypto";
 import { createMPCWallet } from "@/lib/mpc";
 import { authOptions } from "@/lib/auth";
-
-const prisma = new PrismaClient();
 
 // Handle OPTIONS request for CORS preflight
 export async function OPTIONS() {
@@ -195,7 +193,5 @@ export async function POST(req: NextRequest) {
         }
       }
     );
-  } finally {
-    await prisma.$disconnect();
   }
 }

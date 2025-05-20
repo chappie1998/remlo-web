@@ -1,9 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
-import { PrismaClient } from "@prisma/client";
+import prisma from "@/lib/prisma";
 import { authOptions } from "@/lib/auth";
-
-const prisma = new PrismaClient();
 
 // Handle OPTIONS request for CORS preflight
 export async function OPTIONS() {
@@ -93,24 +91,37 @@ export async function GET(req: NextRequest) {
       );
     }
 
+    // Pagination params
+    const url = req.nextUrl;
+    const limit = parseInt(url.searchParams.get('limit') || '20', 10);
+    const offset = parseInt(url.searchParams.get('offset') || '0', 10);
+
     // Get the user's transactions
-    const transactions = await prisma.transaction.findMany({
-      where: { userId: user.id },
-      orderBy: { createdAt: "desc" },
-      select: {
-        id: true,
-        txData: true,
-        status: true,
-        signature: true,
-        createdAt: true,
-        executedAt: true,
-      },
-    });
+    const [transactions, total] = await Promise.all([
+      prisma.transaction.findMany({
+        where: { userId: user.id },
+        orderBy: { createdAt: "desc" },
+        select: {
+          id: true,
+          txData: true,
+          status: true,
+          signature: true,
+          createdAt: true,
+          executedAt: true,
+        },
+        take: limit,
+        skip: offset,
+      }),
+      prisma.transaction.count({ where: { userId: user.id } })
+    ]);
 
     return NextResponse.json(
       {
         success: true,
         transactions,
+        total,
+        limit,
+        offset,
       },
       {
         headers: {
@@ -135,8 +146,5 @@ export async function GET(req: NextRequest) {
         }
       }
     );
-  } finally {
-    // Close the Prisma client connection
-    await prisma.$disconnect();
   }
 }

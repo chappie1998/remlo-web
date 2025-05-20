@@ -1,11 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
-import { PrismaClient } from "@prisma/client";
 import { authOptions } from "@/lib/auth";
 import { randomBytes } from "crypto";
-import { generatePaymentLink } from "@/lib/config";
-
-// const prisma = new PrismaClient(); // Removed global instance
+import { generatePaymentLink } from "@/lib/paymentLinkUtils";
+import prisma from "@/lib/prisma";
 
 export async function OPTIONS() {
   return new NextResponse(null, {
@@ -20,7 +18,6 @@ export async function OPTIONS() {
 }
 
 export async function POST(req: NextRequest) {
-  const prisma = new PrismaClient(); // Instantiate here
   try {
     // Get the session from NextAuth
     const session = await getServerSession(authOptions);
@@ -169,7 +166,5 @@ export async function POST(req: NextRequest) {
       { error: "Failed to create payment request", details: error instanceof Error ? error.message : String(error) },
       { status: 500 }
     );
-  } finally {
-    await prisma.$disconnect();
   }
 } 

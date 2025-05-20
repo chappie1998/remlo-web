@@ -1,12 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
-import { PrismaClient } from "@prisma/client";
-import { RELAYER_URL } from "@/lib/solana";
+import prisma from "@/lib/prisma";
 import { authOptions } from "@/lib/auth";
 import { fetchSplTokenBalance, fetchUsdsTokenBalance } from "@/lib/solana";
 import connectionPool from "@/lib/solana-connection-pool";
-
-const prisma = new PrismaClient();
+import { RELAYER_URL } from "@/lib/config";
 
 // Handle OPTIONS request for CORS preflight
 export async function OPTIONS() {
@@ -204,6 +202,9 @@ export async function GET(req: NextRequest) {
       }
     );
   } finally {
-    await prisma.$disconnect();
+    // Make sure to disconnect the Prisma client in production
+    if (process.env.NODE_ENV === 'production') {
+      await prisma.$disconnect();
+    }
   }
 }

@@ -104,6 +104,7 @@ model Transaction {
   @@index([status])
   @@index([createdAt])
   @@index([signature])
+  @@index([userId, status, createdAt])
 }
 
 model PaymasterInfo {
@@ -139,6 +140,8 @@ model PaymentRequest {
   @@index([status])
   @@index([createdAt])
   @@index([expiresAt])
+  @@index([creatorId, status, createdAt])
+  @@index([recipientId, status, createdAt])
 }
 
 // NEW: Payment link model for token delegation with OTP verification
@@ -186,6 +189,7 @@ model Payment {
   @@index([status])
   @@index([transactionSignature])
   @@index([createdAt])
+  @@index([payerId, status, createdAt])
 }
 
 // Contact model for saving frequently used recipients

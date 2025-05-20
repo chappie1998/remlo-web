@@ -1,9 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
-import { PrismaClient } from "@prisma/client";
+import prisma from "@/lib/prisma";
 import { authOptions } from "@/lib/auth";
-
-const prisma = new PrismaClient();
 
 // GET a single contact by ID
 export async function GET(
@@ -63,8 +61,6 @@ export async function GET(
       { error: "Failed to fetch contact" },
       { status: 500 }
     );
-  } finally {
-    await prisma.$disconnect();
   }
 }
 
@@ -201,8 +197,6 @@ export async function PUT(
       { error: "Failed to update contact" },
       { status: 500 }
     );
-  } finally {
-    await prisma.$disconnect();
   }
 }
 
@@ -268,7 +262,5 @@ export async function DELETE(
       { error: "Failed to delete contact" },
       { status: 500 }
     );
-  } finally {
-    await prisma.$disconnect();
   }
 } 

@@ -1,6 +1,4 @@
-import { PrismaClient } from "@prisma/client";
-
-const prisma = new PrismaClient();
+import prisma from "@/lib/prisma";
 
 // Store OTPs in memory for simulation (this will be lost on server restart)
 const otpSimulationStore: Record<string, { otp: string; email: string; createdAt: Date }> = {};

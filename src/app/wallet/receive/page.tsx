@@ -82,7 +82,7 @@ function ReceivePage() {
     const tabParam = searchParams.get("tab");
     return (tabParam === "username" || tabParam === "address" || tabParam === "link" || tabParam === "request") 
       ? tabParam 
-      : "username";
+      : "address"; // Default to the address tab with QR code
   });
   
   const [tokenType, setTokenType] = useState("usds");

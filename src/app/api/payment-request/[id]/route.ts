@@ -1,8 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { PrismaClient } from "@prisma/client";
-
-// Remove global prisma instance
-// const prisma = new PrismaClient();
+import prisma from "@/lib/prisma";
 
 export async function OPTIONS() {
   return new NextResponse(null, {
@@ -18,7 +15,6 @@ export async function OPTIONS() {
 
 // Fixed for Next.js 15 - using proper parameter handling
 export async function GET(request: NextRequest, context: any) {
-  const prisma = new PrismaClient(); // Instantiate Prisma Client here
   try {
     // Extract the ID without accessing params.id directly
     const segments = request.nextUrl.pathname.split('/');
@@ -93,7 +89,5 @@ export async function GET(request: NextRequest, context: any) {
       { error: "Failed to fetch payment request", details: error instanceof Error ? error.message : String(error) },
       { status: 500 }
     );
-  } finally {
-    await prisma.$disconnect();
   }
 } 

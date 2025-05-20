@@ -1,10 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
-import { PrismaClient } from "@prisma/client";
+import prisma from "@/lib/prisma";
 import { authOptions } from "@/lib/auth";
 import { isValidSolanaAddress } from "@/lib/solana";
-
-const prisma = new PrismaClient();
 
 // GET handler to fetch all contacts for the current user
 export async function GET(req: NextRequest) {
@@ -49,8 +47,6 @@ export async function GET(req: NextRequest) {
       { error: "Failed to fetch contacts" },
       { status: 500 }
     );
-  } finally {
-    await prisma.$disconnect();
   }
 }
 
@@ -141,7 +137,5 @@ export async function POST(req: NextRequest) {
       { error: "Failed to create contact" },
       { status: 500 }
     );
-  } finally {
-    await prisma.$disconnect();
   }
 } 

@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { PrismaClient } from "@prisma/client";
 import { authOptions } from "@/lib/auth";
-import { generatePaymentLink } from "@/lib/config";
+import { generatePaymentLink } from "@/lib/paymentLinkUtils";
+import prisma from "@/lib/prisma";
 
 // const prisma = new PrismaClient(); // Removed global instance
 
@@ -19,7 +20,6 @@ export async function OPTIONS() {
 }
 
 export async function GET(req: NextRequest) {
-  const prisma = new PrismaClient(); // Instantiate here
   try {
     // Get the session from NextAuth
     const session = await getServerSession(authOptions);
@@ -43,49 +43,52 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    // List all payment requests created by this user - without using transaction
-    const createdRequests = await (prisma as any).PaymentRequest.findMany({
-      where: {
-        creatorId: user.id
-      },
-      include: {
-        recipient: {
-          select: {
-            id: true,
-            username: true,
-            email: true
-          }
-        }
-      },
-      orderBy: {
-        createdAt: 'desc'
-      }
-    });
+    // Pagination params
+    const url = req.nextUrl;
+    const limit = parseInt(url.searchParams.get('limit') || '20', 10);
+    const offset = parseInt(url.searchParams.get('offset') || '0', 10);
 
-    // List all payment requests where this user is the recipient - without using transaction
-    const receivedRequests = await (prisma as any).PaymentRequest.findMany({
-      where: {
-        recipientId: user.id
-      },
-      include: {
-        creator: {
-          select: {
-            id: true,
-            username: true,
-            email: true
+    // List all payment requests created by this user
+    const [createdRequests, createdTotal] = await Promise.all([
+      prisma.paymentRequest.findMany({
+        where: { creatorId: user.id },
+        include: {
+          recipient: {
+            select: {
+              id: true,
+              username: true,
+              email: true
+            }
           }
-        }
-      },
-      orderBy: {
-        createdAt: 'desc'
-      }
-    });
+        },
+        orderBy: { createdAt: 'desc' },
+        take: limit,
+        skip: offset,
+      }),
+      prisma.paymentRequest.count({ where: { creatorId: user.id } })
+    ]);
+
+    // List all payment requests where this user is the recipient
+    const [receivedRequests, receivedTotal] = await Promise.all([
+      prisma.paymentRequest.findMany({
+        where: { recipientId: user.id },
+        include: {
+          creator: {
+            select: {
+              id: true,
+              username: true,
+              email: true
+            }
+          }
+        },
+        orderBy: { createdAt: 'desc' },
+        take: limit,
+        skip: offset,
+      }),
+      prisma.paymentRequest.count({ where: { recipientId: user.id } })
+    ]);
 
     console.log(`Found ${createdRequests.length} created payment requests and ${receivedRequests.length} received payment requests for user`);
-
-    // Count records for debugging - without using transaction
-    const count = await (prisma as any).PaymentRequest.count();
-    console.log("Total payment requests in database:", count);
 
     // Combine the requests and format them
     const allPaymentRequests = [
@@ -121,7 +124,11 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      paymentRequests: allPaymentRequests
+      paymentRequests: allPaymentRequests,
+      createdTotal,
+      receivedTotal,
+      limit,
+      offset,
     });
   } catch (error) {
     console.error("Error listing payment requests:", error);
@@ -129,7 +136,5 @@ export async function GET(req: NextRequest) {
       { error: "Failed to list payment requests", details: error instanceof Error ? error.message : String(error) },
       { status: 500 }
     );
-  } finally {
-    await prisma.$disconnect();
   }
 } 

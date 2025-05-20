@@ -50,6 +50,11 @@ export default function ActivityPage() {
   const [activeTab, setActiveTab] = useState("all");
   const [filterType, setFilterType] = useState("all");
   const [refreshing, setRefreshing] = useState(false);
+  const [txOffset, setTxOffset] = useState(0);
+  const [txTotal, setTxTotal] = useState(0);
+  const [prOffset, setPrOffset] = useState(0);
+  const [prTotal, setPrTotal] = useState(0);
+  const PAGE_SIZE = 20;
 
   useEffect(() => {
     if (session?.user?.solanaAddress) {
@@ -77,24 +82,28 @@ export default function ActivityPage() {
     setIsLoading(false);
   };
 
-  const fetchTransactions = async () => {
+  const fetchTransactions = async (append = false) => {
     try {
-      const response = await fetch("/api/wallet/transactions");
+      const response = await fetch(`/api/wallet/transactions?limit=${PAGE_SIZE}&offset=${append ? txOffset : 0}`);
       if (response.ok) {
         const data = await response.json();
-        setTransactions(data.transactions || []);
+        setTxTotal(data.total || 0);
+        setTxOffset((append ? txOffset : 0) + (data.transactions?.length || 0));
+        setTransactions(prev => append ? [...prev, ...(data.transactions || [])] : (data.transactions || []));
       }
     } catch (error) {
       console.error("Error fetching transactions:", error);
     }
   };
 
-  const fetchPaymentRequests = async () => {
+  const fetchPaymentRequests = async (append = false) => {
     try {
-      const response = await fetch("/api/payment-request/list");
+      const response = await fetch(`/api/payment-request/list?limit=${PAGE_SIZE}&offset=${append ? prOffset : 0}`);
       if (response.ok) {
         const data = await response.json();
-        setPaymentRequests(data.paymentRequests || []);
+        setPrTotal((data.createdTotal || 0) + (data.receivedTotal || 0));
+        setPrOffset((append ? prOffset : 0) + (data.paymentRequests?.length || 0));
+        setPaymentRequests(prev => append ? [...prev, ...(data.paymentRequests || [])] : (data.paymentRequests || []));
       }
     } catch (error) {
       console.error("Error fetching payment requests:", error);
@@ -185,6 +194,10 @@ export default function ActivityPage() {
       return false;
     }
   });
+
+  // Add load more handlers
+  const loadMoreTransactions = () => fetchTransactions(true);
+  const loadMorePaymentRequests = () => fetchPaymentRequests(true);
 
   // Loading state
   if (status === "loading" || isLoading) {
@@ -515,6 +528,14 @@ export default function ActivityPage() {
             </Link>
           </Button>
         </div>
+
+        {/* Load More buttons */}
+        {filteredTransactions.length < txTotal && (
+          <Button onClick={loadMoreTransactions} className="mt-4 w-full">Load More Transactions</Button>
+        )}
+        {paymentRequests.length < prTotal && (
+          <Button onClick={loadMorePaymentRequests} className="mt-4 w-full">Load More Payment Requests</Button>
+        )}
       </main>
     </div>
   );

@@ -1,11 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth";
-// import prisma from "@/lib/prisma"; // Use local instance instead
-import { PrismaClient } from "@prisma/client";
+import prisma from "@/lib/prisma";
 
 export async function POST(req: NextRequest) {
-  const prisma = new PrismaClient(); // Instantiate here
   try {
     // Get the session from NextAuth
     const session = await getServerSession(authOptions);
@@ -101,7 +99,5 @@ export async function POST(req: NextRequest) {
       { error: "Failed to complete payment request", details: error instanceof Error ? error.message : String(error) },
       { status: 500 }
     );
-  } finally {
-    await prisma.$disconnect();
   }
 } 

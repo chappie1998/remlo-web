@@ -1,9 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { PrismaClient } from "@prisma/client";
+import prisma from "@/lib/prisma";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth";
-
-const prisma = new PrismaClient();
 
 export async function OPTIONS() {
   return new NextResponse(null, {
@@ -59,7 +57,5 @@ export async function POST(req: NextRequest) {
       { error: "An error occurred while looking up the user" },
       { status: 500 }
     );
-  } finally {
-    await prisma.$disconnect();
   }
 } 

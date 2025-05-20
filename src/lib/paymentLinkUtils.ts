@@ -103,4 +103,22 @@ export function calculateExpirationDate(hours: number): Date {
   const expiresAt = new Date();
   expiresAt.setHours(expiresAt.getHours() + hours);
   return expiresAt;
+}
+
+/**
+ * Generate a payment link URL given a shortId and optional request
+ * @param shortId The short ID of the payment request
+ * @param req Optional NextRequest for dynamic base URL
+ * @returns Full payment link URL as a string
+ */
+export function generatePaymentLink(shortId: string, req?: { headers?: any }): string {
+  let baseUrl = process.env.NEXT_PUBLIC_BASE_URL || process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+  // If running in an API route and req is provided, try to use the host header
+  if (req && req.headers && req.headers.get) {
+    const host = req.headers.get('host');
+    if (host) {
+      baseUrl = `${req.headers.get('x-forwarded-proto') || 'http'}://${host}`;
+    }
+  }
+  return `${baseUrl}/pay/${shortId}`;
 } 

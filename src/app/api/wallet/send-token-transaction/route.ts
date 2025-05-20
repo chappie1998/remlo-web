@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
-import { PrismaClient } from "@prisma/client";
 import { PublicKey } from "@solana/web3.js";
 import { SPL_TOKEN_ADDRESS, USDS_TOKEN_ADDRESS, RELAYER_URL, isValidSolanaAddress, getSolanaConnection } from "@/lib/solana";
 import { isValidPasscode } from "@/lib/utils";
@@ -8,8 +7,7 @@ import { prepareMPCSigningKeypair } from "@/lib/mpc";
 import { authOptions } from "@/lib/auth";
 import { Transaction } from "@solana/web3.js";
 import { sign } from "tweetnacl";
-
-const prisma = new PrismaClient();
+import prisma from "@/lib/prisma";
 
 // Handle OPTIONS request for CORS preflight
 export async function OPTIONS() {
@@ -404,7 +402,5 @@ export async function POST(req: NextRequest) {
         }
       }
     );
-  } finally {
-    await prisma.$disconnect();
   }
 }
