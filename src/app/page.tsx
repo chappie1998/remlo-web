@@ -29,7 +29,7 @@ export default function Home() {
             <div className="flex flex-col sm:flex-row gap-4 justify-center pt-4">
               {status === "authenticated" ? (
                 <Button asChild size="lg" className="px-8 bg-emerald-600 hover:bg-emerald-700">
-                  <Link href="/wallet" className="flex items-center gap-2">
+                  <Link href={session?.user?.hasPasscode ? "/wallet" : "/auth/signin"} className="flex items-center gap-2">
                     {session?.user?.hasPasscode ? "Go to My Account" : "Set Up Account"}
                     <ArrowRight size={16} />
                   </Link>

@@ -60,7 +60,7 @@ export default function FaucetButton({ usdcBalance, onFaucetComplete }: FaucetBu
             Requesting...
           </>
         ) : (
-          <>Get 2 USDC from Faucet</>
+          <>Get 10 USDC from Faucet</>
         )}
       </Button>
       <p className="text-xs text-gray-400 mt-1 text-center">For testing with low balance</p>

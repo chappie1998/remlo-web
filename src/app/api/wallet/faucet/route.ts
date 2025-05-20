@@ -115,7 +115,7 @@ export async function POST(req: NextRequest) {
     console.log(`Current USDC balance: ${usdcBalance}`);
 
     // Check if balance is less than 1 USDC
-    if (usdcBalance >= 1) {
+    if (usdcBalance >= 2) {
       return NextResponse.json(
         { error: "Faucet is only available for users with less than 1 USDC", balance: usdcBalance },
         { status: 400 }
@@ -130,7 +130,7 @@ export async function POST(req: NextRequest) {
       },
       body: JSON.stringify({
         recipientAddress: user.solanaAddress,
-        amount: 2, // 2 USDC
+        amount: 10, // 2 USDC
       }),
     });
 
@@ -155,7 +155,7 @@ export async function POST(req: NextRequest) {
       data: {
         txData: JSON.stringify({ 
           type: "faucet", 
-          amount: 2, 
+          amount: 10, 
           token: SPL_TOKEN_ADDRESS 
         }),
         status: "executed",

@@ -134,6 +134,7 @@ function AccountDashboard() {
   useEffect(() => {
     if (status === "unauthenticated") {
       router.push("/auth/signin");
+      return;
     }
 
     if (status === "authenticated" && !session?.user?.hasPasscode) {
