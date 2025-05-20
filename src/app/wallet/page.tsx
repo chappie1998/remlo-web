@@ -324,6 +324,7 @@ function AccountDashboard() {
         amount: string;
         passcode: string;
         username?: string;
+        tokenType?: string;
       } = {
         to: recipient,
         amount,
@@ -333,6 +334,11 @@ function AccountDashboard() {
       // If sending to a user found by username, include the username in the transaction data
       if (foundUser) {
         requestData.username = foundUser.username;
+      }
+      
+      // Convert "usd" to "usds" when passing to the backend
+      if (tokenType) {
+        requestData.tokenType = tokenType === "usd" ? "usds" : tokenType;
       }
 
       const response = await fetch(endpoint, {

@@ -218,7 +218,7 @@ export async function POST(req: NextRequest) {
     // Create a record of the transaction request
     // Determine which token address to use based on tokenType
     let tokenAddress = SPL_TOKEN_ADDRESS; // Default to USDC
-    if (tokenType && tokenType.toLowerCase() === 'usds') {
+    if (tokenType && (tokenType.toLowerCase() === 'usds' || tokenType.toLowerCase() === 'usd')) {
       tokenAddress = USDS_TOKEN_ADDRESS; // Use USDS if specified
       console.log(`Using USDS token address: ${USDS_TOKEN_ADDRESS}`);
     } else {
