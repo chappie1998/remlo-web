@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth/next";
 import { PrismaClient } from "@prisma/client";
 import { authOptions } from "@/lib/auth";
 import { randomBytes } from "crypto";
+import { generatePaymentLink } from "@/lib/config";
 
 const prisma = new PrismaClient();
 
@@ -76,10 +77,6 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Log all tables for debugging
-    const tableNames = await prisma.$queryRaw`SELECT name FROM sqlite_master WHERE type='table'`;
-    console.log("Database tables:", tableNames);
-
     // Generate a short ID for the request
     // Use prefixed random bytes in base64, removing special chars and truncating
     const shortId = `pr_${randomBytes(8)
@@ -148,8 +145,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Construct the full link
-    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || req.nextUrl.origin;
-    const paymentLink = `${baseUrl}/pay/${shortId}`;
+    const paymentLink = generatePaymentLink(shortId, req);
 
     return NextResponse.json({
       success: true,

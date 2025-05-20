@@ -72,3 +72,40 @@ You can view connection pool metrics at the `/api/admin/connection-pool` endpoin
 - **Reliability**: Reduces chances of hitting rate limits
 - **Resource Efficiency**: Minimizes resource usage
 - **Monitoring**: Provides visibility into connection usage
+
+## Configuration System
+
+The application uses a centralized configuration system to manage environment-specific settings like base URLs and API endpoints.
+
+### Base URL Configuration
+
+Payment links and API URLs use a consistent base URL configuration from `src/lib/config.ts`:
+
+```typescript
+// Example of generating a payment link
+import { generatePaymentLink } from "@/lib/config";
+
+// In API routes or server components
+const paymentLink = generatePaymentLink(shortId, req);
+
+// In client components
+const paymentLink = generatePaymentLink(shortId);
+```
+
+### Environment Variables
+
+The application uses the following environment variables:
+
+```
+# Base URL for generating payment links
+NEXT_PUBLIC_BASE_URL=https://your-domain.com
+
+# Solana RPC URL
+NEXT_PUBLIC_SOLANA_RPC_URL=https://api.devnet.solana.com
+NEXT_PUBLIC_SOLANA_NETWORK=devnet
+
+# Database URL for Neon.tech or other PostgreSQL provider
+DATABASE_URL="postgresql://username:password@hostname:port/database?sslmode=require&pgbouncer=true"
+```
+
+When deploying to production, be sure to set the `NEXT_PUBLIC_BASE_URL` to your domain name for proper payment link generation.

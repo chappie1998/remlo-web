@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { PrismaClient } from "@prisma/client";
 import { authOptions } from "@/lib/auth";
+import { generatePaymentLink } from "@/lib/config";
 
 const prisma = new PrismaClient();
 
@@ -40,10 +41,6 @@ export async function GET(req: NextRequest) {
         { status: 404 }
       );
     }
-
-    // Extract the table name for debugging
-    const tableNames = await prisma.$queryRaw`SELECT name FROM sqlite_master WHERE type='table'`;
-    console.log("Database tables:", tableNames);
 
     // List all payment requests created by this user
     const createdRequests = await prisma.$transaction(async (tx) => {
@@ -106,7 +103,7 @@ export async function GET(req: NextRequest) {
         status: pr.status,
         expiresAt: pr.expiresAt,
         createdAt: pr.createdAt,
-        link: `${process.env.NEXT_PUBLIC_BASE_URL || req.nextUrl.origin}/pay/${pr.shortId}`,
+        link: generatePaymentLink(pr.shortId, req),
         type: 'created',
         recipientUsername: pr.recipient?.username || null,
         recipientEmail: pr.recipient?.email || null
@@ -120,7 +117,7 @@ export async function GET(req: NextRequest) {
         status: pr.status,
         expiresAt: pr.expiresAt,
         createdAt: pr.createdAt,
-        link: `${process.env.NEXT_PUBLIC_BASE_URL || req.nextUrl.origin}/pay/${pr.shortId}`,
+        link: generatePaymentLink(pr.shortId, req),
         type: 'received',
         requesterUsername: pr.creator?.username || null,
         requesterEmail: pr.creator?.email || null
