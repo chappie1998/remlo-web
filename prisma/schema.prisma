@@ -46,6 +46,8 @@ model User {
   contacts        Contact[]        @relation("UserContacts")
   savedTemplates  SavedTemplate[]  @relation("UserTemplates")
   paymentLinks    PaymentLink[]    @relation("CreatedPaymentLinks") // Payment links created by this user
+
+  @@index([createdAt])
 }
 
 model Account {
@@ -73,6 +75,9 @@ model Session {
   userId       String
   expires      DateTime
   user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expires])
 }
 
 model VerificationToken {
@@ -94,6 +99,11 @@ model Transaction {
   executedAt  DateTime?
 
   user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([status])
+  @@index([createdAt])
+  @@index([signature])
 }
 
 model PaymasterInfo {
@@ -123,6 +133,12 @@ model PaymentRequest {
   creator       User      @relation(fields: [creatorId], references: [id], onDelete: Cascade)
   recipient     User?     @relation("RequestedPayments", fields: [recipientId], references: [id], onDelete: SetNull)
   payment       Payment?  // The payment fulfilling this request, if any
+
+  @@index([creatorId])
+  @@index([recipientId])
+  @@index([status])
+  @@index([createdAt])
+  @@index([expiresAt])
 }
 
 // NEW: Payment link model for token delegation with OTP verification
@@ -144,6 +160,12 @@ model PaymentLink {
   
   // Relations
   creator          User      @relation("CreatedPaymentLinks", fields: [creatorId], references: [id], onDelete: Cascade)
+
+  @@index([creatorId])
+  @@index([status])
+  @@index([claimedBy])
+  @@index([createdAt])
+  @@index([expiresAt])
 }
 
 // Payment model for tracking payments made to fulfill requests
@@ -159,6 +181,11 @@ model Payment {
   // Relations
   payer           User     @relation("SentPayments", fields: [payerId], references: [id], onDelete: Cascade)
   paymentRequest  PaymentRequest @relation(fields: [paymentRequestId], references: [id], onDelete: Cascade)
+
+  @@index([payerId])
+  @@index([status])
+  @@index([transactionSignature])
+  @@index([createdAt])
 }
 
 // Contact model for saving frequently used recipients
@@ -175,6 +202,7 @@ model Contact {
   userId        String
   
   @@unique([userId, solanaAddress])
+  @@index([userId])
 }
 
 // SavedTemplate model for recurring payments
@@ -191,4 +219,7 @@ model SavedTemplate {
 
   user          User      @relation("UserTemplates", fields: [userId], references: [id], onDelete: Cascade)
   userId        String
+
+  @@index([userId])
+  @@index([name])
 }
