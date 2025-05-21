@@ -254,29 +254,36 @@ function SendPage() {
           const data = await response.json();
 
           if (!response.ok) {
-            throw new Error(data.error || "Failed to find user");
+            throw new Error(data.error || "Failed to verify username");
           }
 
-          // Set the recipient address from the username lookup
-          setRecipient(data.solanaAddress);
+          if (!data.found) {
+            setError("Username not found");
+            setIsLookingUpUsername(false);
+            return false;
+          }
+
+          // Set the found user if lookup is successful
           setFoundUser({
             username: data.username,
             solanaAddress: data.solanaAddress
           });
           
-          toast.success(`Found user ${data.username}`);
+          // Also update the recipient field with the address for consistency
+          setRecipient(data.solanaAddress);
+          
         } catch (err) {
-          const errorMessage = err instanceof Error ? err.message : "Failed to find user";
+          const errorMessage = err instanceof Error ? err.message : "Failed to verify username";
           setError(errorMessage);
-          setRecipient(""); // Clear recipient address if lookup fails
           setIsLookingUpUsername(false);
           return false;
         }
         setIsLookingUpUsername(false);
       }
     } else {
+      // Address validation
       if (!recipient || recipient.trim() === "") {
-        setError("Recipient address is required");
+        setError("Recipient address cannot be empty");
         return false;
       }
 
@@ -285,18 +292,17 @@ function SendPage() {
         return false;
       }
     }
-    
-    if (!amount || isNaN(parseFloat(amount)) || parseFloat(amount) <= 0) {
-      setError("Enter a valid amount");
+
+    // Validate amount for both tabs
+    if (!amount || isNaN(Number(amount)) || Number(amount) <= 0) {
+      setError("Please enter a valid amount");
       return false;
     }
 
-    // Check if there are sufficient funds
-    if (tokenType === "usd" && parseFloat(amount) > parseFloat(usdsBalance)) {
-      setError("Insufficient USDs balance");
-      return false;
-    } else if (tokenType === "usdc" && parseFloat(amount) > parseFloat(usdcBalance)) {
-      setError("Insufficient USDC balance");
+    // Check if sufficient balance based on selected token type
+    const balance = tokenType === "usdc" ? usdcBalance : usdsBalance;
+    if (Number(amount) > Number(balance)) {
+      setError(`Insufficient ${tokenType.toUpperCase()} balance`);
       return false;
     }
 
@@ -331,6 +337,11 @@ function SendPage() {
         ? "/api/wallet/send-token-transaction"
         : "/api/wallet/send-transaction";
 
+      // Determine the recipient address - if using username tab and found a user, use their address
+      const recipientAddress = activeTab === "username" && foundUser 
+        ? foundUser.solanaAddress 
+        : recipient;
+
       // Include username in the request if a user was found
       const requestData: {
         to: string;
@@ -339,7 +350,7 @@ function SendPage() {
         username?: string;
         tokenType?: string;
       } = {
-        to: recipient,
+        to: recipientAddress,
         amount,
         passcode,
       };
@@ -354,6 +365,9 @@ function SendPage() {
         requestData.username = foundUser.username;
       }
 
+      // Log the request payload to help with debugging
+      console.log("Sending transaction with payload:", requestData);
+
       const response = await fetch(endpoint, {
         method: "POST",
         headers: {
@@ -361,6 +375,9 @@ function SendPage() {
         },
         body: JSON.stringify(requestData),
       });
+
+      // Log the response status
+      console.log("Transaction response status:", response.status);
 
       const data = await response.json();
 
