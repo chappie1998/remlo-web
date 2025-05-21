@@ -86,16 +86,17 @@ function SendPage() {
   const [usernameStatus, setUsernameStatus] = useState<"idle" | "validating" | "valid" | "invalid">("idle");
   
   // Debounced username validation function
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   const debouncedValidateUsername = useCallback(
     debounce(async (username: string) => {
       if (!username || username.length < 3) {
         setUsernameStatus("idle");
+        setFoundUser(null);
         return;
       }
 
       setIsValidatingUsername(true);
       setUsernameStatus("validating");
+      setFoundUser(null);
 
       try {
         const response = await fetch("/api/user/lookup", {
@@ -108,18 +109,20 @@ function SendPage() {
 
         const data = await response.json();
 
-        if (response.ok) {
+        if (response.ok && data.found) {
           setUsernameStatus("valid");
-          // Don't automatically set the found user yet, just indicate it exists
+          setFoundUser({ username: data.username, solanaAddress: data.solanaAddress });
         } else {
           setUsernameStatus("invalid");
+          setFoundUser(null);
         }
       } catch (err) {
         setUsernameStatus("invalid");
+        setFoundUser(null);
       } finally {
         setIsValidatingUsername(false);
       }
-    }, 500), // 500ms debounce time
+    }, 500),
     []
   );
 
@@ -681,6 +684,7 @@ function SendPage() {
               <Button
                 type="submit"
                 className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white"
+                disabled={activeTab === "username" && (!foundUser || usernameStatus !== "valid")}
               >
                 Review & Send
               </Button>

@@ -82,7 +82,7 @@ function ReceivePage() {
     const tabParam = searchParams.get("tab");
     return (tabParam === "username" || tabParam === "address" || tabParam === "link" || tabParam === "request") 
       ? tabParam 
-      : "address"; // Default to the address tab with QR code
+      : "username"; // Default to the username tab
   });
   
   const [tokenType, setTokenType] = useState("usds");
@@ -210,7 +210,7 @@ function ReceivePage() {
 
       const data = await response.json();
 
-      if (response.ok) {
+      if (response.ok && data.found) {
         setUsernameStatus("valid");
         setFoundUser({
           username: data.username,
@@ -945,7 +945,7 @@ function ReceivePage() {
                     <Button
                       type="submit"
                       className="w-full bg-emerald-600 hover:bg-emerald-700"
-                      disabled={isLoading || usernameStatus !== "valid"}
+                      disabled={isLoading || !foundUser || usernameStatus !== "valid"}
                     >
                       {isLoading ? "Sending..." : "Send Payment Request"}
                     </Button>
