@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, Suspense } from "react";
 import { useSession } from "next-auth/react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
@@ -18,7 +18,8 @@ import {
   Filter,
   Calendar,
   Download,
-  Search
+  Search,
+  CircleDashed
 } from "lucide-react";
 import { ActivityIcon, SendMoneyIcon, ReceiveIcon, RemloIcon } from "@/components/icons";
 
@@ -41,7 +42,34 @@ interface PaymentRequest {
   requesterEmail: string;
 }
 
-export default function ActivityPage() {
+// Main wrapper component with Suspense
+export default function ActivityPageWrapper() {
+  return (
+    <Suspense fallback={<ActivityLoadingState />}>
+      <ActivityPage />
+    </Suspense>
+  );
+}
+
+// Loading state component
+function ActivityLoadingState() {
+  return (
+    <div className="min-h-screen flex flex-col bg-black text-white">
+      <Header />
+      <div className="flex-1 flex items-center justify-center">
+        <div className="flex flex-col items-center space-y-4">
+          <div className="animate-spin">
+            <CircleDashed className="h-10 w-10 text-blue-500" />
+          </div>
+          <p className="text-lg">Loading activity...</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Original component now as a separate function
+function ActivityPage() {
   const { data: session, status } = useSession();
   const router = useRouter();
   const searchParams = useSearchParams();
