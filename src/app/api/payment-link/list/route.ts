@@ -46,16 +46,16 @@ export async function GET(req: NextRequest) {
     const paymentLinks = await prisma.$queryRaw`
       SELECT 
         id, 
-        shortId,
-        creatorId,
+        "shortId",
+        "creatorId",
         amount,
-        tokenType,
+        "tokenType",
         note,
         status,
-        expiresAt,
-        createdAt,
-        claimedAt,
-        claimedBy
+        "expiresAt",
+        "createdAt",
+        "claimedAt",
+        "claimedBy"
       FROM "PaymentLink"
       WHERE "creatorId" = ${user.id}
       ORDER BY "createdAt" DESC

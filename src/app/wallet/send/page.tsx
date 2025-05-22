@@ -155,24 +155,35 @@ function SendPage() {
     }
   }, [status, session, router]);
   
-  // Fetch token balances
+  // Fetch token balances using combined endpoint
   const fetchBalances = async () => {
     try {
       setIsLoading(true);
       
-      // Fetch SOL balance
-      const solResponse = await fetch("/api/wallet/balance");
-      if (solResponse.ok) {
-        const solData = await solResponse.json();
-        setSolBalance(solData.formattedBalance);
-      }
-
-      // Fetch token balances (USDC and USDs)
-      const tokenResponse = await fetch("/api/wallet/token-balance");
-      if (tokenResponse.ok) {
-        const tokenData = await tokenResponse.json();
-        setUsdcBalance(tokenData.usdc.formattedBalance);
-        setUsdsBalance(tokenData.usds.formattedBalance);
+      // Use the new combined overview endpoint
+      const response = await fetch("/api/wallet/overview");
+      if (response.ok) {
+        const data = await response.json();
+        setSolBalance(data.balances.sol.formattedBalance);
+        setUsdcBalance(data.balances.usdc.formattedBalance);
+        setUsdsBalance(data.balances.usds.formattedBalance);
+      } else {
+        // Fallback to individual calls
+        const [solResponse, tokenResponse] = await Promise.all([
+          fetch("/api/wallet/balance"),
+          fetch("/api/wallet/token-balance")
+        ]);
+        
+        if (solResponse.ok) {
+          const solData = await solResponse.json();
+          setSolBalance(solData.formattedBalance);
+        }
+        
+        if (tokenResponse.ok) {
+          const tokenData = await tokenResponse.json();
+          setUsdcBalance(tokenData.usdc.formattedBalance);
+          setUsdsBalance(tokenData.usds.formattedBalance);
+        }
       }
     } catch (error) {
       console.error("Error fetching balances:", error);
@@ -400,9 +411,9 @@ function SendPage() {
       setFoundUser(null);
       setAmount("");
       
-      // Redirect back to wallet page after successful transaction
+      // Redirect back to wallet page with refresh parameter to trigger balance update
       setTimeout(() => {
-        router.push("/wallet");
+        router.push("/wallet?refresh=true");
       }, 1500);
       
     } catch (err) {

@@ -1,11 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
-import { PrismaClient } from "@prisma/client";
+import prisma from "@/lib/prisma";
 import { fetchAccountBalance } from "@/lib/solana";
 import { authOptions } from "@/lib/auth";
 import connectionPool from "@/lib/solana-connection-pool";
-
-const prisma = new PrismaClient();
 
 // Handle OPTIONS request for CORS preflight
 export async function OPTIONS() {
@@ -132,7 +130,5 @@ export async function GET(req: NextRequest) {
         }
       }
     );
-  } finally {
-    await prisma.$disconnect();
   }
 }

@@ -48,9 +48,44 @@ export async function GET(req: NextRequest) {
     const limit = parseInt(url.searchParams.get('limit') || '20', 10);
     const offset = parseInt(url.searchParams.get('offset') || '0', 10);
 
+    // Quick check for any payment requests first (optimization for empty results)
+    const [hasCreated, hasReceived] = await Promise.all([
+      prisma.paymentRequest.count({ where: { creatorId: user.id }, take: 1 }),
+      prisma.paymentRequest.count({ where: { recipientId: user.id }, take: 1 })
+    ]);
+
+    // If no payment requests exist at all, return early
+    if (hasCreated === 0 && hasReceived === 0) {
+      console.log(`User has no payment requests, returning empty result`);
+      const isCacheBust = req.nextUrl.searchParams.has('t');
+      
+      return NextResponse.json({
+        success: true,
+        paymentRequests: [],
+        createdTotal: 0,
+        receivedTotal: 0,
+        limit,
+        offset,
+      }, {
+        headers: {
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Methods': 'GET, OPTIONS',
+          'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+          'Access-Control-Allow-Credentials': 'true',
+          'Cache-Control': isCacheBust 
+            ? 'no-cache, no-store, must-revalidate' 
+            : 'public, max-age=60, s-maxage=60', // Cache longer for empty results
+          ...(isCacheBust && {
+            'Pragma': 'no-cache',
+            'Expires': '0'
+          }),
+        }
+      });
+    }
+
     // List all payment requests created by this user
     const [createdRequests, createdTotal] = await Promise.all([
-      prisma.paymentRequest.findMany({
+      hasCreated > 0 ? prisma.paymentRequest.findMany({
         where: { creatorId: user.id },
         include: {
           recipient: {
@@ -64,13 +99,13 @@ export async function GET(req: NextRequest) {
         orderBy: { createdAt: 'desc' },
         take: limit,
         skip: offset,
-      }),
-      prisma.paymentRequest.count({ where: { creatorId: user.id } })
+      }) : Promise.resolve([]),
+      hasCreated > 0 ? prisma.paymentRequest.count({ where: { creatorId: user.id } }) : Promise.resolve(0)
     ]);
 
     // List all payment requests where this user is the recipient
     const [receivedRequests, receivedTotal] = await Promise.all([
-      prisma.paymentRequest.findMany({
+      hasReceived > 0 ? prisma.paymentRequest.findMany({
         where: { recipientId: user.id },
         include: {
           creator: {
@@ -84,8 +119,8 @@ export async function GET(req: NextRequest) {
         orderBy: { createdAt: 'desc' },
         take: limit,
         skip: offset,
-      }),
-      prisma.paymentRequest.count({ where: { recipientId: user.id } })
+      }) : Promise.resolve([]),
+      hasReceived > 0 ? prisma.paymentRequest.count({ where: { recipientId: user.id } }) : Promise.resolve(0)
     ]);
 
     console.log(`Found ${createdRequests.length} created payment requests and ${receivedRequests.length} received payment requests for user`);
@@ -122,6 +157,9 @@ export async function GET(req: NextRequest) {
       }))
     ].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
+    // Check if cache busting is requested
+    const isCacheBust = req.nextUrl.searchParams.has('t');
+
     return NextResponse.json({
       success: true,
       paymentRequests: allPaymentRequests,
@@ -129,6 +167,21 @@ export async function GET(req: NextRequest) {
       receivedTotal,
       limit,
       offset,
+    }, {
+      headers: {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'GET, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+        'Access-Control-Allow-Credentials': 'true',
+        // Add caching headers
+        'Cache-Control': isCacheBust 
+          ? 'no-cache, no-store, must-revalidate' 
+          : 'public, max-age=30, s-maxage=30', // Cache for 30 seconds
+        ...(isCacheBust && {
+          'Pragma': 'no-cache',
+          'Expires': '0'
+        }),
+      }
     });
   } catch (error) {
     console.error("Error listing payment requests:", error);

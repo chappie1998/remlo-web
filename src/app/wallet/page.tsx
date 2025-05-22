@@ -126,9 +126,46 @@ function AccountDashboard() {
   useEffect(() => {
     if (session?.user?.solanaAddress) {
       fetchBalances();
-      fetchTransactions();
     }
   }, [session?.user?.solanaAddress]); // Only re-run when solanaAddress changes
+
+  // Check for refresh parameter and fetch balances if present
+  useEffect(() => {
+    const refreshParam = searchParams.get("refresh");
+    if (refreshParam === "true" && session?.user?.solanaAddress) {
+      console.log("Refreshing balances due to refresh parameter - using cache busting");
+      toast.info("Updating balance after transaction...", { 
+        duration: 3000,
+        icon: "🔄" 
+      });
+      fetchBalances(true); // Use cache busting for immediate refresh
+      
+      // Set up polling for 30 seconds to catch any delayed balance updates
+      let pollCount = 0;
+      const maxPolls = 6; // Poll 6 times over 30 seconds (every 5 seconds)
+      
+      const pollInterval = setInterval(() => {
+        pollCount++;
+        console.log(`Polling for balance updates... (${pollCount}/${maxPolls})`);
+        fetchBalances(true); // Use cache busting for polling too
+        
+        if (pollCount >= maxPolls) {
+          clearInterval(pollInterval);
+          console.log("Finished polling for balance updates");
+        }
+      }, 5000); // Poll every 5 seconds
+      
+      // Remove refresh parameter from URL to prevent repeated refreshes
+      const newUrl = new URL(window.location.href);
+      newUrl.searchParams.delete("refresh");
+      window.history.replaceState({}, "", newUrl.toString());
+      
+      // Cleanup interval on component unmount
+      return () => {
+        clearInterval(pollInterval);
+      };
+    }
+  }, [searchParams, session?.user?.solanaAddress]);
 
   // Handle authentication redirects
   useEffect(() => {
@@ -142,9 +179,51 @@ function AccountDashboard() {
     }
   }, [status, session, router]);
 
-  const fetchBalances = async () => {
+  const fetchBalances = async (bustCache = false) => {
     try {
       setIsLoading(true);
+      
+      // Add cache-busting parameter if needed (e.g., after transactions)
+      const url = bustCache 
+        ? `/api/wallet/overview?t=${Date.now()}` 
+        : "/api/wallet/overview";
+      
+      // Use the new combined overview endpoint instead of 3 separate calls
+      const response = await fetch(url, {
+        // Disable caching when cache busting is requested
+        ...(bustCache && {
+          cache: 'no-cache',
+          headers: {
+            'Cache-Control': 'no-cache, no-store, must-revalidate',
+            'Pragma': 'no-cache'
+          }
+        })
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        
+        // Update all state from single response
+        setSolBalance(data.balances.sol.formattedBalance);
+        setUsdcBalance(data.balances.usdc.formattedBalance);
+        setUsdsBalance(data.balances.usds.formattedBalance);
+        setTransactions(data.transactions || []);
+      } else {
+        // Fallback to individual calls if overview fails
+        await fetchBalancesIndividually();
+      }
+    } catch (error) {
+      console.error("Error fetching overview:", error);
+      // Fallback to individual calls
+      await fetchBalancesIndividually();
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Fallback method for individual calls
+  const fetchBalancesIndividually = async () => {
+    try {
       // Fetch SOL balance
       const solResponse = await fetch("/api/wallet/balance");
       if (solResponse.ok) {
@@ -160,26 +239,16 @@ function AccountDashboard() {
         setUsdsBalance(tokenData.usds.formattedBalance);
       }
     } catch (error) {
-      console.error("Error fetching balances:", error);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const fetchTransactions = async () => {
-    try {
-      const response = await fetch("/api/wallet/transactions");
-      if (response.ok) {
-        const data = await response.json();
-        setTransactions(data.transactions || []);
-      }
-    } catch (error) {
-      console.error("Error fetching transactions:", error);
+      console.error("Error fetching balances individually:", error);
     }
   };
 
   const refreshData = async () => {
-    await Promise.all([fetchBalances(), fetchTransactions()]);
+    toast.info("Refreshing balances...", { 
+      duration: 2000,
+      icon: "🔄" 
+    });
+    await fetchBalances(true); // Always use cache busting for manual refresh
     toast.success("Account data refreshed");
   };
 
@@ -368,9 +437,8 @@ function AccountDashboard() {
       setFoundUser(null);
       setAmount("");
 
-      // Refresh balance and transactions
-      fetchBalances();
-      fetchTransactions();
+      // Refresh balance and transactions with cache busting
+      fetchBalances(true);
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : "Transaction failed";
       setError(errorMessage);
@@ -395,12 +463,22 @@ function AccountDashboard() {
         return `Swapped ${txData.amount}`;
       }
       
+      // Use tokenType if available, fallback to checking token address
+      const getTokenDisplay = () => {
+        if (txData.tokenType) {
+          return txData.tokenType; // Use the actual token type (USDC, USDS, etc.)
+        }
+        return txData.token ? 'USDC' : 'SOL'; // Fallback for old transactions
+      };
+      
+      const tokenDisplay = getTokenDisplay();
+      
       // Check if the transaction includes a username
       if (txData.username) {
-        return `${txData.amount} ${txData.token ? 'USDC' : 'SOL'} to ${txData.username}`;
+        return `${txData.amount} ${tokenDisplay} to ${txData.username}`;
       }
       
-      return `${txData.amount} ${txData.token ? 'USDC' : 'SOL'} to ${shortenAddress(txData.to)}`;
+      return `${txData.amount} ${tokenDisplay} to ${shortenAddress(txData.to)}`;
     } catch (e) {
       return "Unknown transaction";
     }

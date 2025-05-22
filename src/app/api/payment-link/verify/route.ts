@@ -60,7 +60,8 @@ export async function POST(req: NextRequest) {
       where: { email: session.user.email },
       select: {
         id: true,
-        solanaAddress: true
+        solanaAddress: true,
+        username: true
       }
     });
 
@@ -242,6 +243,7 @@ export async function POST(req: NextRequest) {
         UPDATE "PaymentLink"
         SET status = 'claimed',
             "claimedBy" = ${user.solanaAddress},
+            "claimedByUsername" = ${user.username},
             "claimedAt" = ${new Date()}
         WHERE id = ${paymentLink.id}
       `;

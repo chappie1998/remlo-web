@@ -201,10 +201,5 @@ export async function GET(req: NextRequest) {
         }
       }
     );
-  } finally {
-    // Make sure to disconnect the Prisma client in production
-    if (process.env.NODE_ENV === 'production') {
-      await prisma.$disconnect();
-    }
   }
 }

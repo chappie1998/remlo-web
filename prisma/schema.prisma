@@ -48,6 +48,10 @@ model User {
   paymentLinks    PaymentLink[]    @relation("CreatedPaymentLinks") // Payment links created by this user
 
   @@index([createdAt])
+  @@index([username]) // Dedicated index for fast username lookups
+  @@index([email, solanaAddress]) // Composite index for frequent lookups
+  @@index([hasPasscode, usesMPC]) // For filtering users by wallet type
+  @@index([username, hasPasscode, solanaAddress]) // Optimized composite index for user lookup validation
 }
 
 model Account {
@@ -67,6 +71,7 @@ model Account {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([provider, providerAccountId])
+  @@index([userId, provider]) // For finding user's accounts by provider
 }
 
 model Session {
@@ -78,6 +83,8 @@ model Session {
 
   @@index([userId])
   @@index([expires])
+  @@index([sessionToken, expires]) // Composite index for session validation
+  @@index([userId, expires]) // For active sessions by user
 }
 
 model VerificationToken {
@@ -105,6 +112,8 @@ model Transaction {
   @@index([createdAt])
   @@index([signature])
   @@index([userId, status, createdAt])
+  @@index([userId, createdAt]) // Optimized for user transaction history queries
+  @@index([signature, status]) // For transaction status lookups by signature
 }
 
 model PaymasterInfo {
@@ -207,6 +216,8 @@ model Contact {
   
   @@unique([userId, solanaAddress])
   @@index([userId])
+  @@index([userId, isFavorite, lastUsed]) // For finding favorite contacts ordered by recent use
+  @@index([userId, username]) // For username-based contact searches
 }
 
 // SavedTemplate model for recurring payments

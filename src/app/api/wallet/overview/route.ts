@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import prisma from "@/lib/prisma";
 import { authOptions } from "@/lib/auth";
+import { fetchAccountBalance, fetchSplTokenBalance, fetchUsdsTokenBalance } from "@/lib/solana";
+import connectionPool from "@/lib/solana-connection-pool";
 
 // Handle OPTIONS request for CORS preflight
 export async function OPTIONS() {
@@ -19,45 +21,20 @@ export async function OPTIONS() {
 export async function GET(req: NextRequest) {
   try {
     let userEmail = null;
-    console.log('Handling wallet transactions request');
+    console.log('Handling wallet overview request');
+    console.log(`Connection pool stats: ${connectionPool.getConnectionCount()} active connections`);
 
-    // First, try to get the session from NextAuth
+    // Get the session from NextAuth (single lookup)
     const session = await getServerSession(authOptions);
     if (session?.user?.email) {
       userEmail = session.user.email;
       console.log('Found user email from NextAuth session:', userEmail);
     }
 
-    // If no NextAuth session, try to get the user from the Authorization header
-    if (!userEmail) {
-      const authHeader = req.headers.get('authorization');
-      console.log('Authorization header:', authHeader);
-
-      if (authHeader?.startsWith('Bearer ')) {
-        const token = authHeader.substring(7);
-        console.log('Extracted token:', token);
-
-        // Find the session in the database
-        const dbSession = await prisma.session.findUnique({
-          where: { sessionToken: token },
-          include: { user: true }
-        });
-
-        console.log('Database session lookup result:', dbSession ? 'Found' : 'Not found');
-
-        if (dbSession?.user?.email && dbSession.expires > new Date()) {
-          userEmail = dbSession.user.email;
-          console.log('Found user email from session token:', userEmail);
-        } else {
-          console.log('Invalid or expired session token');
-        }
-      }
-    }
-
     if (!userEmail) {
       console.log('No valid user session found, returning 401');
       return NextResponse.json(
-        { error: "You must be signed in to view your transactions" },
+        { error: "You must be signed in to view your wallet overview" },
         {
           status: 401,
           headers: {
@@ -70,17 +47,20 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    // Get the user's ID
+    // Get the user data (single database query)
     const user = await prisma.user.findUnique({
       where: { email: userEmail },
-      select: { id: true },
+      select: {
+        id: true,
+        solanaAddress: true,
+      },
     });
 
-    if (!user) {
+    if (!user || !user.solanaAddress) {
       return NextResponse.json(
-        { error: "User not found" },
+        { error: "Wallet not set up" },
         {
-          status: 404,
+          status: 400,
           headers: {
             'Access-Control-Allow-Origin': '*',
             'Access-Control-Allow-Methods': 'GET, OPTIONS',
@@ -91,13 +71,25 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    // Pagination params
-    const url = req.nextUrl;
-    const limit = parseInt(url.searchParams.get('limit') || '20', 10);
-    const offset = parseInt(url.searchParams.get('offset') || '0', 10);
-
-    // Get the user's transactions
-    const [transactions, total] = await Promise.all([
+    // Fetch all data in parallel
+    const [
+      solBalance,
+      usdcBalance,
+      usdsBalance,
+      transactions
+    ] = await Promise.all([
+      fetchAccountBalance(user.solanaAddress).catch(err => {
+        console.error('Error fetching SOL balance:', err);
+        return { balanceInLamports: 0, balanceInSol: '0.000000000' };
+      }),
+      fetchSplTokenBalance(user.solanaAddress).catch(err => {
+        console.error('Error fetching USDC balance:', err);
+        return { balance: 0, formattedBalance: '0.000000' };
+      }),
+      fetchUsdsTokenBalance(user.solanaAddress).catch(err => {
+        console.error('Error fetching USDS balance:', err);
+        return { balance: 0, formattedBalance: '0.000000' };
+      }),
       prisma.transaction.findMany({
         where: { userId: user.id },
         orderBy: { createdAt: "desc" },
@@ -109,22 +101,36 @@ export async function GET(req: NextRequest) {
           createdAt: true,
           executedAt: true,
         },
-        take: limit,
-        skip: offset,
-      }),
-      prisma.transaction.count({ where: { userId: user.id } })
+        take: 10, // Only get recent transactions
+      }).catch(err => {
+        console.error('Error fetching transactions:', err);
+        return [];
+      })
     ]);
 
-    // Check if cache busting is requested
+    // Check if cache busting is requested (after transactions)
     const isCacheBust = req.nextUrl.searchParams.has('t');
-
+    
     return NextResponse.json(
       {
         success: true,
-        transactions,
-        total,
-        limit,
-        offset,
+        address: user.solanaAddress,
+        balances: {
+          sol: {
+            balance: solBalance.balanceInLamports,
+            formattedBalance: solBalance.balanceInSol,
+          },
+          usdc: {
+            balance: usdcBalance.balance,
+            formattedBalance: usdcBalance.formattedBalance,
+          },
+          usds: {
+            balance: usdsBalance.balance,
+            formattedBalance: usdsBalance.formattedBalance,
+          }
+        },
+        transactions: transactions,
+        total: transactions.length,
       },
       {
         headers: {
@@ -132,10 +138,10 @@ export async function GET(req: NextRequest) {
           'Access-Control-Allow-Methods': 'GET, OPTIONS',
           'Access-Control-Allow-Headers': 'Content-Type, Authorization',
           'Access-Control-Allow-Credentials': 'true',
-          // Add caching headers
+          // Use different cache control based on whether this is a cache-busting request
           'Cache-Control': isCacheBust 
             ? 'no-cache, no-store, must-revalidate' 
-            : 'public, max-age=30, s-maxage=30', // Cache for 30 seconds
+            : 'public, max-age=15, s-maxage=15', // Reduced cache time to 15 seconds
           ...(isCacheBust && {
             'Pragma': 'no-cache',
             'Expires': '0'
@@ -144,9 +150,9 @@ export async function GET(req: NextRequest) {
       }
     );
   } catch (error) {
-    console.error("Error fetching transactions:", error);
+    console.error("Error fetching wallet overview:", error);
     return NextResponse.json(
-      { error: "Failed to fetch transactions" },
+      { error: "Failed to fetch wallet overview" },
       {
         status: 500,
         headers: {
@@ -158,4 +164,4 @@ export async function GET(req: NextRequest) {
       }
     );
   }
-}
+} 

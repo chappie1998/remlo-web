@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useSession } from "next-auth/react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
@@ -44,6 +44,7 @@ interface PaymentRequest {
 export default function ActivityPage() {
   const { data: session, status } = useSession();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [paymentRequests, setPaymentRequests] = useState<PaymentRequest[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -62,6 +63,24 @@ export default function ActivityPage() {
     }
   }, [session?.user?.solanaAddress]);
 
+  // Check for refresh parameter and fetch fresh data if present
+  useEffect(() => {
+    const refreshParam = searchParams.get("refresh");
+    if (refreshParam === "true" && session?.user?.solanaAddress) {
+      console.log("Refreshing activity due to refresh parameter - using cache busting");
+      toast.info("Updating activity after transaction...", { 
+        duration: 3000,
+        icon: "🔄" 
+      });
+      fetchData(true); // Use cache busting for immediate refresh
+      
+      // Remove refresh parameter from URL to prevent repeated refreshes
+      const newUrl = new URL(window.location.href);
+      newUrl.searchParams.delete("refresh");
+      window.history.replaceState({}, "", newUrl.toString());
+    }
+  }, [searchParams, session?.user?.solanaAddress]);
+
   // Handle authentication redirects
   useEffect(() => {
     if (status === "unauthenticated") {
@@ -73,13 +92,58 @@ export default function ActivityPage() {
     }
   }, [status, session, router]);
 
-  const fetchData = async () => {
+  const fetchData = async (bustCache = false) => {
     setIsLoading(true);
+    try {
+      // Use the new combined activity overview endpoint
+      const url = bustCache 
+        ? `/api/activity/overview?limit=${PAGE_SIZE}&offset=0&includeCounts=true&t=${Date.now()}` 
+        : `/api/activity/overview?limit=${PAGE_SIZE}&offset=0&includeCounts=true`;
+      
+      const response = await fetch(url, {
+        // Disable caching when cache busting is requested
+        ...(bustCache && {
+          cache: 'no-cache',
+          headers: {
+            'Cache-Control': 'no-cache, no-store, must-revalidate',
+            'Pragma': 'no-cache'
+          }
+        })
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        
+        // Update all state from single response
+        setTransactions(data.transactions || []);
+        setPaymentRequests(data.paymentRequests || []);
+        
+        if (data.totals) {
+          setTxTotal(data.totals.transactions);
+          setPrTotal(data.totals.createdRequests + data.totals.receivedRequests);
+        }
+        
+        // Reset offsets for fresh data
+        setTxOffset(data.transactions?.length || 0);
+        setPrOffset(data.paymentRequests?.length || 0);
+      } else {
+        // Fallback to individual calls if combined endpoint fails
+        await fetchDataIndividually();
+      }
+    } catch (error) {
+      console.error("Error fetching activity overview:", error);
+      // Fallback to individual calls
+      await fetchDataIndividually();
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const fetchDataIndividually = async () => {
     await Promise.all([
       fetchTransactions(),
       fetchPaymentRequests()
     ]);
-    setIsLoading(false);
   };
 
   const fetchTransactions = async (append = false) => {
@@ -112,7 +176,11 @@ export default function ActivityPage() {
 
   const refreshData = async () => {
     setRefreshing(true);
-    await fetchData();
+    toast.info("Refreshing activity...", { 
+      duration: 2000,
+      icon: "🔄" 
+    });
+    await fetchData(true); // Use cache busting for refresh
     toast.success("Activity data refreshed");
     setRefreshing(false);
   };
@@ -132,12 +200,21 @@ export default function ActivityPage() {
         return `Swapped ${txData.amount}`;
       }
       
-      // Regular transaction
+      // Regular transaction - use tokenType if available, fallback to checking token address
+      const getTokenDisplay = () => {
+        if (txData.tokenType) {
+          return txData.tokenType; // Use the actual token type (USDC, USDS, etc.)
+        }
+        return txData.token ? 'USDC' : 'SOL'; // Fallback for old transactions
+      };
+      
+      const tokenDisplay = getTokenDisplay();
+      
       if (txData.username) {
-        return `${txData.amount} ${txData.token ? 'USDC' : 'SOL'} to ${txData.username}`;
+        return `${txData.amount} ${tokenDisplay} to ${txData.username}`;
       }
       
-      return `${txData.amount} ${txData.token ? 'USDC' : 'SOL'} to ${shortenAddress(txData.to)}`;
+      return `${txData.amount} ${tokenDisplay} to ${shortenAddress(txData.to)}`;
     } catch (e) {
       return "Unknown transaction";
     }
@@ -189,7 +266,26 @@ export default function ActivityPage() {
     if (filterType === "all") return true;
     try {
       const txData = JSON.parse(tx.txData);
-      return txData.token ? filterType === "usdc" : filterType === "sol";
+      
+      // Check token type more precisely
+      if (filterType === "sol") {
+        return !txData.token; // SOL transactions don't have token field
+      }
+      
+      if (filterType === "usdc") {
+        // For USDC, check tokenType first, then fallback to checking if any token exists
+        if (txData.tokenType) {
+          return txData.tokenType.toLowerCase() === "usdc";
+        }
+        return !!txData.token; // Fallback for old transactions
+      }
+      
+      // Handle other token types (like USDS) - for future expansion
+      if (filterType === "usds") {
+        return txData.tokenType && txData.tokenType.toLowerCase() === "usds";
+      }
+      
+      return false;
     } catch {
       return false;
     }
