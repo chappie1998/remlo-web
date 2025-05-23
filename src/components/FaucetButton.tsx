@@ -41,7 +41,7 @@ export default function FaucetButton({ usdcBalance, onFaucetComplete }: FaucetBu
   };
 
   // Only show button if USDC balance is less than 1
-  if (usdcBalance >= 1) {
+  if (usdcBalance >= 2) {
     return null;
   }
 

@@ -84,11 +84,11 @@ export async function POST(req: NextRequest) {
     console.log(`Current USDC balance: ${currentBalance}`);
 
     // Check if user already has enough USDC (optional limit)
-    const FAUCET_LIMIT = 1000; // 1000 USDC limit
+    const FAUCET_LIMIT = 2; // 2 USDC limit - users can request again when below this
     if (currentBalance >= FAUCET_LIMIT) {
       return NextResponse.json(
         { 
-          error: `You already have ${currentBalance} USDC. Faucet limit is ${FAUCET_LIMIT} USDC.`,
+          error: `You already have ${currentBalance} USDC. You can request more when your balance is below ${FAUCET_LIMIT} USDC.`,
           currentBalance
         },
         { status: 400 }
@@ -102,7 +102,8 @@ export async function POST(req: NextRequest) {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        walletAddress: user.solanaAddress,
+        recipientAddress: user.solanaAddress,
+        amount: 10, // Request 10 USDC
       }),
     });
 
