@@ -5,6 +5,7 @@ import { isValidPasscode, generateRandomUsername } from "@/lib/utils";
 import { validateMnemonic } from "@/lib/crypto";
 import { createMPCWallet } from "@/lib/mpc";
 import { authOptions } from "@/lib/auth";
+import { signJWT } from "@/lib/jwt";
 
 // Handle OPTIONS request for CORS preflight
 export async function OPTIONS() {
@@ -147,7 +148,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Update the user record with the wallet address, MPC information, and username
-    await prisma.user.update({
+    const updatedUser = await prisma.user.update({
       where: { email: userEmail },
       data: {
         solanaAddress: publicKey,
@@ -159,9 +160,25 @@ export async function POST(req: NextRequest) {
         passcodeSetAt: new Date(),
         username, // Set the generated username
       },
+      select: {
+        id: true,
+        email: true,
+        solanaAddress: true,
+        hasPasscode: true,
+        username: true,
+      },
     });
 
-    return NextResponse.json(
+    // Create a new JWT token with the updated user information
+    const jwtToken = signJWT({
+      userId: updatedUser.id,
+      email: updatedUser.email,
+      solanaAddress: updatedUser.solanaAddress,
+      hasPasscode: updatedUser.hasPasscode,
+      username: updatedUser.username,
+    });
+
+    const response = NextResponse.json(
       {
         success: true,
         solanaAddress: publicKey,
@@ -179,6 +196,17 @@ export async function POST(req: NextRequest) {
         }
       }
     );
+
+    // Set the JWT token as a secure HTTP-only cookie
+    response.cookies.set('auth-token', jwtToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      maxAge: 30 * 24 * 60 * 60, // 30 days
+      path: '/',
+    });
+
+    return response;
   } catch (error) {
     console.error("Error setting up wallet:", error);
     return NextResponse.json(

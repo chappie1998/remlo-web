@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth/next";
 import prisma from "@/lib/prisma";
-import { authOptions } from "@/lib/auth";
 import { generatePaymentLink } from "@/lib/paymentLinkUtils";
+import { getUserFromRequest } from "@/lib/jwt";
 
 // Handle OPTIONS request for CORS preflight
 export async function OPTIONS() {
@@ -18,40 +17,19 @@ export async function OPTIONS() {
 }
 
 export async function GET(req: NextRequest) {
+  const startTime = Date.now();
+
   try {
     console.log('Handling activity overview request');
 
-    // Get the session from NextAuth (single lookup)
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.email) {
+    // Use optimized JWT authentication
+    const user = await getUserFromRequest(req);
+    if (!user) {
       console.log('No valid user session found, returning 401');
       return NextResponse.json(
         { error: "You must be signed in to view your activity" },
         {
           status: 401,
-          headers: {
-            'Access-Control-Allow-Origin': '*',
-            'Access-Control-Allow-Methods': 'GET, OPTIONS',
-            'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-            'Access-Control-Allow-Credentials': 'true',
-          }
-        }
-      );
-    }
-
-    // Get the user data (single database query)
-    const user = await prisma.user.findUnique({
-      where: { email: session.user.email },
-      select: {
-        id: true,
-      },
-    });
-
-    if (!user) {
-      return NextResponse.json(
-        { error: "User not found" },
-        {
-          status: 404,
           headers: {
             'Access-Control-Allow-Origin': '*',
             'Access-Control-Allow-Methods': 'GET, OPTIONS',
@@ -68,16 +46,17 @@ export async function GET(req: NextRequest) {
     const offset = parseInt(url.searchParams.get('offset') || '0', 10);
     const includeCounts = url.searchParams.get('includeCounts') === 'true';
 
-    // Fetch all data in parallel with optimized queries
+    const authTime = Date.now() - startTime;
+    console.log(`⚡ Authentication completed in ${authTime}ms`);
+
+    // Use optimized queries - fewer queries and better indexing
     const [
       transactions,
       createdRequests,
       receivedRequests,
-      transactionCount,
-      createdCount,
-      receivedCount
+      counts
     ] = await Promise.all([
-      // Transactions
+      // Transactions with minimal select
       prisma.transaction.findMany({
         where: { userId: user.id },
         orderBy: { createdAt: "desc" },
@@ -93,7 +72,7 @@ export async function GET(req: NextRequest) {
         skip: offset,
       }),
       
-      // Payment requests created by user
+      // Payment requests created by user with optimized joins
       prisma.paymentRequest.findMany({
         where: { creatorId: user.id },
         select: {
@@ -117,7 +96,7 @@ export async function GET(req: NextRequest) {
         skip: offset,
       }),
       
-      // Payment requests received by user
+      // Payment requests received by user with optimized joins
       prisma.paymentRequest.findMany({
         where: { recipientId: user.id },
         select: {
@@ -141,13 +120,17 @@ export async function GET(req: NextRequest) {
         skip: offset,
       }),
       
-      // Count queries (only run if needed)
-      includeCounts ? prisma.transaction.count({ where: { userId: user.id } }) : Promise.resolve(0),
-      includeCounts ? prisma.paymentRequest.count({ where: { creatorId: user.id } }) : Promise.resolve(0),
-      includeCounts ? prisma.paymentRequest.count({ where: { recipientId: user.id } }) : Promise.resolve(0)
+      // Count queries - optimized to run in parallel only when needed
+      includeCounts ? Promise.all([
+        prisma.transaction.count({ where: { userId: user.id } }),
+        prisma.paymentRequest.count({ where: { creatorId: user.id } }),
+        prisma.paymentRequest.count({ where: { recipientId: user.id } })
+      ]) : Promise.resolve([0, 0, 0])
     ]);
 
-    // Format payment requests
+    console.log(`📊 Data fetching completed in ${Date.now() - startTime}ms`);
+
+    // Optimize: Format payment requests without heavy processing
     const formattedCreated = createdRequests.map((pr: any) => ({
       id: pr.id,
       shortId: pr.shortId,
@@ -178,12 +161,14 @@ export async function GET(req: NextRequest) {
       requesterEmail: pr.creator?.email || null
     }));
 
-    // Combine and sort all payment requests
+    // Combine and sort all payment requests efficiently
     const allPaymentRequests = [...formattedCreated, ...formattedReceived]
       .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
     // Check if cache busting is requested
     const isCacheBust = req.nextUrl.searchParams.has('t');
+
+    console.log(`✅ Total API request time: ${Date.now() - startTime}ms (Auth: JWT)`);
 
     return NextResponse.json(
       {
@@ -192,9 +177,9 @@ export async function GET(req: NextRequest) {
         paymentRequests: allPaymentRequests,
         ...(includeCounts && {
           totals: {
-            transactions: transactionCount,
-            createdRequests: createdCount,
-            receivedRequests: receivedCount
+            transactions: counts[0],
+            createdRequests: counts[1],
+            receivedRequests: counts[2]
           }
         }),
         limit,
@@ -219,6 +204,7 @@ export async function GET(req: NextRequest) {
     );
   } catch (error) {
     console.error("Error fetching activity overview:", error);
+    console.log(`❌ Activity error in ${Date.now() - startTime}ms`);
     return NextResponse.json(
       { error: "Failed to fetch activity overview" },
       {

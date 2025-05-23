@@ -10,6 +10,7 @@ import {
   getAccount,
   TokenAccountNotFoundError,
   TokenInvalidAccountOwnerError,
+  AccountLayout,
 } from '@solana/spl-token';
 import connectionPool from './solana-connection-pool';
 
@@ -32,6 +33,105 @@ export const RELAYER_URL = process.env.NEXT_PUBLIC_RELAYER_URL || 'http://192.16
  */
 export function getSolanaConnection(): Connection {
   return connectionPool.getConnection(SOLANA_RPC_URL);
+}
+
+/**
+ * OPTIMIZED: Fetch token balances (USDC, USDS) in a single RPC call
+ */
+export async function fetchAllBalances(address: string): Promise<{
+  usdc: { balance: number; formattedBalance: string };
+  usds: { balance: number; formattedBalance: string };
+}> {
+  const startTime = Date.now();
+  
+  try {
+    console.log('🚀 Starting fetchAllBalances for address:', address);
+    
+    const publicKey = new PublicKey(address);
+    const connection = getSolanaConnection();
+
+    // Get associated token addresses for both tokens
+    console.log('⏱️  Getting token mints...');
+    const tokenStartTime = Date.now();
+    
+    const usdcMint = new PublicKey(SPL_TOKEN_ADDRESS);
+    const usdsMint = new PublicKey(USDS_TOKEN_ADDRESS);
+    
+    const [usdcTokenAddress, usdsTokenAddress] = await Promise.all([
+      getAssociatedTokenAddress(usdcMint, publicKey),
+      getAssociatedTokenAddress(usdsMint, publicKey)
+    ]);
+    
+    console.log(`⚡ Token addresses computed in ${Date.now() - tokenStartTime}ms`);
+
+    // Fetch both token accounts in a single RPC call
+    console.log('🌐 Fetching account data from Solana RPC...');
+    const rpcStartTime = Date.now();
+    
+    const accountInfos = await connection.getMultipleAccountsInfo([
+      usdcTokenAddress, // USDC token account
+      usdsTokenAddress  // USDS token account
+    ]);
+    
+    console.log(`🌐 RPC call completed in ${Date.now() - rpcStartTime}ms`);
+
+    // Process USDC balance
+    console.log('🔧 Processing account data...');
+    const processStartTime = Date.now();
+    
+    let usdcBalance = 0;
+    let usdcFormatted = '0.000000';
+    if (accountInfos[0]?.data) {
+      try {
+        const accountData = AccountLayout.decode(accountInfos[0].data);
+        usdcBalance = Number(accountData.amount);
+        usdcFormatted = (usdcBalance / (10 ** 6)).toFixed(6); // USDC has 6 decimals
+      } catch (error) {
+        console.error('Error decoding USDC account data:', error);
+      }
+    }
+
+    // Process USDS balance
+    let usdsBalance = 0;
+    let usdsFormatted = '0.000000';
+    if (accountInfos[1]?.data) {
+      try {
+        const accountData = AccountLayout.decode(accountInfos[1].data);
+        usdsBalance = Number(accountData.amount);
+        usdsFormatted = (usdsBalance / (10 ** 6)).toFixed(6); // USDS has 6 decimals
+      } catch (error) {
+        console.error('Error decoding USDS account data:', error);
+      }
+    }
+    
+    console.log(`🔧 Processing completed in ${Date.now() - processStartTime}ms`);
+    console.log(`✅ Total fetchAllBalances time: ${Date.now() - startTime}ms`);
+
+    return {
+      usdc: {
+        balance: usdcBalance,
+        formattedBalance: usdcFormatted,
+      },
+      usds: {
+        balance: usdsBalance,
+        formattedBalance: usdsFormatted,
+      }
+    };
+  } catch (error) {
+    console.error('❌ Error fetching token balances:', error);
+    console.log(`❌ Failed fetchAllBalances time: ${Date.now() - startTime}ms`);
+    
+    // Fallback to individual calls if batch fails
+    const [usdcBalance, usdsBalance] = await Promise.all([
+      fetchSplTokenBalance(address).catch(() => ({ balance: 0, formattedBalance: '0.000000' })),
+      fetchUsdsTokenBalance(address).catch(() => ({ balance: 0, formattedBalance: '0.000000' }))
+    ]);
+
+    return {
+      usdc: usdcBalance,
+      usds: usdsBalance,
+    };
+  }
 }
 
 /**

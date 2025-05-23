@@ -1,9 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth/next";
 import { PrismaClient } from "@prisma/client";
-import { authOptions } from "@/lib/auth";
 import { generatePaymentLink } from "@/lib/paymentLinkUtils";
 import prisma from "@/lib/prisma";
+import { getUserFromRequest } from "@/lib/jwt";
 
 // const prisma = new PrismaClient(); // Removed global instance
 
@@ -20,28 +19,20 @@ export async function OPTIONS() {
 }
 
 export async function GET(req: NextRequest) {
+  const startTime = Date.now();
+  
   try {
-    // Get the session from NextAuth
-    const session = await getServerSession(authOptions);
+    // Use optimized JWT authentication
+    const user = await getUserFromRequest(req);
     
-    if (!session?.user?.email) {
+    if (!user) {
       return NextResponse.json(
         { error: "You must be signed in to list payment requests" },
         { status: 401 }
       );
     }
 
-    // Find the user
-    const user = await prisma.user.findUnique({
-      where: { email: session.user.email }
-    });
-
-    if (!user) {
-      return NextResponse.json(
-        { error: "User not found" },
-        { status: 404 }
-      );
-    }
+    console.log(`⚡ Authentication completed in ${Date.now() - startTime}ms`);
 
     // Pagination params
     const url = req.nextUrl;
@@ -57,6 +48,7 @@ export async function GET(req: NextRequest) {
     // If no payment requests exist at all, return early
     if (hasCreated === 0 && hasReceived === 0) {
       console.log(`User has no payment requests, returning empty result`);
+      console.log(`✅ Total API request time: ${Date.now() - startTime}ms (Auth: JWT) - Empty result`);
       const isCacheBust = req.nextUrl.searchParams.has('t');
       
       return NextResponse.json({
@@ -123,6 +115,7 @@ export async function GET(req: NextRequest) {
       hasReceived > 0 ? prisma.paymentRequest.count({ where: { recipientId: user.id } }) : Promise.resolve(0)
     ]);
 
+    console.log(`📊 Data fetching completed in ${Date.now() - startTime}ms`);
     console.log(`Found ${createdRequests.length} created payment requests and ${receivedRequests.length} received payment requests for user`);
 
     // Combine the requests and format them
@@ -160,6 +153,8 @@ export async function GET(req: NextRequest) {
     // Check if cache busting is requested
     const isCacheBust = req.nextUrl.searchParams.has('t');
 
+    console.log(`✅ Total API request time: ${Date.now() - startTime}ms (Auth: JWT)`);
+
     return NextResponse.json({
       success: true,
       paymentRequests: allPaymentRequests,
@@ -185,6 +180,7 @@ export async function GET(req: NextRequest) {
     });
   } catch (error) {
     console.error("Error listing payment requests:", error);
+    console.log(`❌ Payment requests error in ${Date.now() - startTime}ms`);
     return NextResponse.json(
       { error: "Failed to list payment requests", details: error instanceof Error ? error.message : String(error) },
       { status: 500 }

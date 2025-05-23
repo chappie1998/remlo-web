@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useSession, signOut } from "next-auth/react";
+import { useSession } from "next-auth/react";
 import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { RemloIcon } from "@/components/icons";
@@ -15,12 +15,36 @@ interface HeaderProps {
 
 export default function Header({ title, backUrl }: Readonly<HeaderProps>) {
   const { data: session } = useSession();
-
   const pathname = usePathname();
   const router = useRouter();
 
   const isActive = (path: string) => {
     return pathname === path;
+  };
+
+  // Custom signout function for JWT authentication
+  const handleSignOut = async () => {
+    try {
+      // Call our JWT signout endpoint
+      const response = await fetch('/api/auth/signout', {
+        method: 'POST',
+        credentials: 'include',
+      });
+
+      if (response.ok) {
+        // Clear any client-side state
+        // Redirect to home page
+        window.location.href = '/';
+      } else {
+        console.error('Signout failed');
+        // Still redirect to be safe
+        window.location.href = '/';
+      }
+    } catch (error) {
+      console.error('Error during signout:', error);
+      // Still redirect to be safe
+      window.location.href = '/';
+    }
   };
 
   // If a back URL is provided, show a simpler header with back button and title
@@ -126,7 +150,7 @@ export default function Header({ title, backUrl }: Readonly<HeaderProps>) {
                 <User size={14} className="mr-1" />
                 <span>{session.user?.email ?? ""}</span>
               </div>
-              <Button variant="outline" size="sm" onClick={() => signOut({ callbackUrl: "/" })} className="gap-1 text-gray-300 border-zinc-700 hover:bg-zinc-800 hover:text-gray-100">
+              <Button variant="outline" size="sm" onClick={handleSignOut} className="gap-1 text-gray-300 border-zinc-700 hover:bg-zinc-800 hover:text-gray-100">
                 <LogOut size={14} />
                 <span className="hidden sm:inline">Sign Out</span>
               </Button>

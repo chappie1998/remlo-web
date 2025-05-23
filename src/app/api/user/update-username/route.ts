@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import prisma from "@/lib/prisma";
 import { authOptions } from "@/lib/auth";
+import { signJWT } from "@/lib/jwt";
 
 export async function POST(req: NextRequest) {
   try {
@@ -39,16 +40,43 @@ export async function POST(req: NextRequest) {
     }
 
     // Update the user's username
-    await prisma.user.update({
+    const updatedUser = await prisma.user.update({
       where: { email: session.user.email },
       data: { username },
+      select: {
+        id: true,
+        email: true,
+        solanaAddress: true,
+        hasPasscode: true,
+        username: true,
+      },
+    });
+
+    // Create a new JWT token with the updated user information
+    const jwtToken = signJWT({
+      userId: updatedUser.id,
+      email: updatedUser.email,
+      solanaAddress: updatedUser.solanaAddress,
+      hasPasscode: updatedUser.hasPasscode,
+      username: updatedUser.username,
     });
 
     // Return success response
-    return NextResponse.json({
+    const response = NextResponse.json({
       success: true,
       message: "Username updated successfully",
     });
+
+    // Set the updated JWT token as a secure HTTP-only cookie
+    response.cookies.set('auth-token', jwtToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      maxAge: 30 * 24 * 60 * 60, // 30 days
+      path: '/',
+    });
+
+    return response;
   } catch (error) {
     console.error("Error updating username:", error);
     return NextResponse.json(

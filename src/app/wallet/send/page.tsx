@@ -79,7 +79,6 @@ function SendPage() {
   const [foundUser, setFoundUser] = useState<{ username: string, solanaAddress: string } | null>(null);
   const [usdsBalance, setUsdsBalance] = useState("0.0");
   const [usdcBalance, setUsdcBalance] = useState("0.0");
-  const [solBalance, setSolBalance] = useState("0.0");
   
   // Username validation states
   const [isValidatingUsername, setIsValidatingUsername] = useState(false);
@@ -160,33 +159,23 @@ function SendPage() {
     try {
       setIsLoading(true);
       
-      // Use the new combined overview endpoint
+      // Use the optimized overview endpoint - only returns USDC and USDS
       const response = await fetch("/api/wallet/overview");
       if (response.ok) {
         const data = await response.json();
-        setSolBalance(data.balances.sol.formattedBalance);
         setUsdcBalance(data.balances.usdc.formattedBalance);
         setUsdsBalance(data.balances.usds.formattedBalance);
       } else {
-        // Fallback to individual calls
-        const [solResponse, tokenResponse] = await Promise.all([
-          fetch("/api/wallet/balance"),
-          fetch("/api/wallet/token-balance")
-        ]);
-        
-        if (solResponse.ok) {
-          const solData = await solResponse.json();
-          setSolBalance(solData.formattedBalance);
-        }
-        
-        if (tokenResponse.ok) {
-          const tokenData = await tokenResponse.json();
-          setUsdcBalance(tokenData.usdc.formattedBalance);
-          setUsdsBalance(tokenData.usds.formattedBalance);
-        }
+        console.error("Failed to fetch wallet overview");
+        // Set default values if API fails
+        setUsdcBalance("0.000000");
+        setUsdsBalance("0.000000");
       }
     } catch (error) {
       console.error("Error fetching balances:", error);
+      // Set default values if error occurs
+      setUsdcBalance("0.000000");
+      setUsdsBalance("0.000000");
     } finally {
       setIsLoading(false);
     }

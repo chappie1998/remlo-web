@@ -63,15 +63,23 @@ function SwapPageContent() {
     try {
       setIsLoading(true);
 
-      // Fetch token balances (USDC and USDs)
-      const tokenResponse = await fetch("/api/wallet/token-balance");
-      if (tokenResponse.ok) {
-        const tokenData = await tokenResponse.json();
-        setUsdcBalance(tokenData.usdc.formattedBalance);
-        setUsdsBalance(tokenData.usds.formattedBalance);
+      // Use the optimized overview endpoint - only returns USDC and USDS
+      const response = await fetch("/api/wallet/overview");
+      if (response.ok) {
+        const data = await response.json();
+        setUsdcBalance(data.balances.usdc.formattedBalance);
+        setUsdsBalance(data.balances.usds.formattedBalance);
+      } else {
+        console.error("Failed to fetch wallet overview");
+        // Set default values if API fails
+        setUsdcBalance("0.000000");
+        setUsdsBalance("0.000000");
       }
     } catch (error) {
       console.error("Error fetching balances:", error);
+      // Set default values if error occurs
+      setUsdcBalance("0.000000");
+      setUsdsBalance("0.000000");
     } finally {
       setIsLoading(false);
     }

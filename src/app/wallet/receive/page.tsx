@@ -163,14 +163,14 @@ function ReceivePage() {
   const refreshClaimedLinks = async () => {
     try {
       const response = await fetch('/api/payment-link/claimed');
-      
-      if (!response.ok) {
-        const error = await response.json();
+          
+          if (!response.ok) {
+            const error = await response.json();
         console.error('Error fetching claimed payment links:', error);
-        return;
-      }
-      
-      const data = await response.json();
+            return;
+          }
+          
+          const data = await response.json();
       console.log('Refreshed claimed payment links:', data);
       
       if (data.success && Array.isArray(data.claimedLinks)) {
@@ -203,19 +203,19 @@ function ReceivePage() {
             
             if (requestsData.success && Array.isArray(requestsData.paymentRequests)) {
               setPaymentRequests(requestsData.paymentRequests.map((pr: any) => ({
-                id: pr.id,
-                amount: pr.amount,
-                tokenType: pr.tokenType,
-                status: pr.status.toLowerCase(),
-                createdAt: pr.createdAt,
-                link: pr.link,
-                recipientUsername: pr.recipientUsername,
-                recipientEmail: pr.recipientEmail,
-                requesterUsername: pr.requesterUsername,
-                requesterEmail: pr.requesterEmail,
-                type: pr.type,
-                note: pr.note
-              })));
+              id: pr.id,
+              amount: pr.amount,
+              tokenType: pr.tokenType,
+              status: pr.status.toLowerCase(),
+              createdAt: pr.createdAt,
+              link: pr.link,
+              recipientUsername: pr.recipientUsername,
+              recipientEmail: pr.recipientEmail,
+              requesterUsername: pr.requesterUsername,
+              requesterEmail: pr.requesterEmail,
+              type: pr.type,
+              note: pr.note
+            })));
             }
           }
 
@@ -1032,14 +1032,14 @@ function ReceivePage() {
                 
                 if (userRequests.length === 0) {
                   return (
-                    <div className="p-6 text-center text-gray-400">
+                <div className="p-6 text-center text-gray-400">
                       <p>No payment requests to specific users yet</p>
-                    </div>
+                </div>
                   );
                 }
 
                 return (
-                  <div className="divide-y divide-zinc-800">
+                <div className="divide-y divide-zinc-800">
                     {userRequests.map((pr) => (
                     <div key={pr.id} className="p-4 border border-zinc-800 rounded-lg bg-zinc-800/50 hover:bg-zinc-800 transition">
                       <div className="flex justify-between items-start mb-3">
@@ -1051,7 +1051,7 @@ function ReceivePage() {
                           )}
                           <span className="text-lg font-medium">
                             ${pr.amount} {pr.tokenType.toUpperCase()}
-                          </span>
+                            </span>
                         </div>
                         <div className="flex items-center space-x-1">
                           {getStatusIcon(pr.status)}
@@ -1065,7 +1065,7 @@ function ReceivePage() {
                           <UserRound size={14} className="mr-2" />
                           <span className="text-sm">
                             Requested by {pr.requesterUsername || pr.requesterEmail || 'Someone'}
-                          </span>
+                            </span>
                         </div>
                       )}
                       
@@ -1074,8 +1074,8 @@ function ReceivePage() {
                           <User size={14} className="mr-2" />
                           <span className="text-sm">
                             Requested from {pr.recipientUsername}
-                          </span>
-                        </div>
+                            </span>
+                          </div>
                       )}
                       
                       {pr.note && (
@@ -1104,7 +1104,7 @@ function ReceivePage() {
                           variant="ghost" 
                           className="bg-zinc-700 hover:bg-zinc-600 text-gray-300"
                           onClick={() => handleShareRequest(pr.link)}
-                        >
+                          >
                           <Share2 size={14} className="mr-1" />
                           Share
                         </Button>
@@ -1115,15 +1115,15 @@ function ReceivePage() {
                             variant="ghost" 
                             className="bg-red-900/30 text-red-400 hover:bg-red-900/50"
                             onClick={() => handleCancelRequest(pr.id)}
-                          >
+                            >
                             <Trash2 size={14} className="mr-1" />
                             Cancel
                           </Button>
-                        )}
+                          )}
                       </div>
                     </div>
-                                      ))}
-                  </div>
+                  ))}
+                </div>
                 );
               })()}
             </div>
@@ -1303,7 +1303,7 @@ function ReceivePage() {
                    </div>
                  );
                })()}
-             </div>
+            </div>
           </>
         )}
       </main>

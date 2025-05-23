@@ -1,7 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth/next";
-import { authOptions } from "@/lib/auth";
-import prisma from "@/lib/prisma";
+import { getUserFromRequest } from '@/lib/jwt';
 
 // Shared CORS headers
 const corsHeaders = {
@@ -20,63 +18,32 @@ export async function OPTIONS() {
 }
 
 export async function GET(req: NextRequest) {
+  const startTime = Date.now();
+  
   try {
-    // Try to get the NextAuth session
-    const session = await getServerSession(authOptions);
-
-    if (session?.user?.email) {
-      const user = await prisma.user.findUnique({
-        where: { email: session.user.email },
-        select: {
-          id: true,
-          email: true,
-          solanaAddress: true,
-          hasPasscode: true,
-          username: true,
-        },
-      });
-
-      if (user) {
-        return NextResponse.json({ user }, { headers: corsHeaders });
-      }
+    console.log('⚡ Checking JWT/NextAuth session...');
+    const user = await getUserFromRequest(req);
+    
+    if (!user) {
+      console.log(`⚡ No valid session found (${Date.now() - startTime}ms)`);
+      return NextResponse.json({ user: null }, { status: 200 });
     }
 
-    // Fallback: try to find session from Authorization header (Bearer token)
-    const authHeader = req.headers.get("authorization");
-
-    if (authHeader?.startsWith("Bearer ")) {
-      const token = authHeader.slice(7);
-
-      const dbSession = await prisma.session.findUnique({
-        where: { sessionToken: token },
-        include: { user: true },
-      });
-
-      const sessionValid = dbSession && dbSession.expires > new Date();
-      const userId = dbSession?.user?.id;
-
-      if (sessionValid && userId) {
-        const user = await prisma.user.findUnique({
-          where: { id: userId },
-          select: {
-            id: true,
-            email: true,
-            solanaAddress: true,
-            hasPasscode: true,
-            username: true,
-          },
-        });
-
-        if (user) {
-          return NextResponse.json({ user }, { headers: corsHeaders });
-        }
+    console.log(`⚡ Session validated in ${Date.now() - startTime}ms`);
+    
+    return NextResponse.json({
+      user: {
+        id: user.id,
+        email: user.email,
+        solanaAddress: user.solanaAddress,
+        hasPasscode: user.hasPasscode,
+        username: user.username,
       }
-    }
+    }, { status: 200 });
 
-    // No valid session found
-    return NextResponse.json({ user: null }, { headers: corsHeaders });
   } catch (error) {
-    console.error("❌ Error checking session:", error);
-    return NextResponse.json({ error: "Failed to check session" }, { status: 500, headers: corsHeaders });
+    console.error('Session validation error:', error);
+    console.log(`❌ Session error in ${Date.now() - startTime}ms`);
+    return NextResponse.json({ user: null }, { status: 200 });
   }
 }

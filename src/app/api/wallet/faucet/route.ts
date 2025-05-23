@@ -1,10 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth/next";
 import { PrismaClient } from "@prisma/client";
 import { SPL_TOKEN_ADDRESS, RELAYER_URL } from "@/lib/solana";
-import { authOptions } from "@/lib/auth";
 import { Connection, PublicKey } from "@solana/web3.js";
 import { getAssociatedTokenAddress, TOKEN_PROGRAM_ID } from "@solana/spl-token";
+import { getUserFromRequest } from "@/lib/jwt";
 
 const prisma = new PrismaClient();
 
@@ -22,44 +21,15 @@ export async function OPTIONS() {
 }
 
 export async function POST(req: NextRequest) {
+  const startTime = Date.now();
+  
   try {
-    let userEmail = null;
     console.log('Handling faucet request');
 
-    // First, try to get the session from NextAuth
-    const session = await getServerSession(authOptions);
-    if (session?.user?.email) {
-      userEmail = session.user.email;
-      console.log('Found user email from NextAuth session:', userEmail);
-    }
-
-    // If no NextAuth session, try to get the user from the Authorization header
-    if (!userEmail) {
-      const authHeader = req.headers.get('authorization');
-      console.log('Authorization header:', authHeader);
-
-      if (authHeader?.startsWith('Bearer ')) {
-        const token = authHeader.substring(7);
-        console.log('Extracted token:', token);
-
-        // Find the session in the database
-        const dbSession = await prisma.session.findUnique({
-          where: { sessionToken: token },
-          include: { user: true }
-        });
-
-        console.log('Database session lookup result:', dbSession ? 'Found' : 'Not found');
-
-        if (dbSession?.user?.email && dbSession.expires > new Date()) {
-          userEmail = dbSession.user.email;
-          console.log('Found user email from session token:', userEmail);
-        } else {
-          console.log('Invalid or expired session token');
-        }
-      }
-    }
-
-    if (!userEmail) {
+    // Use optimized JWT authentication
+    const user = await getUserFromRequest(req);
+    
+    if (!user) {
       console.log('No valid user session found, returning 401');
       return NextResponse.json(
         { error: "You must be signed in to use the faucet" },
@@ -67,16 +37,10 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Get the user's wallet information
-    const user = await prisma.user.findUnique({
-      where: { email: userEmail },
-      select: {
-        id: true,
-        solanaAddress: true,
-      },
-    });
+    console.log(`⚡ Authentication completed in ${Date.now() - startTime}ms`);
+    console.log('Found user email from JWT:', user.email);
 
-    if (!user || !user.solanaAddress) {
+    if (!user.solanaAddress) {
       return NextResponse.json(
         { error: "Wallet not set up" },
         { status: 400 }
@@ -86,101 +50,108 @@ export async function POST(req: NextRequest) {
     // Check user's current USDC balance directly
     // Instead of calling token-balance API which requires auth
     const solanaEndpoint = process.env.NEXT_PUBLIC_SOLANA_RPC_URL || "https://api.devnet.solana.com";
-    const connection = new Connection(solanaEndpoint);
+    const connection = new Connection(solanaEndpoint, "confirmed");
     
-    // Get the user's USDC token account address
     const userPublicKey = new PublicKey(user.solanaAddress);
     const tokenMint = new PublicKey(SPL_TOKEN_ADDRESS);
-    const tokenAccount = await getAssociatedTokenAddress(tokenMint, userPublicKey);
     
-    // Check if token account exists and get balance
-    let usdcBalance = 0;
+    let currentBalance = 0;
+    
     try {
-      const accountInfo = await connection.getAccountInfo(tokenAccount);
-      if (accountInfo) {
-        // Instead of manually parsing token account data, use getTokenAccountBalance API
-        // which handles parsing correctly
-        const tokenAmount = await connection.getTokenAccountBalance(tokenAccount);
-        usdcBalance = Number(tokenAmount.value.uiAmount || 0);
-        console.log(`USDC token account found with balance: ${usdcBalance}`);
+      // Get the associated token account address
+      const associatedTokenAccount = await getAssociatedTokenAddress(
+        tokenMint,
+        userPublicKey,
+        false, // allowOwnerOffCurve
+        TOKEN_PROGRAM_ID
+      );
+
+      // Check if the token account exists and get balance
+      const tokenAccountInfo = await connection.getAccountInfo(associatedTokenAccount);
+      
+      if (tokenAccountInfo) {
+        const balance = await connection.getTokenAccountBalance(associatedTokenAccount);
+        currentBalance = balance.value.uiAmount || 0;
+        console.log(`Current USDC balance: ${currentBalance}`);
       } else {
-        console.log(`No USDC token account found, balance is 0`);
+        console.log("No USDC token account found, balance is 0");
       }
     } catch (error) {
-      console.log("Error checking token balance:", error);
-      // If we can't check, assume 0 and let the faucet proceed
-      usdcBalance = 0;
+      console.error("Error checking USDC balance:", error);
+      // Continue with 0 balance assumption
     }
-    
-    console.log(`Current USDC balance: ${usdcBalance}`);
 
-    // Check if balance is less than 1 USDC
-    if (usdcBalance >= 2) {
+    console.log(`Current USDC balance: ${currentBalance}`);
+
+    // Check if user already has enough USDC (optional limit)
+    const FAUCET_LIMIT = 1000; // 1000 USDC limit
+    if (currentBalance >= FAUCET_LIMIT) {
       return NextResponse.json(
-        { error: "Faucet is only available for users with less than 1 USDC", balance: usdcBalance },
+        { 
+          error: `You already have ${currentBalance} USDC. Faucet limit is ${FAUCET_LIMIT} USDC.`,
+          currentBalance
+        },
         { status: 400 }
       );
     }
 
-    // Request tokens from the relayer
-    const faucetResponse = await fetch(`${RELAYER_URL}/api/faucet`, {
+    // Call the relayer to fund the user's wallet
+    const relayerResponse = await fetch(`${RELAYER_URL}/api/faucet`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        recipientAddress: user.solanaAddress,
-        amount: 10, // 2 USDC
+        walletAddress: user.solanaAddress,
       }),
     });
 
-    console.log(`Relayer faucet response status: ${faucetResponse.status}`);
+    console.log(`Relayer faucet response status: ${relayerResponse.status}`);
 
-    if (!faucetResponse.ok) {
-      let errorMessage = "Failed to request tokens from faucet";
-      try {
-        const errorData = await faucetResponse.json();
-        errorMessage = errorData.error || errorMessage;
-        console.error("Relayer error details:", errorData);
-      } catch (parseError) {
-        console.error("Could not parse relayer error response:", parseError);
-      }
-      throw new Error(errorMessage);
+    if (!relayerResponse.ok) {
+      const errorText = await relayerResponse.text();
+      console.error("Relayer error:", errorText);
+      return NextResponse.json(
+        { error: "Failed to fund wallet", details: errorText },
+        { status: 500 }
+      );
     }
 
-    const faucetData = await faucetResponse.json();
+    const result = await relayerResponse.json();
 
-    // Create a record of the faucet transaction
-    await prisma.transaction.create({
-      data: {
-        txData: JSON.stringify({ 
-          type: "faucet", 
-          amount: 10, 
-          token: SPL_TOKEN_ADDRESS 
-        }),
-        status: "executed",
-        signature: faucetData.signature,
-        executedAt: new Date(),
-        user: {
-          connect: { id: user.id }
-        }
-      },
-    });
+    console.log(`✅ Total API request time: ${Date.now() - startTime}ms (Auth: JWT)`);
 
-    return NextResponse.json({
-      success: true,
-      signature: faucetData.signature,
-      message: "2 USDC tokens sent to your wallet",
-    });
-  } catch (error) {
-    console.error("Error processing faucet request:", error);
-    const errorMessage = error instanceof Error ? error.message : "Failed to process faucet request";
-    
     return NextResponse.json(
-      { error: errorMessage },
-      { status: 500 }
+      { 
+        success: true, 
+        message: "Wallet funded successfully",
+        transactionSignature: result.signature || null,
+        previousBalance: currentBalance,
+        ...result 
+      },
+      {
+        headers: {
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Methods': 'POST, OPTIONS',
+          'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+          'Access-Control-Allow-Credentials': 'true',
+        }
+      }
     );
-  } finally {
-    await prisma.$disconnect();
+  } catch (error) {
+    console.error("Error in faucet endpoint:", error);
+    console.log(`❌ Faucet error in ${Date.now() - startTime}ms`);
+    return NextResponse.json(
+      { error: "Internal server error" },
+      {
+        status: 500,
+        headers: {
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Methods': 'POST, OPTIONS',
+          'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+          'Access-Control-Allow-Credentials': 'true',
+        }
+      }
+    );
   }
 } 

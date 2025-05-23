@@ -1,9 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth/next";
-import prisma from "@/lib/prisma";
-import { authOptions } from "@/lib/auth";
-import { fetchAccountBalance, fetchSplTokenBalance, fetchUsdsTokenBalance } from "@/lib/solana";
+import { getUserFromRequest } from "@/lib/jwt";
+import { fetchAllBalances } from "@/lib/solana";
 import connectionPool from "@/lib/solana-connection-pool";
+import prisma from "@/lib/prisma";
 
 // Handle OPTIONS request for CORS preflight
 export async function OPTIONS() {
@@ -19,22 +18,23 @@ export async function OPTIONS() {
 }
 
 export async function GET(req: NextRequest) {
+  const requestStartTime = Date.now();
+  
   try {
-    let userEmail = null;
-    console.log('Handling wallet overview request');
+    console.log('🚀 Handling wallet overview request');
     console.log(`Connection pool stats: ${connectionPool.getConnectionCount()} active connections`);
-
-    // Get the session from NextAuth (single lookup)
-    const session = await getServerSession(authOptions);
-    if (session?.user?.email) {
-      userEmail = session.user.email;
-      console.log('Found user email from NextAuth session:', userEmail);
-    }
-
-    if (!userEmail) {
-      console.log('No valid user session found, returning 401');
+    
+    // Ultra-fast JWT authentication with NextAuth fallback
+    console.log('⚡ Getting user from JWT/NextAuth...');
+    const authStartTime = Date.now();
+    
+    const user = await getUserFromRequest(req);
+    console.log(`⚡ Authentication completed in ${Date.now() - authStartTime}ms`);
+    
+    if (!user?.solanaAddress) {
+      console.log('No valid token or wallet not set up');
       return NextResponse.json(
-        { error: "You must be signed in to view your wallet overview" },
+        { error: "You must be signed in and have a wallet set up" },
         {
           status: 401,
           headers: {
@@ -47,48 +47,19 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    // Get the user data (single database query)
-    const user = await prisma.user.findUnique({
-      where: { email: userEmail },
-      select: {
-        id: true,
-        solanaAddress: true,
-      },
-    });
+    console.log(`Found user: ${user.email} (via JWT/NextAuth)`);
 
-    if (!user || !user.solanaAddress) {
-      return NextResponse.json(
-        { error: "Wallet not set up" },
-        {
-          status: 400,
-          headers: {
-            'Access-Control-Allow-Origin': '*',
-            'Access-Control-Allow-Methods': 'GET, OPTIONS',
-            'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-            'Access-Control-Allow-Credentials': 'true',
-          }
-        }
-      );
-    }
-
-    // Fetch all data in parallel
-    const [
-      solBalance,
-      usdcBalance,
-      usdsBalance,
-      transactions
-    ] = await Promise.all([
-      fetchAccountBalance(user.solanaAddress).catch(err => {
-        console.error('Error fetching SOL balance:', err);
-        return { balanceInLamports: 0, balanceInSol: '0.000000000' };
-      }),
-      fetchSplTokenBalance(user.solanaAddress).catch(err => {
-        console.error('Error fetching USDC balance:', err);
-        return { balance: 0, formattedBalance: '0.000000' };
-      }),
-      fetchUsdsTokenBalance(user.solanaAddress).catch(err => {
-        console.error('Error fetching USDS balance:', err);
-        return { balance: 0, formattedBalance: '0.000000' };
+    // Fetch all data in parallel - optimized single RPC call for token balances
+    console.log('📊 Fetching balances and transactions in parallel...');
+    const dataStartTime = Date.now();
+    
+    const [tokenBalances, transactions] = await Promise.all([
+      fetchAllBalances(user.solanaAddress).catch(err => {
+        console.error('Error fetching token balances:', err);
+        return {
+          usdc: { balance: 0, formattedBalance: '0.000000' },
+          usds: { balance: 0, formattedBalance: '0.000000' }
+        };
       }),
       prisma.transaction.findMany({
         where: { userId: user.id },
@@ -107,26 +78,26 @@ export async function GET(req: NextRequest) {
         return [];
       })
     ]);
+    
+    console.log(`📊 Data fetching completed in ${Date.now() - dataStartTime}ms`);
 
-    // Check if cache busting is requested (after transactions)
+    // Check if cache busting is requested
     const isCacheBust = req.nextUrl.searchParams.has('t');
+    
+    console.log(`✅ Total API request time: ${Date.now() - requestStartTime}ms (Auth: JWT)`);
     
     return NextResponse.json(
       {
         success: true,
         address: user.solanaAddress,
         balances: {
-          sol: {
-            balance: solBalance.balanceInLamports,
-            formattedBalance: solBalance.balanceInSol,
-          },
           usdc: {
-            balance: usdcBalance.balance,
-            formattedBalance: usdcBalance.formattedBalance,
+            balance: tokenBalances.usdc.balance,
+            formattedBalance: tokenBalances.usdc.formattedBalance,
           },
           usds: {
-            balance: usdsBalance.balance,
-            formattedBalance: usdsBalance.formattedBalance,
+            balance: tokenBalances.usds.balance,
+            formattedBalance: tokenBalances.usds.formattedBalance,
           }
         },
         transactions: transactions,
@@ -138,10 +109,10 @@ export async function GET(req: NextRequest) {
           'Access-Control-Allow-Methods': 'GET, OPTIONS',
           'Access-Control-Allow-Headers': 'Content-Type, Authorization',
           'Access-Control-Allow-Credentials': 'true',
-          // Use different cache control based on whether this is a cache-busting request
+          // Optimized caching
           'Cache-Control': isCacheBust 
             ? 'no-cache, no-store, must-revalidate' 
-            : 'public, max-age=15, s-maxage=15', // Reduced cache time to 15 seconds
+            : 'private, max-age=30',
           ...(isCacheBust && {
             'Pragma': 'no-cache',
             'Expires': '0'
@@ -150,7 +121,8 @@ export async function GET(req: NextRequest) {
       }
     );
   } catch (error) {
-    console.error("Error fetching wallet overview:", error);
+    console.error("❌ Error fetching wallet overview:", error);
+    console.log(`❌ Failed API request time: ${Date.now() - requestStartTime}ms`);
     return NextResponse.json(
       { error: "Failed to fetch wallet overview" },
       {

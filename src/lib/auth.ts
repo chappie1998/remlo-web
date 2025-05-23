@@ -6,7 +6,7 @@ import prisma from "@/lib/prisma";
 export const authOptions: NextAuthOptions = {
   adapter: PrismaAdapter(prisma),
   session: {
-    strategy: "database",
+    strategy: "jwt",
     maxAge: 30 * 24 * 60 * 60, // 30 days
   },
   providers: [
@@ -31,11 +31,10 @@ export const authOptions: NextAuthOptions = {
       }
       return true; // Do different verification for other providers that don't have `email_verified`
     },
-    session: async ({ session, token }) => {
-      if (token?.userId) {
-        // Fetch additional user data for the session
+    jwt: async ({ token, user, account }) => {
+      if (user) {
         const userData = await prisma.user.findUnique({
-          where: { id: token.userId as string },
+          where: { email: user.email! },
           select: {
             id: true,
             email: true,
@@ -45,12 +44,23 @@ export const authOptions: NextAuthOptions = {
           },
         });
 
+        if (userData) {
+          token.userId = userData.id;
+          token.solanaAddress = userData.solanaAddress;
+          token.hasPasscode = userData.hasPasscode;
+          token.username = userData.username;
+        }
+      }
+      return token;
+    },
+    session: async ({ session, token }) => {
+      if (token) {
         session.user = {
           ...session.user,
           id: token.userId as string,
-          solanaAddress: userData?.solanaAddress || null,
-          hasPasscode: userData?.hasPasscode || false,
-          username: userData?.username || null,
+          solanaAddress: token.solanaAddress as string | null,
+          hasPasscode: token.hasPasscode as boolean,
+          username: token.username as string | null,
         };
       }
       return session;

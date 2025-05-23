@@ -106,7 +106,6 @@ function AccountDashboard() {
   });
   
   const [solanaAddress, setSolanaAddress] = useState("");
-  const [solBalance, setSolBalance] = useState("0.0");
   const [usdcBalance, setUsdcBalance] = useState("0.0");
   const [usdsBalance, setUsdsBalance] = useState("0.0");
   const [transactions, setTransactions] = useState<Transaction[]>([]);
@@ -140,9 +139,9 @@ function AccountDashboard() {
       });
       fetchBalances(true); // Use cache busting for immediate refresh
       
-      // Set up polling for 30 seconds to catch any delayed balance updates
+      // Reduced polling: only 2 polls over 10 seconds instead of 6 polls over 30 seconds
       let pollCount = 0;
-      const maxPolls = 6; // Poll 6 times over 30 seconds (every 5 seconds)
+      const maxPolls = 2; // Poll 2 times over 10 seconds (every 5 seconds)
       
       const pollInterval = setInterval(() => {
         pollCount++;
@@ -188,7 +187,7 @@ function AccountDashboard() {
         ? `/api/wallet/overview?t=${Date.now()}` 
         : "/api/wallet/overview";
       
-      // Use the new combined overview endpoint instead of 3 separate calls
+      // Use the optimized overview endpoint - now only returns USDC and USDS
       const response = await fetch(url, {
         // Disable caching when cache busting is requested
         ...(bustCache && {
@@ -203,43 +202,31 @@ function AccountDashboard() {
       if (response.ok) {
         const data = await response.json();
         
-        // Update all state from single response
-        setSolBalance(data.balances.sol.formattedBalance);
+        // Update only USDC and USDS balances from optimized response
         setUsdcBalance(data.balances.usdc.formattedBalance);
         setUsdsBalance(data.balances.usds.formattedBalance);
         setTransactions(data.transactions || []);
       } else {
-        // Fallback to individual calls if overview fails
-        await fetchBalancesIndividually();
+        console.error("Overview API failed, trying again...");
+        // Retry the same optimized endpoint instead of falling back to individual calls
+        const retryResponse = await fetch("/api/wallet/overview");
+        if (retryResponse.ok) {
+          const retryData = await retryResponse.json();
+          setUsdcBalance(retryData.balances.usdc.formattedBalance);
+          setUsdsBalance(retryData.balances.usds.formattedBalance);
+          setTransactions(retryData.transactions || []);
+        } else {
+          throw new Error("Failed to fetch wallet data");
+        }
       }
     } catch (error) {
-      console.error("Error fetching overview:", error);
-      // Fallback to individual calls
-      await fetchBalancesIndividually();
+      console.error("Error fetching wallet overview:", error);
+      // Set default values if all attempts fail
+      setUsdcBalance("0.000000");
+      setUsdsBalance("0.000000");
+      setTransactions([]);
     } finally {
       setIsLoading(false);
-    }
-  };
-
-  // Fallback method for individual calls
-  const fetchBalancesIndividually = async () => {
-    try {
-      // Fetch SOL balance
-      const solResponse = await fetch("/api/wallet/balance");
-      if (solResponse.ok) {
-        const solData = await solResponse.json();
-        setSolBalance(solData.formattedBalance);
-      }
-
-      // Fetch token balances (USDC and USDs)
-      const tokenResponse = await fetch("/api/wallet/token-balance");
-      if (tokenResponse.ok) {
-        const tokenData = await tokenResponse.json();
-        setUsdcBalance(tokenData.usdc.formattedBalance);
-        setUsdsBalance(tokenData.usds.formattedBalance);
-      }
-    } catch (error) {
-      console.error("Error fetching balances individually:", error);
     }
   };
 
