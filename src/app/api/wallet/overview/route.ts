@@ -62,7 +62,18 @@ export async function GET(req: NextRequest) {
         };
       }),
       prisma.transaction.findMany({
-        where: { userId: user.id },
+        where: {
+          OR: [
+            // Transactions sent by this user
+            { userId: user.id },
+            // Transactions received by this user (proper JSON contains)
+            {
+              txData: {
+                contains: `"to":"${user.solanaAddress}"`
+              }
+            }
+          ]
+        },
         orderBy: { createdAt: "desc" },
         select: {
           id: true,
@@ -71,8 +82,14 @@ export async function GET(req: NextRequest) {
           signature: true,
           createdAt: true,
           executedAt: true,
+          userId: true, // Include userId to distinguish sent vs received
+          user: {
+            select: {
+              username: true // Include the sender's username for better display
+            }
+          }
         },
-        take: 10, // Only get recent transactions
+        take: 20, // Increase limit since we're now getting both sent and received
       }).catch(err => {
         console.error('Error fetching transactions:', err);
         return [];

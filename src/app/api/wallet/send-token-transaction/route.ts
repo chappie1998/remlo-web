@@ -223,9 +223,40 @@ export async function POST(req: NextRequest) {
       console.log(`Using USDC token address: ${SPL_TOKEN_ADDRESS}`);
     }
 
+    // Get sender's username for better transaction display
+    const senderUser = await prisma.user.findUnique({
+      where: { id: user.id },
+      select: { username: true }
+    });
+
+    // Get recipient's username if sending by address (and not already provided)
+    let recipientUsername = username;
+    if (!recipientUsername) {
+      const recipientUser = await prisma.user.findUnique({
+        where: { solanaAddress: to },
+        select: { username: true }
+      });
+      recipientUsername = recipientUser?.username;
+    }
+
+    console.log('Transaction username debug:', {
+      originalUsername: username,
+      recipientUsername,
+      senderUsername: senderUser?.username,
+      to,
+      senderId: user.id
+    });
+
     const transaction = await prisma.transaction.create({
       data: {
-        txData: JSON.stringify({ to, amount, token: tokenAddress, username, tokenType }),
+        txData: JSON.stringify({ 
+          to, 
+          amount, 
+          token: tokenAddress, 
+          username: recipientUsername, // recipient username (lookup if needed)
+          senderUsername: senderUser?.username, // sender's username
+          tokenType 
+        }),
         status: "pending",
         user: {
           connect: { id: user.id }
