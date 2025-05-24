@@ -386,6 +386,65 @@ export async function POST(req: NextRequest) {
       },
     });
 
+    // Step 8: Check if this transaction fulfills a payment request
+    try {
+      // Find matching payment request that:
+      // 1. Has the same recipient (to address) 
+      // 2. Has the same amount
+      // 3. Has the same token type
+      // 4. Is still pending
+      const matchingPaymentRequest = await prisma.paymentRequest.findFirst({
+        where: {
+          status: "PENDING",
+          amount: amount,
+          tokenType: tokenType.toLowerCase(),
+          creator: {
+            solanaAddress: to // The creator's address should match the recipient address
+          }
+        },
+        include: {
+          creator: {
+            select: {
+              id: true,
+              solanaAddress: true,
+              username: true
+            }
+          }
+        }
+      });
+
+      if (matchingPaymentRequest) {
+        console.log(`Found matching payment request: ${matchingPaymentRequest.shortId}`);
+        
+        // Create a payment record
+        await prisma.payment.create({
+          data: {
+            payerId: user.id,
+            paymentRequestId: matchingPaymentRequest.id,
+            transactionSignature: txSignature,
+            status: "CONFIRMED"
+          }
+        });
+
+        // Update the payment request status to completed
+        await prisma.paymentRequest.update({
+          where: {
+            id: matchingPaymentRequest.id
+          },
+          data: {
+            status: "COMPLETED"
+          }
+        });
+
+        console.log(`Payment request ${matchingPaymentRequest.shortId} automatically completed`);
+      } else {
+        console.log('No matching payment request found for this transaction');
+      }
+    } catch (paymentRequestError) {
+      // Don't fail the transaction if payment request update fails
+      console.error('Error checking/updating payment request:', paymentRequestError);
+    }
+
     return NextResponse.json(
       {
         success: true,
