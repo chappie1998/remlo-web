@@ -1,7 +1,11 @@
 {
-  "name": "nextjs-shadcn",
-  "version": "0.1.0",
+  "name": "remlo-web",
+  "version": "1.0.0",
   "private": true,
+  "description": "Remlo - Send and receive money instantly on Solana",
+  "keywords": ["solana", "wallet", "payments", "crypto", "defi"],
+  "author": "Remlo Team",
+  "homepage": "https://remlo.com",
   "scripts": {
     "dev": "next dev -H 0.0.0.0",
     "build": "prisma generate && next build",

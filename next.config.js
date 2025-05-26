@@ -1,20 +1,42 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
+  poweredByHeader: false,
   eslint: {
-    // This allows production builds to successfully complete even if
-    // the project has ESLint errors
-    ignoreDuringBuilds: true,
+    // Only ignore during builds in development
+    ignoreDuringBuilds: process.env.NODE_ENV === 'development',
   },
   typescript: {
-    // This allows production builds to successfully complete even if
-    // the project has type errors
-    ignoreBuildErrors: true,
+    // Only ignore type errors in development
+    ignoreBuildErrors: process.env.NODE_ENV === 'development',
   },
-  // Add environment variables that should be available to the client
-  env: {
-    NEXT_PUBLIC_SOLANA_NETWORK: 'devnet',
-  }
+  // Security headers
+  async headers() {
+    return [
+      {
+        source: '/(.*)',
+        headers: [
+          {
+            key: 'X-Frame-Options',
+            value: 'DENY',
+          },
+          {
+            key: 'X-Content-Type-Options',
+            value: 'nosniff',
+          },
+          {
+            key: 'Referrer-Policy',
+            value: 'origin-when-cross-origin',
+          },
+        ],
+      },
+    ];
+  },
+  // Image optimization
+  images: {
+    domains: ['remlo.com'],
+    formats: ['image/webp', 'image/avif'],
+  },
 };
 
 module.exports = nextConfig;

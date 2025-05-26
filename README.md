@@ -1,39 +1,75 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Remlo Web App
 
-## Getting Started
+Remlo is a modern, secure, and user-friendly web application for sending and receiving money instantly on the Solana blockchain. Built with Next.js, it provides a seamless experience for cryptocurrency transactions without the complexity of traditional crypto wallets.
 
-First, run the development server:
+## Features
 
+- **Instant Payments**: Send and receive money in seconds on Solana
+- **Simple Security**: Replace complex seed phrases with a 6-digit passcode
+- **Payment Links**: Create shareable payment links with OTP verification
+- **Payment Requests**: Request money from anyone with ease
+- **Token Swaps**: Swap between USDC and USDs with competitive rates
+- **Activity Tracking**: View complete transaction history
+- **Mobile Responsive**: Works perfectly on all devices
+- **Google Sign-In**: Easy authentication with Google accounts
+
+## Tech Stack
+
+- **Frontend**: Next.js 15, React 18, TypeScript
+- **Styling**: Tailwind CSS, Radix UI components
+- **Authentication**: NextAuth.js with Google OAuth
+- **Database**: PostgreSQL with Prisma ORM
+- **Blockchain**: Solana Web3.js, SPL Token
+- **Security**: Multi-Party Computation (MPC) for key management
+- **Deployment**: Vercel/Netlify ready
+
+## Quick Start
+
+### Prerequisites
+- Node.js 18+ 
+- PostgreSQL database
+- Google OAuth credentials
+- Solana RPC endpoint
+
+### Installation
+
+1. Clone the repository:
+```bash
+git clone https://github.com/your-org/remlo-web.git
+cd remlo-web
+```
+
+2. Install dependencies:
+```bash
+npm install
+# or
+bun install
+```
+
+3. Set up environment variables:
+```bash
+cp env.example .env
+# Edit .env with your configuration
+```
+
+4. Set up the database:
+```bash
+npx prisma migrate dev
+npx prisma generate
+```
+
+5. Run the development server:
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
 # or
 bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000) to see the application.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Production Deployment
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
-
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+See [DEPLOYMENT.md](./DEPLOYMENT.md) for detailed production deployment instructions.
 
 ## Solana Connection Pooling
 

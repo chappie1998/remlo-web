@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { RemloIcon } from "@/components/icons";
 import { usePathname, useRouter } from "next/navigation";
-import { LogOut, User, Home, Activity, DollarSign, Bell, ArrowLeft, ArrowLeftRight, LinkIcon } from "lucide-react";
+import { LogOut, User, Home, Activity, DollarSign, Bell, ArrowLeft, ArrowLeftRight, LinkIcon, Settings } from "lucide-react";
 
 interface HeaderProps {
   title?: string;
@@ -133,6 +133,18 @@ export default function Header({ title, backUrl }: Readonly<HeaderProps>) {
                 <Activity size={16} />
                 <span>Activity</span>
               </Link>
+              {/* Admin link - only show in development or for admin users */}
+              {(process.env.NODE_ENV === 'development' || 
+                ['admin@remlo.com', 'hello.notmove@gmail.com'].includes(session?.user?.email || '')) && (
+                <Link
+                  href="/admin"
+                  className={`px-3 py-2 rounded-md text-sm transition-colors flex items-center gap-1.5 ${
+                    isActive("/admin") ? "bg-emerald-950/50 text-emerald-400 font-medium" : "hover:bg-zinc-800 hover:text-gray-200 text-gray-400"
+                  }`}>
+                  <Settings size={16} />
+                  <span>Admin</span>
+                </Link>
+              )}
             </nav>
           )}
         </div>
