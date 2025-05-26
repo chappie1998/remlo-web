@@ -12,14 +12,42 @@ const googleClient = new OAuth2Client(
   'postmessage' // For mobile apps
 );
 
+// Handle OPTIONS request for CORS preflight
+export async function OPTIONS() {
+  return new NextResponse(null, {
+    status: 200,
+    headers: {
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'POST, OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+      'Access-Control-Allow-Credentials': 'true',
+    },
+  });
+}
+
 export async function POST(req: NextRequest) {
   try {
     const { idToken, serverAuthCode } = await req.json();
 
+    console.log('Google sign-in request received:', {
+      hasIdToken: !!idToken,
+      hasServerAuthCode: !!serverAuthCode,
+      idTokenLength: idToken?.length,
+      googleClientId: process.env.GOOGLE_ID?.substring(0, 20) + '...'
+    });
+
     if (!idToken) {
       return NextResponse.json(
         { error: "Google ID token is required" },
-        { status: 400 }
+        { 
+          status: 400,
+          headers: {
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Methods': 'POST, OPTIONS',
+            'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+            'Access-Control-Allow-Credentials': 'true',
+          }
+        }
       );
     }
 
@@ -34,7 +62,15 @@ export async function POST(req: NextRequest) {
     if (!payload || !payload.email) {
       return NextResponse.json(
         { error: "Invalid Google token" },
-        { status: 400 }
+        { 
+          status: 400,
+          headers: {
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Methods': 'POST, OPTIONS',
+            'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+            'Access-Control-Allow-Credentials': 'true',
+          }
+        }
       );
     }
 
@@ -49,7 +85,15 @@ export async function POST(req: NextRequest) {
     if (!payload.email_verified) {
       return NextResponse.json(
         { error: "Email not verified with Google" },
-        { status: 400 }
+        { 
+          status: 400,
+          headers: {
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Methods': 'POST, OPTIONS',
+            'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+            'Access-Control-Allow-Credentials': 'true',
+          }
+        }
       );
     }
 
@@ -132,6 +176,13 @@ export async function POST(req: NextRequest) {
         username: user.username,
         image: user.image,
       },
+    }, {
+      headers: {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'POST, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+        'Access-Control-Allow-Credentials': 'true',
+      }
     });
 
   } catch (error) {
@@ -140,13 +191,29 @@ export async function POST(req: NextRequest) {
     if (error instanceof Error && error.message.includes('Token used too late')) {
       return NextResponse.json(
         { error: "Google token has expired. Please try signing in again." },
-        { status: 400 }
+        { 
+          status: 400,
+          headers: {
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Methods': 'POST, OPTIONS',
+            'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+            'Access-Control-Allow-Credentials': 'true',
+          }
+        }
       );
     }
 
     return NextResponse.json(
       { error: "Failed to authenticate with Google" },
-      { status: 500 }
+      { 
+        status: 500,
+        headers: {
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Methods': 'POST, OPTIONS',
+          'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+          'Access-Control-Allow-Credentials': 'true',
+        }
+      }
     );
   } finally {
     await prisma.$disconnect();
