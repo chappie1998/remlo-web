@@ -3,13 +3,28 @@ import { getServerSession } from "next-auth/next";
 import prisma from "@/lib/prisma";
 import { authOptions } from "@/lib/auth";
 import { isValidSolanaAddress } from "@/lib/solana";
+import { getUserFromRequest } from "@/lib/jwt";
 
 // GET handler to fetch all contacts for the current user
 export async function GET(req: NextRequest) {
   try {
-    // Get the user session
+    let userEmail = null;
+
+    // First, try to get the session from NextAuth
     const session = await getServerSession(authOptions);
-    if (!session?.user?.email) {
+    if (session?.user?.email) {
+      userEmail = session.user.email;
+    }
+
+    // If no NextAuth session, try to get the user from JWT token (mobile app)
+    if (!userEmail) {
+      const userData = await getUserFromRequest(req);
+      if (userData?.email) {
+        userEmail = userData.email;
+      }
+    }
+
+    if (!userEmail) {
       return NextResponse.json(
         { error: "You must be signed in to access contacts" },
         { status: 401 }
@@ -18,7 +33,7 @@ export async function GET(req: NextRequest) {
 
     // Get the user's ID first
     const userResult = await prisma.$queryRaw`
-      SELECT id FROM "User" WHERE email = ${session.user.email}
+      SELECT id FROM "User" WHERE email = ${userEmail}
     `;
 
     // @ts-ignore - safely ignore type errors because we're using raw queries
@@ -53,9 +68,23 @@ export async function GET(req: NextRequest) {
 // POST handler to create a new contact
 export async function POST(req: NextRequest) {
   try {
-    // Get the user session
+    let userEmail = null;
+
+    // First, try to get the session from NextAuth
     const session = await getServerSession(authOptions);
-    if (!session?.user?.email) {
+    if (session?.user?.email) {
+      userEmail = session.user.email;
+    }
+
+    // If no NextAuth session, try to get the user from JWT token (mobile app)
+    if (!userEmail) {
+      const userData = await getUserFromRequest(req);
+      if (userData?.email) {
+        userEmail = userData.email;
+      }
+    }
+
+    if (!userEmail) {
       return NextResponse.json(
         { error: "You must be signed in to create contacts" },
         { status: 401 }
@@ -82,7 +111,7 @@ export async function POST(req: NextRequest) {
 
     // Get the user's ID
     const userResult = await prisma.$queryRaw`
-      SELECT id FROM "User" WHERE email = ${session.user.email}
+      SELECT id FROM "User" WHERE email = ${userEmail}
     `;
 
     // @ts-ignore - safely ignore type errors because we're using raw queries

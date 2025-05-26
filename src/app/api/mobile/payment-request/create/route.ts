@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { randomBytes } from "crypto";
 import prisma from "@/lib/prisma";
+import { getUserFromRequest } from "@/lib/jwt";
 
 // Handle OPTIONS request for CORS preflight
 export async function OPTIONS() {
@@ -19,13 +20,12 @@ export async function POST(req: NextRequest) {
   try {
     console.log('Handling mobile payment request create');
     
-    // Get authorization header
-    const authHeader = req.headers.get('authorization');
-    console.log('Authorization header:', authHeader);
+    // Use JWT authentication
+    const userData = await getUserFromRequest(req);
     
-    if (!authHeader?.startsWith('Bearer ')) {
+    if (!userData?.email) {
       return NextResponse.json(
-        { error: "Authorization header missing or invalid" },
+        { error: "You must be signed in to create payment requests" },
         { 
           status: 401,
           headers: {
@@ -38,22 +38,16 @@ export async function POST(req: NextRequest) {
       );
     }
     
-    // Extract the token
-    const token = authHeader.substring(7);
-    
-    // Find the session in the database directly
-    const dbSession = await prisma.session.findUnique({
-      where: { sessionToken: token },
-      include: { user: true }
+    // Get user from database
+    const user = await prisma.user.findUnique({
+      where: { email: userData.email }
     });
     
-    console.log('Database session lookup result:', dbSession ? 'Found' : 'Not found');
-    
-    if (!dbSession?.user || dbSession.expires <= new Date()) {
+    if (!user) {
       return NextResponse.json(
-        { error: "Invalid or expired session token" },
+        { error: "User not found" },
         { 
-          status: 401,
+          status: 404,
           headers: {
             'Access-Control-Allow-Origin': '*',
             'Access-Control-Allow-Methods': 'POST, OPTIONS',
@@ -64,8 +58,6 @@ export async function POST(req: NextRequest) {
       );
     }
     
-    // User is authenticated, proceed with payment request creation
-    const user = dbSession.user;
     console.log('Authenticated user:', user.email);
     
     // Get request data

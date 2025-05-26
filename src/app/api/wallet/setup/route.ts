@@ -1,11 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
-import prisma from "@/lib/prisma";
+import { PrismaClient } from "@prisma/client";
 import { isValidPasscode, generateRandomUsername } from "@/lib/utils";
 import { validateMnemonic } from "@/lib/crypto";
 import { createMPCWallet } from "@/lib/mpc";
 import { authOptions } from "@/lib/auth";
-import { signJWT } from "@/lib/jwt";
+import { signJWT, getUserFromRequest } from "@/lib/jwt";
+
+const prisma = new PrismaClient();
 
 // Handle OPTIONS request for CORS preflight
 export async function OPTIONS() {
@@ -38,7 +40,16 @@ export async function POST(req: NextRequest) {
       console.log('Found user email from NextAuth session:', userEmail);
     }
 
-    // If no NextAuth session, try to get the user from the Authorization header
+    // If no NextAuth session, try to get the user from JWT token (mobile app)
+    if (!userEmail) {
+      const userData = await getUserFromRequest(req);
+      if (userData?.email) {
+        userEmail = userData.email;
+        console.log('Found user email from JWT token:', userEmail);
+      }
+    }
+
+    // Legacy fallback: try to get the user from the Authorization header as session token
     if (!userEmail) {
       const authHeader = req.headers.get('authorization');
       console.log('Authorization header:', authHeader);

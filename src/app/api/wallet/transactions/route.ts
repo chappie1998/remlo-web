@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import prisma from "@/lib/prisma";
 import { authOptions } from "@/lib/auth";
+import { getUserFromRequest } from "@/lib/jwt";
 
 // Handle OPTIONS request for CORS preflight
 export async function OPTIONS() {
@@ -28,29 +29,12 @@ export async function GET(req: NextRequest) {
       console.log('Found user email from NextAuth session:', userEmail);
     }
 
-    // If no NextAuth session, try to get the user from the Authorization header
+    // If no NextAuth session, try to get the user from JWT token (mobile app)
     if (!userEmail) {
-      const authHeader = req.headers.get('authorization');
-      console.log('Authorization header:', authHeader);
-
-      if (authHeader?.startsWith('Bearer ')) {
-        const token = authHeader.substring(7);
-        console.log('Extracted token:', token);
-
-        // Find the session in the database
-        const dbSession = await prisma.session.findUnique({
-          where: { sessionToken: token },
-          include: { user: true }
-        });
-
-        console.log('Database session lookup result:', dbSession ? 'Found' : 'Not found');
-
-        if (dbSession?.user?.email && dbSession.expires > new Date()) {
-          userEmail = dbSession.user.email;
-          console.log('Found user email from session token:', userEmail);
-        } else {
-          console.log('Invalid or expired session token');
-        }
+      const userData = await getUserFromRequest(req);
+      if (userData?.email) {
+        userEmail = userData.email;
+        console.log('Found user email from JWT token:', userEmail);
       }
     }
 

@@ -2,14 +2,27 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import prisma from "@/lib/prisma";
 import { authOptions } from "@/lib/auth";
-import { signJWT } from "@/lib/jwt";
+import { signJWT, getUserFromRequest } from "@/lib/jwt";
 
 export async function POST(req: NextRequest) {
   try {
-    // Get the authenticated user from the session
+    let userEmail = null;
+
+    // First, try to get the session from NextAuth
     const session = await getServerSession(authOptions);
+    if (session?.user?.email) {
+      userEmail = session.user.email;
+    }
+
+    // If no NextAuth session, try to get the user from JWT token (mobile app)
+    if (!userEmail) {
+      const userData = await getUserFromRequest(req);
+      if (userData?.email) {
+        userEmail = userData.email;
+      }
+    }
     
-    if (!session?.user?.email) {
+    if (!userEmail) {
       return NextResponse.json(
         { error: "You must be logged in to update your username" },
         { status: 401 }
@@ -32,7 +45,7 @@ export async function POST(req: NextRequest) {
       where: { username },
     });
 
-    if (existingUser && existingUser.email !== session.user.email) {
+    if (existingUser && existingUser.email !== userEmail) {
       return NextResponse.json(
         { error: "This username is already taken" },
         { status: 400 }
@@ -41,7 +54,7 @@ export async function POST(req: NextRequest) {
 
     // Update the user's username
     const updatedUser = await prisma.user.update({
-      where: { email: session.user.email },
+      where: { email: userEmail },
       data: { username },
       select: {
         id: true,
