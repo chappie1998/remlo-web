@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth/next";
-import { authOptions } from "@/lib/auth";
+import { getUserFromRequest } from "@/lib/jwt";
 import { randomBytes } from "crypto";
 import { generatePaymentLink } from "@/lib/paymentLinkUtils";
 import prisma from "@/lib/prisma";
@@ -19,10 +18,10 @@ export async function OPTIONS() {
 
 export async function POST(req: NextRequest) {
   try {
-    // Get the session from NextAuth
-    const session = await getServerSession(authOptions);
+    // Get user from JWT or NextAuth session
+    const user = await getUserFromRequest(req);
     
-    if (!session?.user?.email) {
+    if (!user?.email) {
       return NextResponse.json(
         { error: "You must be signed in to create a payment request" },
         { status: 401 }
@@ -50,7 +49,7 @@ export async function POST(req: NextRequest) {
 
     // Find the creator user
     const creator = await prisma.user.findUnique({
-      where: { email: session.user.email }
+      where: { email: user.email }
     });
 
     if (!creator) {
@@ -105,7 +104,7 @@ export async function POST(req: NextRequest) {
       paymentRequest = await (prisma as any).PaymentRequest.create({
         data: {
           shortId,
-          amount,
+          amount: amount.toString(),
           tokenType: tokenType.toLowerCase(),
           note: note || "",
           status: "PENDING",
@@ -127,13 +126,6 @@ export async function POST(req: NextRequest) {
       });
       
       console.log("Payment request created with ID:", paymentRequest.id);
-
-      // Verify the record was created
-      const verifyRecord = await (prisma as any).PaymentRequest.findUnique({
-        where: { id: paymentRequest.id }
-      });
-      
-      console.log("Verified payment request exists:", verifyRecord ? "Yes" : "No");
     } catch (e) {
       console.error("Error creating payment request:", e);
       return NextResponse.json(

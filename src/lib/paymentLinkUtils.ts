@@ -112,13 +112,27 @@ export function calculateExpirationDate(hours: number): Date {
  * @returns Full payment link URL as a string
  */
 export function generatePaymentLink(shortId: string, req?: { headers?: any }): string {
-  let baseUrl = process.env.NEXT_PUBLIC_BASE_URL || process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
-  // If running in an API route and req is provided, try to use the host header
+  // For mobile app deep linking, always use the production URL
+  // This ensures payment links work with the mobile app's deep link configuration
+  const productionUrl = 'https://beta-remlo.vercel.app';
+  
+  // Check if this is a mobile app request by looking for the Authorization header
+  const isMobileRequest = req && req.headers && req.headers.get('authorization');
+  
+  if (isMobileRequest) {
+    // Always use production URL for mobile app requests to ensure deep linking works
+    return `${productionUrl}/pay/${shortId}`;
+  }
+  
+  // For web requests, use environment variables or request headers
+  let baseUrl = process.env.NEXT_PUBLIC_BASE_URL || process.env.NEXT_PUBLIC_APP_URL || productionUrl;
+  
   if (req && req.headers && req.headers.get) {
     const host = req.headers.get('host');
-    if (host) {
-      baseUrl = `${req.headers.get('x-forwarded-proto') || 'http'}://${host}`;
+    if (host && !host.includes('localhost') && !host.includes('192.168')) {
+      baseUrl = `${req.headers.get('x-forwarded-proto') || 'https'}://${host}`;
     }
   }
+  
   return `${baseUrl}/pay/${shortId}`;
 } 
