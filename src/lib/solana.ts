@@ -21,6 +21,10 @@ export const SOLANA_NETWORK = 'devnet';
 export const SOLANA_RPC_URL =
   process.env.NEXT_PUBLIC_SOLANA_RPC_URL || clusterApiUrl(SOLANA_NETWORK);
 
+// WebSocket URL from environment or fallback to public endpoints
+export const SOLANA_WEBSOCKET_URL =
+  process.env.NEXT_PUBLIC_SOLANA_WEBSOCKET_URL || clusterApiUrl(SOLANA_NETWORK).replace('https://', 'wss://').replace('http://', 'ws://');
+
 // SPL token addresses
 export const SPL_TOKEN_ADDRESS = 'Gh9ZwEmdLJ8DscKNTkTqPbNwLNNBjuSzaG9Vp2KGtKJr';
 export const USDS_TOKEN_ADDRESS = '5jMCx4W5425TPRj23KRng5nbyaZkZiD47yLXDkk5tLAV';
@@ -33,6 +37,28 @@ export const RELAYER_URL = process.env.NEXT_PUBLIC_RELAYER_URL || 'http://192.16
  */
 export function getSolanaConnection(): Connection {
   return connectionPool.getConnection(SOLANA_RPC_URL);
+}
+
+/**
+ * Gets a Connection for Solana with WebSocket support for real-time subscriptions
+ * Falls back to regular connection if WebSocket is not available
+ */
+export function getSolanaConnectionWithWebSocket(): Connection {
+  try {
+    // Only use WebSocket if explicitly configured
+    if (process.env.NEXT_PUBLIC_SOLANA_WEBSOCKET_URL) {
+      return new Connection(SOLANA_RPC_URL, {
+        commitment: 'confirmed',
+        wsEndpoint: SOLANA_WEBSOCKET_URL,
+      });
+    } else {
+      console.warn('⚠️ WebSocket URL not configured, falling back to regular connection');
+      return getSolanaConnection();
+    }
+  } catch (error) {
+    console.error('❌ Failed to create WebSocket connection, falling back to regular connection:', error);
+    return getSolanaConnection();
+  }
 }
 
 /**

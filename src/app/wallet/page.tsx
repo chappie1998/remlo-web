@@ -483,13 +483,21 @@ function AccountDashboard() {
 
   // Get transaction status icon
   const getStatusIcon = (status: string) => {
-    switch(status) {
+    switch(status.toLowerCase()) {
       case 'executed':
+      case 'confirmed':
+      case 'completed':
         return <CheckCircle2 className="text-green-500" size={16} />;
       case 'pending':
+      case 'submitted':
+      case 'processing':
         return <Clock className="text-yellow-500" size={16} />;
-      default:
+      case 'failed':
+      case 'rejected':
+      case 'canceled':
         return <XCircle className="text-red-500" size={16} />;
+      default:
+        return <Clock className="text-gray-500" size={16} />;
     }
   };
 

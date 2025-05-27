@@ -23,13 +23,37 @@ export async function GET(req: NextRequest) {
     console.log('Handling activity overview request');
 
     // Use optimized JWT authentication
-    const user = await getUserFromRequest(req);
-    if (!user) {
+    const userData = await getUserFromRequest(req);
+    if (!userData) {
       console.log('No valid user session found, returning 401');
       return NextResponse.json(
         { error: "You must be signed in to view your activity" },
         {
           status: 401,
+          headers: {
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Methods': 'GET, OPTIONS',
+            'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+            'Access-Control-Allow-Credentials': 'true',
+          }
+        }
+      );
+    }
+
+    // Get user with Solana address for transaction queries
+    const user = await prisma.user.findUnique({
+      where: { email: userData.email },
+      select: { 
+        id: true, 
+        solanaAddress: true 
+      },
+    });
+
+    if (!user || !user.solanaAddress) {
+      return NextResponse.json(
+        { error: "User not found or wallet not set up" },
+        {
+          status: 404,
           headers: {
             'Access-Control-Allow-Origin': '*',
             'Access-Control-Allow-Methods': 'GET, OPTIONS',
@@ -56,9 +80,20 @@ export async function GET(req: NextRequest) {
       receivedRequests,
       counts
     ] = await Promise.all([
-      // Transactions with minimal select
+      // Transactions with minimal select - SAME QUERY AS HOMEPAGE
       prisma.transaction.findMany({
-        where: { userId: user.id },
+        where: {
+          OR: [
+            // Transactions sent by this user
+            { userId: user.id },
+            // Transactions received by this user (proper JSON contains)
+            {
+              txData: {
+                contains: `"to":"${user.solanaAddress}"`
+              }
+            }
+          ]
+        },
         orderBy: { createdAt: "desc" },
         select: {
           id: true,
@@ -67,6 +102,12 @@ export async function GET(req: NextRequest) {
           signature: true,
           createdAt: true,
           executedAt: true,
+          userId: true, // Include userId to distinguish sent vs received
+          user: {
+            select: {
+              username: true // Include the sender's username for better display
+            }
+          }
         },
         take: limit,
         skip: offset,
@@ -120,9 +161,20 @@ export async function GET(req: NextRequest) {
         skip: offset,
       }),
       
-      // Count queries - optimized to run in parallel only when needed
+      // Count queries - optimized to run in parallel only when needed - SAME QUERY AS HOMEPAGE
       includeCounts ? Promise.all([
-        prisma.transaction.count({ where: { userId: user.id } }),
+        prisma.transaction.count({ 
+          where: {
+            OR: [
+              { userId: user.id },
+              {
+                txData: {
+                  contains: `"to":"${user.solanaAddress}"`
+                }
+              }
+            ]
+          }
+        }),
         prisma.paymentRequest.count({ where: { creatorId: user.id } }),
         prisma.paymentRequest.count({ where: { recipientId: user.id } })
       ]) : Promise.resolve([0, 0, 0])

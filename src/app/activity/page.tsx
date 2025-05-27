@@ -256,9 +256,11 @@ function ActivityPage() {
       case 'confirmed':
         return <CheckCircle2 className="text-green-500" size={16} />;
       case 'pending':
+      case 'submitted':
       case 'processing':
         return <Clock className="text-yellow-500" size={16} />;
       case 'failed':
+      case 'rejected':
       case 'canceled':
         return <XCircle className="text-red-500" size={16} />;
       default:

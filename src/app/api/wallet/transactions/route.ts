@@ -54,15 +54,18 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    // Get the user's ID
+    // Get the user's ID and Solana address
     const user = await prisma.user.findUnique({
       where: { email: userEmail },
-      select: { id: true },
+      select: { 
+        id: true, 
+        solanaAddress: true 
+      },
     });
 
-    if (!user) {
+    if (!user || !user.solanaAddress) {
       return NextResponse.json(
-        { error: "User not found" },
+        { error: "User not found or wallet not set up" },
         {
           status: 404,
           headers: {
@@ -80,10 +83,21 @@ export async function GET(req: NextRequest) {
     const limit = parseInt(url.searchParams.get('limit') || '20', 10);
     const offset = parseInt(url.searchParams.get('offset') || '0', 10);
 
-    // Get the user's transactions
+    // Get the user's transactions - SAME QUERY AS HOMEPAGE AND ACTIVITY
     const [transactions, total] = await Promise.all([
       prisma.transaction.findMany({
-        where: { userId: user.id },
+        where: {
+          OR: [
+            // Transactions sent by this user
+            { userId: user.id },
+            // Transactions received by this user (proper JSON contains)
+            {
+              txData: {
+                contains: `"to":"${user.solanaAddress}"`
+              }
+            }
+          ]
+        },
         orderBy: { createdAt: "desc" },
         select: {
           id: true,
@@ -92,11 +106,28 @@ export async function GET(req: NextRequest) {
           signature: true,
           createdAt: true,
           executedAt: true,
+          userId: true, // Include userId to distinguish sent vs received
+          user: {
+            select: {
+              username: true // Include the sender's username for better display
+            }
+          }
         },
         take: limit,
         skip: offset,
       }),
-      prisma.transaction.count({ where: { userId: user.id } })
+      prisma.transaction.count({ 
+        where: {
+          OR: [
+            { userId: user.id },
+            {
+              txData: {
+                contains: `"to":"${user.solanaAddress}"`
+              }
+            }
+          ]
+        }
+      })
     ]);
 
     // Check if cache busting is requested
