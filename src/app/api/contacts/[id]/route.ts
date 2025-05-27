@@ -6,10 +6,10 @@ import { authOptions } from "@/lib/auth";
 // GET a single contact by ID
 export async function GET(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const id = params.id;
+    const { id } = await params;
     
     // Get the user session
     const session = await getServerSession(authOptions);
@@ -67,10 +67,10 @@ export async function GET(
 // PUT/PATCH to update a contact
 export async function PUT(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const id = params.id;
+    const { id } = await params;
     
     // Get the user session
     const session = await getServerSession(authOptions);
@@ -203,10 +203,10 @@ export async function PUT(
 // DELETE a contact
 export async function DELETE(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const id = params.id;
+    const { id } = await params;
     
     // Get the user session
     const session = await getServerSession(authOptions);
