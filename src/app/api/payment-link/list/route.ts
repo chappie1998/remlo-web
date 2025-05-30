@@ -15,6 +15,8 @@ interface PaymentLinkType {
   createdAt: Date;
   claimedAt?: Date;
   claimedBy?: string;
+  verificationData?: string;
+  displayOtp?: string;
 }
 
 export async function GET(req: NextRequest) {
@@ -55,7 +57,8 @@ export async function GET(req: NextRequest) {
         "expiresAt",
         "createdAt",
         "claimedAt",
-        "claimedBy"
+        "claimedBy",
+        "verificationData"
       FROM "PaymentLink"
       WHERE "creatorId" = ${user.id}
       ORDER BY "createdAt" DESC
@@ -64,14 +67,26 @@ export async function GET(req: NextRequest) {
     // Update status for any expired links that still show as active
     const now = new Date();
     const updatedLinks = paymentLinks.map((link: PaymentLinkType) => {
+      let displayOtp: string | undefined = undefined;
+      if (link.status === 'active' && link.verificationData) {
+        const parts = link.verificationData.split(':');
+        if (parts.length > 1) {
+          displayOtp = parts[parts.length - 1];
+        }
+      }
+
       // Check if the link is expired but still marked as active
       if (link.status === 'active' && new Date(link.expiresAt) < now) {
         return {
           ...link,
-          status: 'expired'
+          status: 'expired',
+          displayOtp: undefined
         };
       }
-      return link;
+      return {
+        ...link,
+        displayOtp
+      };
     });
 
     // Update expired links in the database (but don't wait for it)

@@ -12,7 +12,7 @@ import { getAccount, getAssociatedTokenAddress } from "@solana/spl-token";
 import { prepareMPCSigningKeypair } from "@/lib/mpc";
 import { sign } from "tweetnacl";
 import { isValidPasscode } from "@/lib/utils";
-import { RELAYER_URL } from "@/lib/solana";
+import { APP_URL, RELAYER_URL as CONFIG_RELAYER_URL } from "@/lib/config";
 import crypto from "crypto";
 
 // Configure Solana connection
@@ -208,7 +208,7 @@ export async function POST(req: NextRequest) {
     });
 
     // Request the token transfer transaction from the relayer (same as send-token-transaction)
-    const createDelegationResponse = await fetch(`${RELAYER_URL}/api/create-delegation`, {
+    const createDelegationResponse = await fetch(`${CONFIG_RELAYER_URL}/api/create-delegation`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -258,7 +258,7 @@ export async function POST(req: NextRequest) {
     }).toString('base64');
 
     // Submit the signed transaction to the relayer
-    const submitResponse = await fetch(`${RELAYER_URL}/api/submit-transaction`, {
+    const submitResponse = await fetch(`${CONFIG_RELAYER_URL}/api/submit-transaction`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -295,57 +295,58 @@ export async function POST(req: NextRequest) {
       },
     });
 
-    // Create the payment link record directly using a raw database query
+    // Create the payment link record using Prisma Client
     try {
       // Store a hard-coded OTP directly in the DB for testing
       // For debugging only - in production, this should be properly hashed
       const testVerificationData = verificationData + ":" + otp;
       
-      console.log("Storing verification data in DB:", {
+      console.log("Storing verification data in DB (via Prisma Client):", {
         originalData: verificationData,
-        testData: testVerificationData,
+        testData: testVerificationData, // This will be stored in verificationData field
         otp
       });
-      
-      // Use raw SQL to insert the payment link (bypassing the Prisma model issue)
-      const rawResult = await prisma.$queryRaw`
-        INSERT INTO PaymentLink 
-        (id, shortId, creatorId, amount, tokenType, note, status, verificationData, delegationTx, expiresAt, createdAt, updatedAt) 
-        VALUES 
-        (${crypto.randomUUID()}, ${shortId}, ${creator.id}, ${amount}, ${tokenType.toLowerCase()}, ${note || ""}, 
-        'active', ${testVerificationData}, ${delegationTx}, ${expiresAt.toISOString()}, ${new Date().toISOString()}, ${new Date().toISOString()})
-        RETURNING id, shortId, amount, tokenType, note, status, expiresAt, createdAt;
-      `;
 
-      // Construct the full link
-      const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || req.nextUrl.origin;
-      const linkUrl = `${baseUrl}/payment-link/${shortId}`;
-      
-      // Directly construct the response assuming the raw query worked
-      return NextResponse.json({
-        success: true,
-        paymentLink: {
-          id: typeof rawResult === 'object' && Array.isArray(rawResult) && rawResult.length > 0 
-            ? rawResult[0].id
-            : crypto.randomUUID(),
-          shortId,
-          amount,
+      const newPaymentLink = await prisma.paymentLink.create({
+        data: {
+          id: crypto.randomUUID(), // Prisma can autogenerate if not specified and @default(cuid()) or @default(uuid())
+          shortId: shortId,
+          creator: { connect: { id: creator.id } },
+          amount: amount,
           tokenType: tokenType.toLowerCase(),
           note: note || "",
           status: "active",
-          expiresAt,
-          createdAt: new Date(),
-          link: linkUrl,
+          verificationData: testVerificationData, // Storing OTP concatenated for now as per original logic
+          delegationTx: delegationTx,
+          expiresAt: expiresAt, // Ensure this is a DateTime object
+          // createdAt and updatedAt are usually handled by @default(now()) and @updatedAt
+        }
+      });
+
+      // Construct the full payment link URL using APP_URL from config
+      const paymentLinkUrl = `${APP_URL}/payment-link/${newPaymentLink.shortId}`;
+      
+      return NextResponse.json({
+        success: true,
+        paymentLink: {
+          id: newPaymentLink.id,
+          shortId: newPaymentLink.shortId,
+          amount: newPaymentLink.amount,
+          tokenType: newPaymentLink.tokenType,
+          note: newPaymentLink.note,
+          status: newPaymentLink.status,
+          expiresAt: newPaymentLink.expiresAt,
+          createdAt: newPaymentLink.createdAt,
+          link: paymentLinkUrl,
           otp, // Include the OTP in the response (shown only once)
         }
       });
     } catch (error) {
-      console.error("Error creating payment link in database:", error);
+      console.error("Error creating payment link in database (Prisma Client):", error);
       
       // Even if there's a database error, since the transaction was successful,
       // we'll return a success response with the payment link details
-      const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || req.nextUrl.origin;
-      const linkUrl = `${baseUrl}/payment-link/${shortId}`;
+      const paymentLinkUrl = `${APP_URL}/payment-link/${shortId}`;
       
       return NextResponse.json({
         success: true,
@@ -358,7 +359,7 @@ export async function POST(req: NextRequest) {
           status: "active",
           expiresAt,
           createdAt: new Date(),
-          link: linkUrl,
+          link: paymentLinkUrl,
           otp, // Include the OTP in the response (shown only once)
           warning: "Payment link was created, but there was an issue storing it in the database. Please use the link and OTP carefully as you may not be able to access them again."
         }
