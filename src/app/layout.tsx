@@ -4,6 +4,7 @@ import "./globals.css";
 import { Toaster } from "sonner";
 import AuthProvider from "@/components/providers/AuthProvider";
 import TokenRefreshProvider from "@/components/providers/TokenRefreshProvider";
+import AppWalletProvider from "@/components/AppWalletProvider";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -55,9 +56,11 @@ export default function RootLayout({
     <html lang="en" className="dark">
       <body className={`${inter.className} bg-black text-white`}>
         <AuthProvider>
-          <TokenRefreshProvider />
-          {children}
-          <Toaster position="top-right" richColors theme="dark" />
+          <AppWalletProvider>
+            <TokenRefreshProvider />
+            {children}
+            <Toaster position="top-right" richColors theme="dark" />
+          </AppWalletProvider>
         </AuthProvider>
       </body>
     </html>

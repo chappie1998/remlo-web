@@ -166,6 +166,7 @@ model PaymentLink {
   delegationTx     String?   // The transaction signature for the token delegation
   claimedBy        String?   // Solana address of the recipient who claimed the payment
   claimedAt        DateTime? // When the payment was claimed
+  claimedTransactionId String? // Transaction ID of the claim transfer
   expiresAt        DateTime  // Expiration date (required)
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt

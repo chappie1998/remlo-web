@@ -21,6 +21,8 @@ export const NEXTAUTH_URL = process.env.NEXTAUTH_URL || APP_URL;
 export const ENABLE_FAUCET = process.env.NEXT_PUBLIC_ENABLE_FAUCET === 'true';
 export const ENABLE_MPC = process.env.NEXT_PUBLIC_ENABLE_MPC !== 'false';
 
+export const BASE_URL_LINK = "https://beta-remlo.vercel.app"
+
 export default {
   RELAYER_URL,
   APP_URL,

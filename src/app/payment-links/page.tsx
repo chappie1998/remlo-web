@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, Suspense } from "react";
 import { useSession } from "next-auth/react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -585,10 +585,28 @@ function CreatePaymentLinkForm() {
   );
 }
 
+// Define the type for a payment link (matching API response)
+interface PaymentLink {
+  id: string;
+  shortId: string;
+  amount: string;
+  tokenType: string;
+  note?: string;
+  status: string;
+  expiresAt: string; // Dates are usually strings from API
+  createdAt: string;
+  claimedAt?: string;
+  claimedBy?: string;
+  displayOtp?: string; // OTP to display for active links
+  // Add any other fields you might need from the API response
+}
+
 // Enhanced Active Payment Links Component
 function ActivePaymentLinks() {
-  const [links, setLinks] = useState([]);
+  const [links, setLinks] = useState<PaymentLink[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const router = useRouter();
 
   useEffect(() => {
     const fetchPaymentLinks = async () => {
@@ -717,6 +735,35 @@ function ActivePaymentLinks() {
                   <p className="text-sm text-gray-300">{link.note}</p>
                 </div>
               )}
+
+              {/* Display OTP for active links */}
+              {link.status === 'active' && link.displayOtp && (
+                <div className="my-4 py-3 border-y border-zinc-800">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center text-sm">
+                      <Key size={15} className="mr-2 text-amber-400 flex-shrink-0" />
+                      <span className="font-medium text-zinc-300">Share Code (OTP):</span>
+                    </div>
+                    <div className="flex items-center">
+                      <span className="text-sm font-mono tracking-wider text-amber-300 bg-zinc-700/60 px-2.5 py-1 rounded-md shadow-sm mr-2">
+                        {link.displayOtp}
+                      </span>
+                      <Button
+                        variant="ghost" // Use ghost for less emphasis, or outline like others
+                        size="icon"
+                        className="h-8 w-8 text-zinc-400 hover:text-amber-400 hover:bg-zinc-700/80"
+                        onClick={() => {
+                          navigator.clipboard.writeText(link.displayOtp!);
+                          toast.success("OTP copied to clipboard!");
+                        }}
+                        title="Copy OTP"
+                      >
+                        <Copy size={14} />
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              )}
               
               {/* Actions */}
               <div className="flex gap-2">
@@ -778,8 +825,48 @@ function ActivePaymentLinks() {
 }
 
 export default function PaymentLinksPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen flex flex-col bg-black">
+        <Header />
+        <div className="flex-1 flex items-center justify-center">
+          <div className="w-8 h-8 rounded-full bg-emerald-500/20 flex items-center justify-center">
+            <RefreshCw className="animate-spin h-5 w-5 text-emerald-400" />
+          </div>
+        </div>
+      </div>
+    }>
+      <PaymentLinksContent />
+    </Suspense>
+  );
+}
+
+function PaymentLinksContent() {
   const { data: session, status } = useSession();
   const router = useRouter();
+  const searchParams = useSearchParams();
+  
+  // Initialize tab from URL parameter or default to "create"
+  const [currentTab, setCurrentTab] = useState(() => {
+    const tabParam = searchParams.get('tab');
+    return (tabParam === 'create' || tabParam === 'active') ? tabParam : 'create';
+  });
+
+  // Update URL when tab changes
+  const handleTabChange = (newTab: string) => {
+    setCurrentTab(newTab);
+    const newSearchParams = new URLSearchParams(searchParams.toString());
+    newSearchParams.set('tab', newTab);
+    router.replace(`/payment-links?${newSearchParams.toString()}`, { scroll: false });
+  };
+
+  // Update tab if URL parameter changes
+  useEffect(() => {
+    const tabParam = searchParams.get('tab');
+    if (tabParam && (tabParam === 'create' || tabParam === 'active') && tabParam !== currentTab) {
+      setCurrentTab(tabParam);
+    }
+  }, [searchParams, currentTab]);
 
   // Redirect to login if not authenticated
   useEffect(() => {
@@ -845,7 +932,7 @@ export default function PaymentLinksPage() {
           </div>
           
           {/* Tabs for different sections */}
-          <Tabs defaultValue="create" className="w-full">
+          <Tabs value={currentTab} onValueChange={handleTabChange} className="w-full">
             <div className="flex border-b border-zinc-800 mb-6 overflow-x-auto">
               <TabsList className="grid grid-cols-2 w-full bg-transparent border-0 p-0">
                 <TabsTrigger 

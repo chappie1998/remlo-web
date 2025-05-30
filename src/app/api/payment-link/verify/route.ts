@@ -83,7 +83,7 @@ export async function POST(req: NextRequest) {
     const paymentLinks = await prisma.$queryRaw`
       SELECT 
         pl.id, 
-        pl.shortId,
+        pl."shortId",
         pl."creatorId",
         pl.amount,
         pl."tokenType",
@@ -243,8 +243,8 @@ export async function POST(req: NextRequest) {
         UPDATE "PaymentLink"
         SET status = 'claimed',
             "claimedBy" = ${user.solanaAddress},
-            "claimedByUsername" = ${user.username},
-            "claimedAt" = ${new Date()}
+            "claimedAt" = ${new Date()},
+            "claimedTransactionId" = ${transferResult.signature}
         WHERE id = ${paymentLink.id}
       `;
 
