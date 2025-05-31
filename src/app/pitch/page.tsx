@@ -188,7 +188,7 @@ const sections = [
   {
     id: "ask",
     title: "The Ask",
-    subtitle: "Looking to raise: $1.2M Pre-Seed",
+    subtitle: "Looking to raise: $1.8M Pre-Seed",
     points: [
       "40% Engineering: Complete product development & scalability",
       "30% Compliance & Legal: Regulatory framework in key markets",
