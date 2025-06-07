@@ -1,4 +1,5 @@
-import NextAuth, { DefaultSession } from "next-auth";
+import "next-auth";
+import { DefaultSession } from "next-auth";
 
 declare module "next-auth" {
   /**
@@ -15,6 +16,7 @@ declare module "next-auth" {
       /** The user's unique username */
       username?: string | null;
     } & DefaultSession["user"];
+    google_id_token?: string;
   }
 
   /**
@@ -28,5 +30,15 @@ declare module "next-auth" {
     hasPasscode?: boolean;
     /** The user's unique username */
     username?: string;
+  }
+}
+
+declare module "next-auth/jwt" {
+  interface JWT {
+    google_id_token?: string;
+    userId?: string;
+    solanaAddress?: string | null;
+    hasPasscode?: boolean;
+    username?: string | null;
   }
 }

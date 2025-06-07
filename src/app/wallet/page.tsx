@@ -39,6 +39,7 @@ import {
 } from "lucide-react";
 import { USDsIcon, USDCIcon, SwapIcon, ReceiveIcon, SendMoneyIcon, RemloIcon, ActivityIcon } from "@/components/icons";
 import FaucetButton from '@/components/FaucetButton';
+import { Label } from "@/components/ui/label";
 
 // Define interfaces
 interface Transaction {
@@ -82,7 +83,25 @@ function WalletLoadingState() {
   );
 }
 
-// Original component now as a separate function
+function BalanceCard({ icon, name, balance }: { icon: React.ReactNode, name: string, balance: string }) {
+  return (
+    <div className="flex flex-col items-center p-4 bg-zinc-800 rounded-lg">
+      <div className="flex items-center justify-between w-full">
+        <div className="flex items-center">
+          <div className="mr-3 p-2 rounded-full bg-zinc-700">
+            {icon}
+          </div>
+          <div>
+            <div className="font-medium text-white">{name}</div>
+          </div>
+        </div>
+        <div className="text-lg font-semibold text-white">${balance}</div>
+      </div>
+    </div>
+  );
+}
+
+// Main Dashboard Component
 function AccountDashboard() {
   const { data: session, status } = useSession();
   const router = useRouter();
@@ -105,12 +124,20 @@ function AccountDashboard() {
       : "overview";
   });
   
-  const [solanaAddress, setSolanaAddress] = useState("");
-  const [usdcBalance, setUsdcBalance] = useState("0.0");
-  const [usdsBalance, setUsdsBalance] = useState("0.0");
+  const [solanaAddress, setSolanaAddress] = useState<string | null>(null);
+  const [baseAddress, setBaseAddress] = useState<string | null>(null);
+  
+  // Solana balances
+  const [solanaUsdcBalance, setSolanaUsdcBalance] = useState("0.00");
+  const [usdsBalance, setUsdsBalance] = useState("0.00");
+
+  // Base balances
+  const [ethBalance, setEthBalance] = useState("0.00");
+  const [baseUsdcBalance, setBaseUsdcBalance] = useState("0.00");
+
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [tokenType, setTokenType] = useState("usd"); // "usd" or "usdc"
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   const [isAddressCopied, setIsAddressCopied] = useState(false);
 
   // Transaction filtering
@@ -120,123 +147,61 @@ function AccountDashboard() {
   const [showFilters, setShowFilters] = useState(false);
 
   // Calculate the total balance in USD (assuming 1 USDC = 1 USDs = $1)
-  const totalUsdBalance = parseFloat(usdsBalance) + parseFloat(usdcBalance);
+  const totalUsdBalance = parseFloat(usdsBalance) + parseFloat(solanaUsdcBalance) + parseFloat(baseUsdcBalance);
 
-  useEffect(() => {
-    if (session?.user?.solanaAddress) {
-      fetchBalances();
-    }
-  }, [session?.user?.solanaAddress]); // Only re-run when solanaAddress changes
-
-  // Check for refresh parameter and fetch balances if present
-  useEffect(() => {
-    const refreshParam = searchParams.get("refresh");
-    if (refreshParam === "true" && session?.user?.solanaAddress) {
-      console.log("Refreshing balances due to refresh parameter - using cache busting");
-      toast.info("Updating balance after transaction...", { 
-        duration: 3000,
-        icon: "🔄" 
-      });
-      fetchBalances(true); // Use cache busting for immediate refresh
-      
-      // Reduced polling: only 2 polls over 10 seconds instead of 6 polls over 30 seconds
-      let pollCount = 0;
-      const maxPolls = 2; // Poll 2 times over 10 seconds (every 5 seconds)
-      
-      const pollInterval = setInterval(() => {
-        pollCount++;
-        console.log(`Polling for balance updates... (${pollCount}/${maxPolls})`);
-        fetchBalances(true); // Use cache busting for polling too
-        
-        if (pollCount >= maxPolls) {
-          clearInterval(pollInterval);
-          console.log("Finished polling for balance updates");
-        }
-      }, 5000); // Poll every 5 seconds
-      
-      // Remove refresh parameter from URL to prevent repeated refreshes
-      const newUrl = new URL(window.location.href);
-      newUrl.searchParams.delete("refresh");
-      window.history.replaceState({}, "", newUrl.toString());
-      
-      // Cleanup interval on component unmount
-      return () => {
-        clearInterval(pollInterval);
-      };
-    }
-  }, [searchParams, session?.user?.solanaAddress]);
-
-  // Handle authentication redirects
+  // Redirects and initial data fetch
   useEffect(() => {
     if (status === "unauthenticated") {
       router.push("/auth/signin");
-      return;
-    }
-
-    if (status === "authenticated" && !session?.user?.hasPasscode) {
-      router.push("/wallet/setup");
+    } else if (status === "authenticated") {
+      if (session.user?.hasPasscode) {
+        fetchWalletOverview();
+      } else {
+        router.push("/wallet/setup");
+      }
     }
   }, [status, session, router]);
-
-  const fetchBalances = async (bustCache = false) => {
+  
+  // Refined fetch logic
+  const fetchWalletOverview = async (bustCache = false) => {
+    setIsLoading(true);
     try {
-      setIsLoading(true);
-      
-      // Add cache-busting parameter if needed (e.g., after transactions)
-      const url = bustCache 
-        ? `/api/wallet/overview?t=${Date.now()}` 
-        : "/api/wallet/overview";
-      
-      // Use the optimized overview endpoint - now only returns USDC and USDS
-      const response = await fetch(url, {
-        // Disable caching when cache busting is requested
-        ...(bustCache && {
-          cache: 'no-cache',
-          headers: {
-            'Cache-Control': 'no-cache, no-store, must-revalidate',
-            'Pragma': 'no-cache'
-          }
-        })
-      });
-      
-      if (response.ok) {
-        const data = await response.json();
-        
-        // Update only USDC and USDS balances from optimized response
-        setUsdcBalance(data.balances.usdc.formattedBalance);
-        setUsdsBalance(data.balances.usds.formattedBalance);
-        setTransactions(data.transactions || []);
-      } else {
-        console.error("Overview API failed, trying again...");
-        // Retry the same optimized endpoint instead of falling back to individual calls
-        const retryResponse = await fetch("/api/wallet/overview");
-        if (retryResponse.ok) {
-          const retryData = await retryResponse.json();
-          setUsdcBalance(retryData.balances.usdc.formattedBalance);
-          setUsdsBalance(retryData.balances.usds.formattedBalance);
-          setTransactions(retryData.transactions || []);
-        } else {
-          throw new Error("Failed to fetch wallet data");
-        }
+      const url = bustCache ? `/api/wallet/overview?t=${Date.now()}` : "/api/wallet/overview";
+      const response = await fetch(url);
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || "Failed to fetch wallet data");
       }
+
+      const data = await response.json();
+      setSolanaAddress(data.solanaAddress || null);
+      setBaseAddress(data.baseAddress || null);
+      
+      // Handle nested balances
+      setSolanaUsdcBalance(data.balances?.solana?.usdc?.formattedBalance || "0.00");
+      setUsdsBalance(data.balances?.solana?.usds?.formattedBalance || "0.00");
+      setEthBalance(data.balances?.base?.eth?.formattedBalance || "0.00");
+      setBaseUsdcBalance(data.balances?.base?.usdc?.formattedBalance || "0.00");
+
+      setTransactions(data.transactions || []);
+
     } catch (error) {
       console.error("Error fetching wallet overview:", error);
-      // Set default values if all attempts fail
-      setUsdcBalance("0.000000");
-      setUsdsBalance("0.000000");
-      setTransactions([]);
+      toast.error(error instanceof Error ? error.message : "Could not load wallet data.");
+      // Reset state on error
+      setSolanaAddress(null);
+      setBaseAddress(null);
     } finally {
       setIsLoading(false);
     }
   };
-
-  const refreshData = async () => {
-    toast.info("Refreshing balances...", { 
-      duration: 2000,
-      icon: "🔄" 
+  
+  const refreshData = () => {
+    toast.info("Refreshing account data...", { id: "refresh-toast" });
+    fetchWalletOverview(true).then(() => {
+      toast.success("Account data refreshed!", { id: "refresh-toast" });
     });
-    await fetchBalances(true); // Always use cache busting for manual refresh
-    toast.success("Account data refreshed");
   };
 
   // Handle tab change with URL update
@@ -317,7 +282,7 @@ function AccountDashboard() {
     if (foundUser && foundUser.solanaAddress && tokenType === "usd" && parseFloat(amount) > parseFloat(usdsBalance)) {
       setError("Insufficient balance");
       return false;
-    } else if (foundUser && foundUser.solanaAddress && tokenType === "usdc" && parseFloat(amount) > parseFloat(usdcBalance)) {
+    } else if (foundUser && foundUser.solanaAddress && tokenType === "usdc" && parseFloat(amount) > parseFloat(solanaUsdcBalance)) {
       setError("Insufficient balance");
       return false;
     }
@@ -425,7 +390,7 @@ function AccountDashboard() {
       setAmount("");
 
       // Refresh balance and transactions with cache busting
-      fetchBalances(true);
+      fetchWalletOverview(true);
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : "Transaction failed";
       setError(errorMessage);
@@ -533,8 +498,8 @@ function AccountDashboard() {
     },
     {
       tokenSymbol: "USDC",
-      balance: usdcBalance,
-      usdValue: `$${parseFloat(usdcBalance).toFixed(2)}`,
+      balance: solanaUsdcBalance,
+      usdValue: `$${parseFloat(solanaUsdcBalance).toFixed(2)}`,
       icon: <USDCIcon width={20} height={20} className="text-blue-400 mr-2" />
     }
   ];
@@ -667,12 +632,12 @@ function AccountDashboard() {
                       </div>
                     </div>
                   </div>
-                  <div className="text-lg font-semibold text-white">${usdcBalance}</div>
+                  <div className="text-lg font-semibold text-white">${solanaUsdcBalance}</div>
                 </div>
                 
                 {/* Add FaucetButton within the USDC balance section */}
                 <FaucetButton 
-                  usdcBalance={parseFloat(usdcBalance)} 
+                  usdcBalance={parseFloat(solanaUsdcBalance)} 
                   onFaucetComplete={refreshData} 
                 />
               </div>
@@ -777,6 +742,9 @@ function AccountDashboard() {
         {/* Overview Tab */}
         {activeTab === "overview" && (
           <div className="space-y-6">
+            {/* Wallet Addresses Card */}
+            <WalletAddressCard solanaAddress={solanaAddress} baseAddress={baseAddress} />
+            
             {/* New APY Highlight Banner */}
             <div className="bg-gradient-to-r from-emerald-800/70 to-emerald-900/70 border border-emerald-700 rounded-xl p-6 shadow-md">
               <div className="flex flex-col md:flex-row items-start md:items-center gap-4">
@@ -805,7 +773,7 @@ function AccountDashboard() {
             </div>
 
             {/* Faucet Button for users with low USDC balance */}
-            {parseFloat(usdcBalance) < 1 && (
+            {parseFloat(solanaUsdcBalance) < 1 && (
               <div className="bg-gradient-to-r from-blue-900/30 to-blue-800/30 border border-blue-700/30 rounded-xl p-6 shadow-md">
                 <div className="flex flex-col md:flex-row items-start md:items-center gap-4">
                   <div className="p-3 bg-blue-800/50 rounded-full text-blue-300">
@@ -820,7 +788,7 @@ function AccountDashboard() {
                     </p>
                   </div>
                   <FaucetButton 
-                    usdcBalance={parseFloat(usdcBalance)} 
+                    usdcBalance={parseFloat(solanaUsdcBalance)} 
                     onFaucetComplete={refreshData} 
                   />
                 </div>
@@ -1177,20 +1145,85 @@ function AccountDashboard() {
           </div>
 
           {/* Token Cards */}
-          {tokenBalances.map((token) => (
-            <div 
-              key={token.tokenSymbol}
-              className={`${
-                token.tokenSymbol === "USDs" 
-                  ? "bg-gradient-to-r from-emerald-900/20 to-green-900/20 border-emerald-800/30 hover:border-emerald-700/50" 
-                  : "bg-gradient-to-r from-blue-900/20 to-sky-900/20 border-blue-800/30 hover:border-blue-700/50"
-              } border backdrop-blur-sm rounded-xl p-6 relative overflow-hidden hover:shadow-lg transition-all duration-300`}
-            >
-              {/* ... existing token card content ... */}
-            </div>
-          ))}
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-6">
+            <BalanceCard 
+              icon={<USDsIcon className="h-8 w-8 text-blue-400" />} 
+              name="Solana USDs" 
+              balance={usdsBalance} 
+            />
+            <BalanceCard 
+              icon={<USDCIcon className="h-8 w-8 text-green-400" />} 
+              name="Solana USDC" 
+              balance={solanaUsdcBalance} 
+            />
+            <BalanceCard 
+              icon={<USDCIcon className="h-8 w-8 text-purple-400" />} 
+              name="Base USDC" 
+              balance={baseUsdcBalance} 
+            />
+            <BalanceCard 
+              icon={<RemloIcon className="h-8 w-8 text-indigo-400" />} // Using RemloIcon for ETH as a placeholder
+              name="Base ETH" 
+              balance={ethBalance} 
+            />
+          </div>
         </div>
       </main>
+    </div>
+  );
+}
+
+// New component for displaying wallet addresses - THEMED FOR DARK UI
+function WalletAddressCard({ solanaAddress, baseAddress }: { solanaAddress: string | null, baseAddress: string | null }) {
+  if (!solanaAddress && !baseAddress) {
+    // Optionally, show a loading shimmer or nothing
+    return null; 
+  }
+
+  return (
+    <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-6 shadow-sm">
+      <h3 className="text-xl font-semibold text-white mb-4 flex items-center">
+        <Wallet2 className="mr-3 h-6 w-6 text-emerald-400" />
+        Your Addresses
+      </h3>
+      <div className="space-y-4">
+        {solanaAddress && (
+          <AddressRow network="Solana" address={solanaAddress} explorerUrl={`https://solscan.io/address/${solanaAddress}?cluster=devnet`} />
+        )}
+        {baseAddress && (
+          <AddressRow network="Base" address={baseAddress} explorerUrl={`https://basescan.org/address/${baseAddress}`} />
+        )}
+      </div>
+    </div>
+  );
+}
+
+function AddressRow({ network, address, explorerUrl }: { network: string, address: string, explorerUrl: string }) {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = () => {
+    copyToClipboard(address);
+    toast.success(`${network} address copied!`);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2500);
+  };
+
+  return (
+    <div>
+      <Label className="text-sm font-medium text-gray-400">{network}</Label>
+      <div className="flex items-center gap-2 mt-1">
+        <p className="font-mono text-sm text-gray-200 bg-zinc-800 border border-zinc-700 rounded-md px-3 py-2 flex-grow truncate">
+          {address}
+        </p>
+        <Button variant="outline" size="icon" onClick={handleCopy} className="h-9 w-9 flex-shrink-0 bg-zinc-800 border-zinc-700 hover:bg-zinc-700">
+          {copied ? <CheckCircle2 className="h-4 w-4 text-green-500" /> : <CopyIcon className="h-4 w-4 text-gray-300" />}
+        </Button>
+        <a href={explorerUrl} target="_blank" rel="noopener noreferrer">
+          <Button variant="outline" size="icon" className="h-9 w-9 flex-shrink-0 bg-zinc-800 border-zinc-700 hover:bg-zinc-700">
+            <ExternalLink className="h-4 w-4 text-gray-300" />
+          </Button>
+        </a>
+      </div>
     </div>
   );
 }

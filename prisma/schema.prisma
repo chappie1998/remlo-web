@@ -36,22 +36,37 @@ model User {
   mpcBackupShare   String?            // Backup share for recovery (ideally stored elsewhere)
   usesMPC          Boolean   @default(false) // Whether the user is using MPC
 
+  // Okto/Base related fields
+  oktoUserId       String?   @unique  // Okto user ID
+  oktoUserSWA      String?   @unique  // Okto user wallet address (same as baseAddress)
+  hasOktoWallet    Boolean   @default(false)
+  oktoCreatedAt    DateTime?
+  
+  // Base blockchain specific
+  baseAddress      String?   @unique  // Base network address (same as oktoUserSWA)
+  baseWalletType   String?   @default("okto") // "okto" for now, future: "mpc"
+
   // Relations
   accounts        Account[]
   sessions        Session[]
   transactions    Transaction[]
+  baseTransactions BaseTransaction[] // Base network transactions
   paymentRequests PaymentRequest[] // Payment requests created by this user
   requestedPayments PaymentRequest[] @relation("RequestedPayments") // Payment requests where this user is the recipient
   sentPayments    Payment[]        @relation("SentPayments")
   contacts        Contact[]        @relation("UserContacts")
   savedTemplates  SavedTemplate[]  @relation("UserTemplates")
   paymentLinks    PaymentLink[]    @relation("CreatedPaymentLinks") // Payment links created by this user
+  universalTransactions UniversalTransaction[]
 
   @@index([createdAt])
   @@index([username]) // Dedicated index for fast username lookups
   @@index([email, solanaAddress]) // Composite index for frequent lookups
   @@index([hasPasscode, usesMPC]) // For filtering users by wallet type
   @@index([username, hasPasscode, solanaAddress]) // Optimized composite index for user lookup validation
+  @@index([oktoUserId])
+  @@index([baseAddress])
+  @@index([oktoUserSWA])
 }
 
 model Account {
@@ -238,4 +253,69 @@ model SavedTemplate {
 
   @@index([userId])
   @@index([name])
+}
+
+// Base blockchain transactions model
+model BaseTransaction {
+  id              String     @id @default(cuid())
+  userId          String
+  txHash          String?    @unique
+  status          String     // "pending", "confirmed", "failed"
+  amount          String     // Amount in human readable format
+  tokenAddress    String?    // null for ETH, contract address for tokens
+  tokenSymbol     String     // "ETH", "USDC"
+  tokenDecimals   Int        @default(18) // Token decimals
+  recipientAddress String
+  recipientUsername String?  // If sent to username
+  senderAddress   String
+  gasUsed         String?
+  gasFee          String?
+  oktoJobId       String?    // Okto's internal job ID
+  blockNumber     BigInt?
+  network         String     @default("base-sepolia") // "base-sepolia", "base-mainnet"
+  transactionType String     @default("transfer") // "transfer", "swap", etc.
+  createdAt       DateTime   @default(now())
+  confirmedAt     DateTime?
+  
+  user            User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, status])
+  @@index([txHash])
+  @@index([oktoJobId])
+  @@index([createdAt])
+  @@index([userId, createdAt])
+  @@index([recipientUsername])
+  @@index([network, status])
+}
+
+// Universal transaction model for chain abstraction
+model UniversalTransaction {
+  id                String     @id @default(cuid())
+  userId            String
+  recipientUserId   String?    // If sent to another user
+  recipientUsername String?    // Username of recipient
+  amount            String     // Amount in human readable format
+  tokenSymbol       String     // "USDC", "USDS", "ETH", "SOL"
+  status            String     // "pending", "confirmed", "failed"
+  blockchain        String     // "solana", "base"
+  network           String     // "devnet", "mainnet", "base-sepolia"
+  
+  // Chain-specific transaction references
+  solanaSignature   String?    // Solana transaction signature
+  baseTxHash        String?    // Base transaction hash
+  oktoJobId         String?    // Okto job ID for Base transactions
+  
+  // Metadata
+  note              String?
+  transactionType   String     @default("transfer") // "transfer", "swap", "payment_link"
+  createdAt         DateTime   @default(now())
+  confirmedAt       DateTime?
+  
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([recipientUserId, createdAt])
+  @@index([recipientUsername])
+  @@index([status, blockchain])
+  @@index([userId, status, createdAt])
 }

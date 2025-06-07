@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getUserFromRequest } from "@/lib/jwt";
-import { fetchAllBalances } from "@/lib/solana";
+import { fetchAllBalances as fetchAllSolanaBalances } from "@/lib/solana";
+import { fetchAllBaseBalances } from "@/lib/base";
 import connectionPool from "@/lib/solana-connection-pool";
 import prisma from "@/lib/prisma";
 
@@ -31,36 +32,44 @@ export async function GET(req: NextRequest) {
     const user = await getUserFromRequest(req);
     console.log(`⚡ Authentication completed in ${Date.now() - authStartTime}ms`);
     
-    if (!user?.solanaAddress) {
-      console.log('No valid token or wallet not set up');
-      return NextResponse.json(
-        { error: "You must be signed in and have a wallet set up" },
-        {
-          status: 401,
-          headers: {
-            'Access-Control-Allow-Origin': '*',
-            'Access-Control-Allow-Methods': 'GET, OPTIONS',
-            'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-            'Access-Control-Allow-Credentials': 'true',
-          }
-        }
-      );
+    if (!user?.id) {
+      return NextResponse.json({ error: "Authentication failed." }, { status: 401 });
     }
 
-    console.log(`Found user: ${user.email} (via JWT/NextAuth)`);
+    // Fetch the full user record from the database to get all address fields
+    const userRecord = await prisma.user.findUnique({
+      where: { id: user.id },
+      select: {
+        solanaAddress: true,
+        baseAddress: true,
+      }
+    });
+
+    if (!userRecord || !userRecord.solanaAddress) {
+      return NextResponse.json({ error: "Wallet not found for this user." }, { status: 404 });
+    }
 
     // Fetch all data in parallel - optimized single RPC call for token balances
     console.log('📊 Fetching balances and transactions in parallel...');
     const dataStartTime = Date.now();
     
-    const [tokenBalances, transactions] = await Promise.all([
-      fetchAllBalances(user.solanaAddress).catch(err => {
-        console.error('Error fetching token balances:', err);
+    const [solanaTokenBalances, baseBalances, transactions] = await Promise.all([
+      fetchAllSolanaBalances(userRecord.solanaAddress).catch(err => {
+        console.error('Error fetching Solana token balances:', err);
         return {
           usdc: { balance: 0, formattedBalance: '0.000000' },
           usds: { balance: 0, formattedBalance: '0.000000' }
         };
       }),
+      userRecord.baseAddress 
+        ? fetchAllBaseBalances(userRecord.baseAddress).catch(err => {
+            console.error('Error fetching Base balances:', err);
+            return {
+              eth: { balance: 0, formattedBalance: '0.0000' },
+              usdc: { balance: 0, formattedBalance: '0.000000' }
+            };
+          })
+        : Promise.resolve(null),
       prisma.transaction.findMany({
         where: {
           OR: [
@@ -69,7 +78,7 @@ export async function GET(req: NextRequest) {
             // Transactions received by this user (proper JSON contains)
             {
               txData: {
-                contains: `"to":"${user.solanaAddress}"`
+                contains: `"to":"${userRecord.solanaAddress}"`
               }
             }
           ]
@@ -106,16 +115,20 @@ export async function GET(req: NextRequest) {
     return NextResponse.json(
       {
         success: true,
-        address: user.solanaAddress,
+        solanaAddress: userRecord.solanaAddress,
+        baseAddress: userRecord.baseAddress,
         balances: {
-          usdc: {
-            balance: tokenBalances.usdc.balance,
-            formattedBalance: tokenBalances.usdc.formattedBalance,
+          solana: {
+            usdc: {
+              balance: solanaTokenBalances.usdc.balance,
+              formattedBalance: solanaTokenBalances.usdc.formattedBalance,
+            },
+            usds: {
+              balance: solanaTokenBalances.usds.balance,
+              formattedBalance: solanaTokenBalances.usds.formattedBalance,
+            }
           },
-          usds: {
-            balance: tokenBalances.usds.balance,
-            formattedBalance: tokenBalances.usds.formattedBalance,
-          }
+          base: baseBalances,
         },
         transactions: transactions,
         total: transactions.length,
