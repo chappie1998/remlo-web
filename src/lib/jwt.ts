@@ -7,7 +7,7 @@ const JWT_EXPIRES_IN = '30d'; // 30 days
 
 export interface JWTPayload {
   userId: string;
-  email: string;
+  email: string | null;
   solanaAddress: string | null;
   hasPasscode: boolean;
   username: string | null;
@@ -17,7 +17,7 @@ export interface JWTPayload {
 
 export interface UserData {
   id: string;
-  email: string;
+  email: string | null;
   solanaAddress: string | null;
   hasPasscode: boolean;
   username: string | null;
@@ -93,7 +93,7 @@ async function getUserFromNextAuthToken(req: NextRequest): Promise<UserData | nu
         console.log(`🔄 Found wallet in database: ${userData.solanaAddress ? 'Has wallet' : 'No wallet'}`);
         return {
           id: userData.id,
-          email: userData.email,
+          email: userData.email || null,
           solanaAddress: userData.solanaAddress,
           hasPasscode: userData.hasPasscode || false,
           username: userData.username,

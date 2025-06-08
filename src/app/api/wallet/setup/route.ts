@@ -25,6 +25,7 @@ export async function OPTIONS() {
 export async function POST(req: NextRequest) {
   try {
     let userEmail = null;
+    let userId = null;
     console.log('Handling wallet setup request');
 
     // Log all headers
@@ -35,9 +36,10 @@ export async function POST(req: NextRequest) {
 
     // First, try to get the session from NextAuth
     const session = await getServerSession(authOptions);
-    if (session?.user?.email) {
-      userEmail = session.user.email;
-      console.log('Found user email from NextAuth session:', userEmail);
+    if (session?.user) {
+      userEmail = session.user.email; // This might be null for Twitter users
+      userId = session.user.id;
+      console.log('Found user from NextAuth session:', { email: userEmail, id: userId });
     }
 
     // If no NextAuth session, try to get the user from JWT token (mobile app)
@@ -79,7 +81,7 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    if (!userEmail) {
+    if (!userEmail && !userId) {
       console.log('No valid user session found, returning 401');
       return NextResponse.json(
         { error: "You must be signed in to set up a wallet" },
@@ -159,8 +161,11 @@ export async function POST(req: NextRequest) {
     }
 
     // Update the user record with the wallet address, MPC information, and username
+    // Use either email or userId to find the user
+    const whereClause = userEmail ? { email: userEmail } : { id: userId! };
+    
     const updatedUser = await prisma.user.update({
-      where: { email: userEmail },
+      where: whereClause,
       data: {
         solanaAddress: publicKey,
         mpcServerShare: serverShare,
