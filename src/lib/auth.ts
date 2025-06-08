@@ -42,8 +42,45 @@ export const authOptions: NextAuthOptions = {
       }
       if (account?.provider === "twitter") {
         console.log("Twitter login:", account, profile);
-        // For Twitter, we'll handle the user creation/update differently since no email is provided
-        // The user creation will be handled by the adapter automatically
+        
+        // Store Twitter username if user was just created or update it if needed
+        const twitterProfile = profile as any; // Twitter profile structure
+        if (account?.providerAccountId && twitterProfile?.data?.username) {
+          try {
+            console.log("Updating user with Twitter username:", twitterProfile.data.username);
+            console.log("Twitter provider account ID:", account.providerAccountId);
+            
+            // Find user by Twitter account connection
+            const userAccount = await prisma.account.findUnique({
+              where: {
+                provider_providerAccountId: {
+                  provider: "twitter",
+                  providerAccountId: account.providerAccountId
+                }
+              },
+              include: {
+                user: true
+              }
+            });
+
+            if (userAccount?.user) {
+              await prisma.user.update({
+                where: { id: userAccount.user.id },
+                data: { 
+                  username: twitterProfile.data.username,
+                  name: twitterProfile.data.name || userAccount.user.name,
+                  image: twitterProfile.data.profile_image_url || userAccount.user.image,
+                },
+              });
+              console.log("Successfully updated Twitter user data");
+            } else {
+              console.log("User account not found for Twitter update");
+            }
+          } catch (error) {
+            console.error("Failed to update Twitter username:", error);
+            // Don't block sign in if this fails
+          }
+        }
       }
       return true; // Do different verification for other providers that don't have `email_verified`
     },

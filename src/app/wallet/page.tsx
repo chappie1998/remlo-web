@@ -35,7 +35,8 @@ import {
   Search,
   SlidersHorizontal,
   User,
-  ArrowRight
+  ArrowRight,
+  LinkIcon
 } from "lucide-react";
 import { USDsIcon, USDCIcon, SwapIcon, ReceiveIcon, SendMoneyIcon, RemloIcon, ActivityIcon } from "@/components/icons";
 import FaucetButton from '@/components/FaucetButton';
@@ -47,6 +48,22 @@ interface Transaction {
   txData: string;
   signature?: string;
   createdAt: string;
+}
+
+interface TwitterSend {
+  id: string;
+  type: 'direct_transfer' | 'payment_link';
+  twitterUsername: string;
+  amount: string;
+  tokenType: string;
+  note?: string;
+  status: string;
+  createdAt: string;
+  signature?: string;
+  paymentUrl?: string;
+  claimedAt?: string;
+  claimedBy?: string;
+  dmSent?: boolean;
 }
 
 interface TokenBalance {
@@ -100,7 +117,7 @@ function AccountDashboard() {
   // State variables for account details
   const [activeTab, setActiveTab] = useState(() => {
     const tabParam = searchParams.get("tab");
-    return (tabParam === "overview" || tabParam === "transactions" || tabParam === "receive") 
+    return (tabParam === "overview" || tabParam === "transactions" || tabParam === "receive" || tabParam === "twitter") 
       ? tabParam 
       : "overview";
   });
@@ -118,6 +135,10 @@ function AccountDashboard() {
   const [txFilter, setTxFilter] = useState<"all" | "sent" | "received" | "swapped">("all");
   const [txStatusFilter, setTxStatusFilter] = useState<"all" | "success" | "pending" | "failed">("all");
   const [showFilters, setShowFilters] = useState(false);
+  
+  // Twitter sends state
+  const [twitterSends, setTwitterSends] = useState<TwitterSend[]>([]);
+  const [isLoadingTwitterSends, setIsLoadingTwitterSends] = useState(false);
 
   // Calculate the total balance in USD (assuming 1 USDC = 1 USDs = $1)
   const totalUsdBalance = parseFloat(usdsBalance) + parseFloat(usdcBalance);
@@ -239,9 +260,43 @@ function AccountDashboard() {
     toast.success("Account data refreshed");
   };
 
+  // Fetch Twitter sends
+  const fetchTwitterSends = async () => {
+    try {
+      setIsLoadingTwitterSends(true);
+      console.log("🔍 Fetching Twitter sends...");
+      const response = await fetch("/api/wallet/twitter-sends");
+      const data = await response.json();
+      
+      console.log("📋 Twitter sends response:", { 
+        status: response.status, 
+        ok: response.ok,
+        data 
+      });
+
+      if (response.ok) {
+        console.log("✅ Twitter sends data:", data.sends);
+        setTwitterSends(data.sends || []);
+      } else {
+        console.error("❌ Failed to fetch Twitter sends:", data.error);
+        setTwitterSends([]);
+      }
+    } catch (err) {
+      console.error("💥 Error fetching Twitter sends:", err);
+      setTwitterSends([]);
+    } finally {
+      setIsLoadingTwitterSends(false);
+    }
+  };
+
   // Handle tab change with URL update
   const handleTabChange = (tab: string) => {
     setActiveTab(tab);
+    
+    // Fetch Twitter sends when switching to Twitter tab
+    if (tab === "twitter") {
+      fetchTwitterSends();
+    }
     
     // Update URL query parameter
     const url = new URL(window.location.href);
@@ -772,6 +827,16 @@ function AccountDashboard() {
           >
             Transactions
           </button>
+          <button
+            className={`px-4 py-2 font-medium text-sm relative whitespace-nowrap ${
+              activeTab === "twitter"
+                ? "text-emerald-400 border-b-2 border-emerald-400"
+                : "text-gray-400 hover:text-gray-300"
+            }`}
+            onClick={() => handleTabChange("twitter")}
+          >
+            Twitter Sends
+          </button>
         </div>
 
         {/* Overview Tab */}
@@ -875,12 +940,20 @@ function AccountDashboard() {
               <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-6 shadow-sm">
                 <div className="flex justify-between items-center mb-4">
                   <h2 className="text-xl font-semibold text-white">Recent Transactions</h2>
-                  <button
-                    className="text-xs text-emerald-400 hover:underline flex items-center gap-1"
-                    onClick={() => handleTabChange("transactions")}
-                  >
-                    View all <ArrowLeftRight size={12} />
-                  </button>
+                  <div className="flex gap-2">
+                    <button
+                      className="text-xs text-blue-400 hover:underline flex items-center gap-1"
+                      onClick={() => handleTabChange("twitter")}
+                    >
+                      Twitter Sends
+                    </button>
+                    <button
+                      className="text-xs text-emerald-400 hover:underline flex items-center gap-1"
+                      onClick={() => handleTabChange("transactions")}
+                    >
+                      View all <ArrowLeftRight size={12} />
+                    </button>
+                  </div>
                 </div>
 
                 <div className="space-y-3">
@@ -1095,6 +1168,151 @@ function AccountDashboard() {
                     </p>
                   </>
                 )}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Twitter Sends Tab */}
+        {activeTab === "twitter" && (
+          <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-6 shadow-sm">
+            <div className="flex items-center justify-between mb-6">
+              <div className="flex items-center">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor" className="text-blue-400 mr-3">
+                  <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/>
+                </svg>
+                <h2 className="text-xl font-semibold text-white">Twitter Sends</h2>
+              </div>
+              <Button
+                onClick={fetchTwitterSends}
+                variant="outline"
+                size="sm"
+                className="border-zinc-700 text-gray-300 hover:bg-zinc-800"
+              >
+                <RefreshCw size={16} className="mr-2" />
+                Refresh
+              </Button>
+            </div>
+
+            {/* Summary Cards */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+              <div className="bg-zinc-800 rounded-lg p-4">
+                <div className="text-sm text-gray-400 mb-1">Total Sends</div>
+                <div className="text-xl font-bold">{twitterSends.length}</div>
+              </div>
+              <div className="bg-zinc-800 rounded-lg p-4">
+                <div className="text-sm text-gray-400 mb-1">Direct Transfers</div>
+                <div className="text-xl font-bold text-emerald-400">
+                  {twitterSends.filter(s => s.type === 'direct_transfer').length}
+                </div>
+              </div>
+              <div className="bg-zinc-800 rounded-lg p-4">
+                <div className="text-sm text-gray-400 mb-1">Payment Links</div>
+                <div className="text-xl font-bold text-blue-400">
+                  {twitterSends.filter(s => s.type === 'payment_link').length}
+                </div>
+              </div>
+            </div>
+
+            {isLoadingTwitterSends ? (
+              <div className="flex items-center justify-center py-12">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-emerald-500"></div>
+                <span className="ml-3 text-gray-400">Loading Twitter sends...</span>
+              </div>
+            ) : twitterSends.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-12 text-center">
+                <svg width="48" height="48" viewBox="0 0 24 24" fill="currentColor" className="text-gray-600 mb-4">
+                  <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/>
+                </svg>
+                <h3 className="text-lg font-medium mb-1 text-gray-300">No Twitter sends yet</h3>
+                <p className="text-sm text-gray-500 mb-4">Your Twitter payment history will appear here</p>
+                <Link
+                  href="/wallet/send?tab=twitter"
+                  className="inline-flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-md transition"
+                >
+                  <SendMoneyIcon width={16} height={16} />
+                  Send to Twitter
+                </Link>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {twitterSends.map((send) => (
+                  <div key={send.id} className="p-4 border border-zinc-800 rounded-lg hover:bg-zinc-800/50 transition">
+                    <div className="flex items-start justify-between mb-3">
+                      <div className="flex items-center">
+                        {send.type === 'direct_transfer' ? (
+                          <SendMoneyIcon width={16} height={16} className="text-emerald-400 mr-3" />
+                        ) : (
+                          <LinkIcon size={16} className="text-blue-400 mr-3" />
+                        )}
+                        <div>
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className="font-medium text-gray-200">@{send.twitterUsername}</span>
+                            <span className={`text-xs px-2 py-1 rounded-full ${
+                              send.status === 'executed' || send.status === 'claimed'
+                                ? 'text-emerald-400 bg-emerald-900/30'
+                                : send.status === 'active' || send.status === 'submitted'
+                                ? 'text-yellow-400 bg-yellow-900/30'
+                                : 'text-red-400 bg-red-900/30'
+                            }`}>
+                              {send.status}
+                            </span>
+                          </div>
+                          <div className="text-xs text-gray-400">
+                            {send.type === 'direct_transfer' ? 'Direct Transfer' : 'Payment Link'} • {formatDate(send.createdAt)}
+                          </div>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <div className="font-medium text-gray-200">
+                          {send.amount} {send.tokenType.toUpperCase()}
+                        </div>
+                      </div>
+                    </div>
+
+                    {send.note && (
+                      <div className="mb-3 text-sm text-gray-400">
+                        <span className="font-medium">Note:</span> {send.note}
+                      </div>
+                    )}
+
+                    <div className="flex flex-wrap gap-2">
+                      {send.type === 'direct_transfer' && send.signature && (
+                        <a
+                          href={`https://solscan.io/tx/${send.signature}?cluster=devnet`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1 text-xs bg-emerald-900/30 text-emerald-400 px-2 py-1 rounded-md hover:bg-emerald-900/50 transition"
+                        >
+                          <ExternalLink size={12} />
+                          View Transaction
+                        </a>
+                      )}
+
+                      {send.type === 'payment_link' && send.paymentUrl && (
+                        <Link
+                          href={send.paymentUrl}
+                          className="inline-flex items-center gap-1 text-xs bg-blue-900/30 text-blue-400 px-2 py-1 rounded-md hover:bg-blue-900/50 transition"
+                        >
+                          <ExternalLink size={12} />
+                          View Payment Link
+                        </Link>
+                      )}
+
+                      {send.dmSent && (
+                        <span className="inline-flex items-center gap-1 text-xs bg-green-900/30 text-green-400 px-2 py-1 rounded-md">
+                          ✓ DM Sent
+                        </span>
+                      )}
+
+                      {send.claimedAt && (
+                        <span className="inline-flex items-center gap-1 text-xs bg-emerald-900/30 text-emerald-400 px-2 py-1 rounded-md">
+                          ✓ Claimed {formatDate(send.claimedAt)}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                ))}
               </div>
             )}
           </div>

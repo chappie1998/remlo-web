@@ -57,14 +57,15 @@ function SendPage() {
   const searchParams = useSearchParams();
   
   // Tab control - read initial value from URL query parameter
-  const [activeTab, setActiveTab] = useState<"username" | "address">(() => {
+  const [activeTab, setActiveTab] = useState<"username" | "address" | "twitter">(() => {
     const tabParam = searchParams.get("tab");
-    return (tabParam === "username" || tabParam === "address") ? tabParam : "username";
+    return (tabParam === "username" || tabParam === "address" || tabParam === "twitter") ? tabParam : "username";
   });
   
   // Form inputs
   const [username, setUsername] = useState("");
   const [recipient, setRecipient] = useState("");
+  const [twitterUsername, setTwitterUsername] = useState("");
   const [amount, setAmount] = useState("");
   const [tokenType, setTokenType] = useState("usd"); // "usd" or "usdc"
   const [passcode, setPasscode] = useState("");
@@ -83,6 +84,12 @@ function SendPage() {
   // Username validation states
   const [isValidatingUsername, setIsValidatingUsername] = useState(false);
   const [usernameStatus, setUsernameStatus] = useState<"idle" | "validating" | "valid" | "invalid">("idle");
+  
+  // Twitter username validation states
+  const [isValidatingTwitter, setIsValidatingTwitter] = useState(false);
+  const [twitterStatus, setTwitterStatus] = useState<"idle" | "validating" | "valid" | "invalid">("idle");
+  const [twitterUser, setTwitterUser] = useState<{ username: string, name: string, profile_image_url?: string } | null>(null);
+  const [twitterError, setTwitterError] = useState<string | null>(null);
   
   // Debounced username validation function
   const debouncedValidateUsername = useCallback(
@@ -125,6 +132,51 @@ function SendPage() {
     []
   );
 
+  // Debounced Twitter username validation function
+  const debouncedValidateTwitterUsername = useCallback(
+    debounce(async (username: string) => {
+      if (!username || username.length < 3) {
+        setTwitterStatus("idle");
+        setTwitterUser(null);
+        return;
+      }
+
+      setIsValidatingTwitter(true);
+      setTwitterStatus("validating");
+      setTwitterUser(null);
+
+      try {
+        const response = await fetch("/api/twitter/validate-username", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ username }),
+        });
+
+        const data = await response.json();
+
+        if (response.ok && data.valid) {
+          setTwitterStatus("valid");
+          setTwitterUser(data.user);
+          setTwitterError(null);
+        } else {
+          setTwitterStatus("invalid");
+          setTwitterUser(null);
+          setTwitterError(data.error || "Twitter user not found");
+        }
+      } catch (err) {
+        console.error("Twitter validation error:", err);
+        setTwitterStatus("invalid");
+        setTwitterUser(null);
+        setTwitterError("Network error. Please try again.");
+      } finally {
+        setIsValidatingTwitter(false);
+      }
+    }, 2000), // Increased from 500ms to 2000ms (2 seconds)
+    []
+  );
+
   // Trigger username validation on input change
   useEffect(() => {
     if (activeTab === "username" && username && username.length >= 3) {
@@ -138,6 +190,22 @@ function SendPage() {
       debouncedValidateUsername.cancel();
     };
   }, [username, activeTab, debouncedValidateUsername]);
+
+  // Trigger Twitter username validation on input change
+  useEffect(() => {
+    if (activeTab === "twitter" && twitterUsername && twitterUsername.length >= 3) {
+      debouncedValidateTwitterUsername(twitterUsername);
+    } else {
+      setTwitterStatus("idle");
+      setTwitterUser(null);
+      setTwitterError(null);
+    }
+
+    // Cleanup function to cancel debounced calls
+    return () => {
+      debouncedValidateTwitterUsername.cancel();
+    };
+  }, [twitterUsername, activeTab, debouncedValidateTwitterUsername]);
   
   // Check authentication and fetch balances
   useEffect(() => {
@@ -280,7 +348,7 @@ function SendPage() {
         }
         setIsLookingUpUsername(false);
       }
-    } else {
+    } else if (activeTab === "address") {
       // Address validation
       if (!recipient || recipient.trim() === "") {
         setError("Recipient address cannot be empty");
@@ -289,6 +357,17 @@ function SendPage() {
 
       if (!isValidSolanaAddress(recipient)) {
         setError("Invalid Solana address");
+        return false;
+      }
+    } else if (activeTab === "twitter") {
+      // Twitter validation
+      if (!twitterUsername || twitterUsername.trim() === "") {
+        setError("Twitter username cannot be empty");
+        return false;
+      }
+
+      if (!twitterUser) {
+        setError("Twitter user not verified. Please wait for validation to complete.");
         return false;
       }
     }
@@ -331,38 +410,45 @@ function SendPage() {
     setIsLoading(true);
 
     try {
-      // Use token transaction endpoint for both USDC and USDs
-      // Only use send-transaction endpoint if somehow tokenType is something else
-      const endpoint = (tokenType === "usdc" || tokenType === "usd")
-        ? "/api/wallet/send-token-transaction"
-        : "/api/wallet/send-transaction";
+      let endpoint: string;
+      let requestData: any;
 
-      // Determine the recipient address - if using username tab and found a user, use their address
-      const recipientAddress = activeTab === "username" && foundUser 
-        ? foundUser.solanaAddress 
-        : recipient;
+      if (activeTab === "twitter") {
+        // Twitter sending - use our new endpoint
+        endpoint = "/api/wallet/send-to-twitter";
+        requestData = {
+          twitterUsername: twitterUsername.replace(/^@/, ''), // Remove @ if present
+          amount,
+          tokenType,
+          passcode,
+          note: `Payment sent via Remlo Wallet`
+        };
+      } else {
+        // Regular sending - use existing logic
+        endpoint = (tokenType === "usdc" || tokenType === "usd")
+          ? "/api/wallet/send-token-transaction"
+          : "/api/wallet/send-transaction";
 
-      // Include username in the request if a user was found
-      const requestData: {
-        to: string;
-        amount: string;
-        passcode: string;
-        username?: string;
-        tokenType?: string;
-      } = {
-        to: recipientAddress,
-        amount,
-        passcode,
-      };
-      
-      // If using token transaction endpoint, include the token type
-      if (endpoint === "/api/wallet/send-token-transaction") {
-        requestData.tokenType = tokenType;
-      }
-      
-      // If sending to a user found by username, include the username in the transaction data
-      if (foundUser) {
-        requestData.username = foundUser.username;
+        // Determine the recipient address - if using username tab and found a user, use their address
+        const recipientAddress = activeTab === "username" && foundUser 
+          ? foundUser.solanaAddress 
+          : recipient;
+
+        requestData = {
+          to: recipientAddress,
+          amount,
+          passcode,
+        };
+        
+        // If using token transaction endpoint, include the token type
+        if (endpoint === "/api/wallet/send-token-transaction") {
+          requestData.tokenType = tokenType;
+        }
+        
+        // If sending to a user found by username, include the username in the transaction data
+        if (foundUser) {
+          requestData.username = foundUser.username;
+        }
       }
 
       // Log the request payload to help with debugging
@@ -385,10 +471,15 @@ function SendPage() {
         throw new Error(data.error || "Transaction failed");
       }
 
-      // Create a success message that includes the username if available
-      const successMessage = foundUser 
-        ? `Transaction sent successfully to ${foundUser.username}!`
-        : "Transaction sent successfully!";
+      // Create a success message based on the sending method
+      let successMessage: string;
+      if (activeTab === "twitter") {
+        successMessage = `Payment sent to @${twitterUser?.username}! ${data.dmSent ? 'DM sent successfully.' : 'DM failed to send.'}`;
+      } else if (foundUser) {
+        successMessage = `Transaction sent successfully to ${foundUser.username}!`;
+      } else {
+        successMessage = "Transaction sent successfully!";
+      }
       
       toast.success(successMessage);
       
@@ -398,6 +489,9 @@ function SendPage() {
       setRecipient("");
       setUsername("");
       setFoundUser(null);
+      setTwitterUsername("");
+      setTwitterUser(null);
+      setTwitterStatus("idle");
       setAmount("");
       
       // Redirect back to wallet page with refresh parameter to trigger balance update
@@ -415,7 +509,7 @@ function SendPage() {
   };
   
   // Handle tab change with URL update
-  const handleTabChange = (tab: "username" | "address") => {
+  const handleTabChange = (tab: "username" | "address" | "twitter") => {
     setActiveTab(tab);
     
     // Update URL query parameter
@@ -428,7 +522,18 @@ function SendPage() {
     
     if (tab === "username") {
       setRecipient("");
-    } else {
+      setTwitterUsername("");
+      setTwitterUser(null);
+      setTwitterStatus("idle");
+    } else if (tab === "address") {
+      setUsername("");
+      setFoundUser(null);
+      setUsernameStatus("idle");
+      setTwitterUsername("");
+      setTwitterUser(null);
+      setTwitterStatus("idle");
+    } else if (tab === "twitter") {
+      setRecipient("");
       setUsername("");
       setFoundUser(null);
       setUsernameStatus("idle");
@@ -523,6 +628,21 @@ function SendPage() {
               <span className="flex items-center gap-1.5">
                 <TabletSmartphone size={16} />
                 Send by Address
+              </span>
+            </button>
+            <button
+              className={`px-4 py-2 font-medium text-sm relative whitespace-nowrap ${
+                activeTab === "twitter"
+                  ? "text-emerald-400 border-b-2 border-emerald-400"
+                  : "text-gray-400 hover:text-gray-300"
+              }`}
+              onClick={() => handleTabChange("twitter")}
+            >
+              <span className="flex items-center gap-1.5">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/>
+                </svg>
+                Send to Twitter
               </span>
             </button>
           </div>
@@ -623,6 +743,102 @@ function SendPage() {
                     className="w-full p-3 rounded-md border border-zinc-700 bg-zinc-800 text-gray-200 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
                   />
                   <p className="text-xs text-gray-500">Enter a valid Solana wallet address</p>
+                </div>
+              </div>
+            )}
+            
+            {/* Twitter Tab Content */}
+            {activeTab === "twitter" && (
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <label htmlFor="twitterUsername" className="text-sm font-medium flex items-center text-gray-300">
+                    Twitter Username <span className="text-red-400 ml-1">*</span>
+                  </label>
+                  <div className="relative">
+                    <input
+                      id="twitterUsername"
+                      type="text"
+                      placeholder="@username or username"
+                      value={twitterUsername}
+                      onChange={(e) => {
+                        const value = e.target.value;
+                        setTwitterUsername(value);
+                        
+                        // Only clear user if they're actively changing the input significantly
+                        if (twitterUser && Math.abs(value.length - twitterUser.username.length) > 2) {
+                          setTwitterUser(null);
+                        }
+                        
+                        // Reset status to idle while typing
+                        if (value.length < 3) {
+                          setTwitterStatus("idle");
+                          setTwitterUser(null);
+                          setTwitterError(null);
+                        }
+                      }}
+                      onFocus={() => {
+                        // Don't trigger validation on focus
+                      }}
+                      autoComplete="off"
+                      className={`w-full p-3 rounded-md border ${
+                        twitterStatus === "valid" 
+                          ? "border-emerald-500 bg-emerald-900/20" 
+                          : twitterStatus === "invalid" 
+                            ? "border-red-500 bg-red-900/20" 
+                            : "border-zinc-700 bg-zinc-800"
+                      } text-gray-200 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500`}
+                      disabled={false}
+                    />
+                    <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
+                      {isValidatingTwitter ? (
+                        <RefreshCw size={16} className="animate-spin text-gray-400" />
+                      ) : twitterStatus === "valid" ? (
+                        <CheckCircle2 size={16} className="text-emerald-400" />
+                      ) : twitterStatus === "invalid" && twitterUsername.length >= 1 ? (
+                        <XCircle size={16} className="text-red-400" />
+                      ) : null}
+                    </div>
+                  </div>
+                  {twitterStatus === "valid" && !twitterUser && twitterUsername.length >= 3 && (
+                    <p className="text-xs text-emerald-400">Twitter user exists! Click 'Send to Twitter' to continue.</p>
+                  )}
+                  {twitterStatus === "invalid" && twitterUsername.length >= 3 && (
+                    <p className="text-xs text-red-400">{twitterError || "Twitter user not found or API issue. Try again later."}</p>
+                  )}
+                  {twitterUsername.length > 0 && twitterUsername.length < 3 && (
+                    <p className="text-xs text-gray-500">Type at least 3 characters to validate username</p>
+                  )}
+                  {twitterUser && (
+                    <div className="bg-blue-900/30 border border-blue-800 rounded-md p-3 text-sm text-blue-400 flex items-center">
+                      {twitterUser.profile_image_url && (
+                        <img 
+                          src={twitterUser.profile_image_url} 
+                          alt={`${twitterUser.username} profile`}
+                          className="w-8 h-8 rounded-full mr-3"
+                        />
+                      )}
+                      <div className="flex-1">
+                        <div className="font-medium text-white">{twitterUser.name}</div>
+                        <div className="text-xs">@{twitterUser.username}</div>
+                      </div>
+                      <Button 
+                        type="button"
+                        variant="ghost" 
+                        size="sm" 
+                        className="ml-auto text-xs hover:bg-blue-800/50"
+                        onClick={() => {
+                          setTwitterUsername("");
+                          setTwitterUser(null);
+                          setTwitterStatus("idle");
+                        }}
+                      >
+                        Clear
+                      </Button>
+                    </div>
+                  )}
+                  <p className="text-xs text-gray-500">
+                    🐦 Payment will be sent via Twitter DM. If they don&apos;t have a wallet, they&apos;ll get a claim link!
+                  </p>
                 </div>
               </div>
             )}
