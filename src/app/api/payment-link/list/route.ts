@@ -1,7 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth/next";
-import { authOptions } from "@/lib/auth";
+import { getUserFromRequest } from "@/lib/jwt";
 import prisma from "@/lib/prisma-client";
+
+// Handle OPTIONS request for CORS preflight
+export async function OPTIONS() {
+  return new NextResponse(null, {
+    status: 200,
+    headers: {
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'GET, OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+      'Access-Control-Allow-Credentials': 'true',
+    },
+  });
+}
 
 interface PaymentLinkType {
   id: string;
@@ -20,29 +32,20 @@ interface PaymentLinkType {
 }
 
 export async function GET(req: NextRequest) {
+  const startTime = Date.now();
+  
   try {
-    // Get the session from NextAuth
-    const session = await getServerSession(authOptions);
+    // Use optimized JWT authentication (same pattern as other endpoints)
+    const user = await getUserFromRequest(req);
     
-    if (!session?.user?.email) {
+    if (!user) {
       return NextResponse.json(
         { error: "You must be signed in to view payment links" },
         { status: 401 }
       );
     }
 
-    // Find the user
-    const user = await prisma.user.findUnique({
-      where: { email: session.user.email },
-      select: { id: true }
-    });
-
-    if (!user) {
-      return NextResponse.json(
-        { error: "User not found" },
-        { status: 404 }
-      );
-    }
+    console.log(`⚡ Authentication completed in ${Date.now() - startTime}ms`);
 
     // Get all payment links created by the user using raw query to avoid Prisma model issues
     const paymentLinks = await prisma.$queryRaw`
@@ -109,9 +112,13 @@ export async function GET(req: NextRequest) {
       });
     }
 
+    console.log(`📊 Data fetching completed in ${Date.now() - startTime}ms`);
+    console.log(`✅ Total API request time: ${Date.now() - startTime}ms (Auth: JWT)`);
+
     return NextResponse.json(updatedLinks);
   } catch (error) {
     console.error("Error fetching payment links:", error);
+    console.log(`❌ Payment links error in ${Date.now() - startTime}ms`);
     return NextResponse.json(
       { error: "Failed to fetch payment links" },
       { status: 500 }

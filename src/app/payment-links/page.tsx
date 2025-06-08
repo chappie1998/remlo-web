@@ -153,7 +153,7 @@ function PasscodeDialog({
 }
 
 // Enhanced Create Payment Link Form Component
-function CreatePaymentLinkForm() {
+function CreatePaymentLinkForm({ onLinkCreated }: { onLinkCreated: () => void }) {
   const [amount, setAmount] = useState("");
   const [tokenType, setTokenType] = useState("usds");
   const [note, setNote] = useState("");
@@ -231,6 +231,7 @@ function CreatePaymentLinkForm() {
       if (data.success) {
         setPaymentLink(data.paymentLink);
         toast.success("Payment link created successfully!");
+        onLinkCreated();
       } else {
         throw new Error(data.error || "Failed to create payment link");
       }
@@ -602,32 +603,12 @@ interface PaymentLink {
 }
 
 // Enhanced Active Payment Links Component
-function ActivePaymentLinks() {
-  const [links, setLinks] = useState<PaymentLink[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const router = useRouter();
-
-  useEffect(() => {
-    const fetchPaymentLinks = async () => {
-      try {
-        const response = await fetch('/api/payment-link/list');
-        if (!response.ok) {
-          throw new Error('Failed to fetch payment links');
-        }
-        const data = await response.json();
-        setLinks(data);
-      } catch (error) {
-        console.error('Error fetching payment links:', error);
-        toast.error('Failed to load payment links');
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    fetchPaymentLinks();
-  }, []);
-
+function ActivePaymentLinks({ links, isLoading, error, onRefresh }: {
+  links: PaymentLink[];
+  isLoading: boolean;
+  error: string | null;
+  onRefresh: () => void;
+}) {
   if (isLoading) {
     return (
       <div className="flex flex-col items-center justify-center py-12 space-y-4">
@@ -635,6 +616,28 @@ function ActivePaymentLinks() {
           <RefreshCw size={18} className="text-emerald-400 animate-spin" />
         </div>
         <p className="text-gray-400">Loading your payment links...</p>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="text-center py-16 space-y-6">
+        <div className="w-20 h-20 mx-auto rounded-full bg-red-900/20 flex items-center justify-center">
+          <AlertCircle size={32} className="text-red-400" />
+        </div>
+        <div className="space-y-2">
+          <h3 className="text-xl font-semibold">Failed to load payment links</h3>
+          <p className="text-gray-400 max-w-sm mx-auto">{error}</p>
+        </div>
+        <Button 
+          variant="outline" 
+          onClick={onRefresh}
+          className="border-zinc-700 hover:bg-zinc-800 h-11"
+        >
+          <RefreshCw size={16} className="mr-2" />
+          Try Again
+        </Button>
       </div>
     );
   }
@@ -686,8 +689,18 @@ function ActivePaymentLinks() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <h2 className="text-xl font-semibold">Your Payment Links</h2>
-        <div className="text-sm text-gray-400">
-          {links.length} link{links.length !== 1 ? 's' : ''}
+        <div className="flex items-center gap-3">
+          <div className="text-sm text-gray-400">
+            {links.length} link{links.length !== 1 ? 's' : ''}
+          </div>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={onRefresh}
+            className="h-8 w-8 p-0 text-gray-400 hover:text-emerald-400 hover:bg-zinc-800"
+          >
+            <RefreshCw size={16} />
+          </Button>
         </div>
       </div>
 
@@ -846,11 +859,41 @@ function PaymentLinksContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   
+  // Payment links state management at parent level
+  const [paymentLinks, setPaymentLinks] = useState<PaymentLink[]>([]);
+  const [isLoadingLinks, setIsLoadingLinks] = useState(false);
+  const [linksError, setLinksError] = useState<string | null>(null);
+  const [linksFetched, setLinksFetched] = useState(false);
+  
   // Initialize tab from URL parameter or default to "create"
   const [currentTab, setCurrentTab] = useState(() => {
     const tabParam = searchParams.get('tab');
     return (tabParam === 'create' || tabParam === 'active') ? tabParam : 'create';
   });
+
+  // Function to fetch payment links (only when needed)
+  const fetchPaymentLinks = async () => {
+    if (isLoadingLinks || linksFetched) return; // Prevent duplicate calls
+    
+    setIsLoadingLinks(true);
+    setLinksError(null);
+    
+    try {
+      const response = await fetch('/api/payment-link/list');
+      if (!response.ok) {
+        throw new Error('Failed to fetch payment links');
+      }
+      const data = await response.json();
+      setPaymentLinks(data);
+      setLinksFetched(true);
+    } catch (error) {
+      console.error('Error fetching payment links:', error);
+      setLinksError('Failed to load payment links');
+      toast.error('Failed to load payment links');
+    } finally {
+      setIsLoadingLinks(false);
+    }
+  };
 
   // Update URL when tab changes
   const handleTabChange = (newTab: string) => {
@@ -858,15 +901,25 @@ function PaymentLinksContent() {
     const newSearchParams = new URLSearchParams(searchParams.toString());
     newSearchParams.set('tab', newTab);
     router.replace(`/payment-links?${newSearchParams.toString()}`, { scroll: false });
+    
+    // Only fetch links when switching to active tab and not already fetched
+    if (newTab === 'active' && !linksFetched && !isLoadingLinks) {
+      fetchPaymentLinks();
+    }
   };
 
-  // Update tab if URL parameter changes
+  // Update tab if URL parameter changes (but don't trigger API calls)
   useEffect(() => {
     const tabParam = searchParams.get('tab');
     if (tabParam && (tabParam === 'create' || tabParam === 'active') && tabParam !== currentTab) {
       setCurrentTab(tabParam);
+      
+      // Only fetch links when switching to active tab and not already fetched
+      if (tabParam === 'active' && !linksFetched && !isLoadingLinks) {
+        fetchPaymentLinks();
+      }
     }
-  }, [searchParams, currentTab]);
+  }, [searchParams, currentTab, linksFetched, isLoadingLinks]);
 
   // Redirect to login if not authenticated
   useEffect(() => {
@@ -874,6 +927,13 @@ function PaymentLinksContent() {
       router.push("/");
     }
   }, [status, router]);
+
+  // Function to refresh payment links (for when a new link is created)
+  const refreshPaymentLinks = () => {
+    setLinksFetched(false);
+    setPaymentLinks([]);
+    fetchPaymentLinks();
+  };
 
   if (status === "loading") {
     return (
@@ -951,11 +1011,16 @@ function PaymentLinksContent() {
             </div>
             
             <TabsContent value="create" className="mt-0">
-              <CreatePaymentLinkForm />
+              <CreatePaymentLinkForm onLinkCreated={refreshPaymentLinks} />
             </TabsContent>
             
             <TabsContent value="active" className="mt-0">
-              <ActivePaymentLinks />
+              <ActivePaymentLinks 
+                links={paymentLinks}
+                isLoading={isLoadingLinks}
+                error={linksError}
+                onRefresh={refreshPaymentLinks}
+              />
             </TabsContent>
           </Tabs>
         </div>
