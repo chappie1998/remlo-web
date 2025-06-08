@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, Suspense } from "react";
 import { useSession } from "next-auth/react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { useOkto, tokenTransfer } from "@okto_web3/react-sdk";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import Header from "@/components/header";
@@ -18,9 +19,10 @@ import {
   TabletSmartphone,
   CircleDashed
 } from "lucide-react";
-import { USDsIcon, USDCIcon } from "@/components/icons";
+import { USDsIcon, USDCIcon, RemloIcon } from "@/components/icons";
 import { shortenAddress, isValidPasscode } from "@/lib/utils";
 import { isValidSolanaAddress } from "@/lib/solana";
+import { isValidBaseAddress } from "@/lib/base-config";
 import Link from "next/link";
 import debounce from "lodash/debounce";
 
@@ -55,6 +57,7 @@ function SendPage() {
   const { data: session, status } = useSession();
   const router = useRouter();
   const searchParams = useSearchParams();
+  const oktoClient = useOkto();
   
   // Tab control - read initial value from URL query parameter
   const [activeTab, setActiveTab] = useState<"username" | "address">(() => {
@@ -66,7 +69,8 @@ function SendPage() {
   const [username, setUsername] = useState("");
   const [recipient, setRecipient] = useState("");
   const [amount, setAmount] = useState("");
-  const [tokenType, setTokenType] = useState("usd"); // "usd" or "usdc"
+  const [tokenType, setTokenType] = useState("usd"); // "usd", "usdc", or "eth"
+  const [blockchain, setBlockchain] = useState<"solana" | "base">("solana");
   const [passcode, setPasscode] = useState("");
   
   // UI states
@@ -76,13 +80,67 @@ function SendPage() {
   const [error, setError] = useState("");
   
   // Data states
-  const [foundUser, setFoundUser] = useState<{ username: string, solanaAddress: string } | null>(null);
+  const [foundUser, setFoundUser] = useState<{ username: string, solanaAddress: string, baseAddress?: string } | null>(null);
+  
+  // Solana balances
   const [usdsBalance, setUsdsBalance] = useState("0.0");
-  const [usdcBalance, setUsdcBalance] = useState("0.0");
+  const [solanaUsdcBalance, setSolanaUsdcBalance] = useState("0.0");
+  
+  // Base balances
+  const [ethBalance, setEthBalance] = useState("0.0");
+  const [baseUsdcBalance, setBaseUsdcBalance] = useState("0.0");
   
   // Username validation states
   const [isValidatingUsername, setIsValidatingUsername] = useState(false);
   const [usernameStatus, setUsernameStatus] = useState<"idle" | "validating" | "valid" | "invalid">("idle");
+  
+  // Get available tokens based on selected blockchain
+  const getAvailableTokens = () => {
+    if (blockchain === "solana") {
+      return [
+        { symbol: "usd", name: "USDs", icon: <USDsIcon width={20} height={20} /> },
+        { symbol: "usdc", name: "USDC", icon: <USDCIcon width={20} height={20} /> },
+      ];
+    } else {
+      return [
+        { symbol: "usdc", name: "USDC", icon: <USDCIcon width={20} height={20} /> },
+        { symbol: "eth", name: "ETH", icon: <RemloIcon width={20} height={20} /> },
+      ];
+    }
+  };
+  
+  // Get current balance for the selected token
+  const getCurrentBalance = () => {
+    if (blockchain === "solana") {
+      return tokenType === "usdc" ? solanaUsdcBalance : usdsBalance;
+    } else {
+      return tokenType === "usdc" ? baseUsdcBalance : ethBalance;
+    }
+  };
+  
+  // Handle blockchain change
+  const handleBlockchainChange = (newBlockchain: "solana" | "base") => {
+    setBlockchain(newBlockchain);
+    // Reset token type to first available option
+    const availableTokens = newBlockchain === "solana" 
+      ? ["usd", "usdc"] 
+      : ["usdc", "eth"];
+    setTokenType(availableTokens[0]);
+    setError("");
+    
+    // Update recipient address if we have a found user
+    if (foundUser && activeTab === "username") {
+      const newAddress = newBlockchain === "base" ? foundUser.baseAddress : foundUser.solanaAddress;
+      if (newAddress) {
+        setRecipient(newAddress);
+      }
+    }
+  };
+  
+  // Address validation based on blockchain
+  const isValidAddress = (address: string) => {
+    return blockchain === "solana" ? isValidSolanaAddress(address) : isValidBaseAddress(address);
+  };
   
   // Debounced username validation function
   const debouncedValidateUsername = useCallback(
@@ -110,7 +168,11 @@ function SendPage() {
 
         if (response.ok && data.found) {
           setUsernameStatus("valid");
-          setFoundUser({ username: data.username, solanaAddress: data.solanaAddress });
+          setFoundUser({ 
+            username: data.username, 
+            solanaAddress: data.solanaAddress,
+            baseAddress: data.baseAddress 
+          });
         } else {
           setUsernameStatus("invalid");
           setFoundUser(null);
@@ -163,19 +225,37 @@ function SendPage() {
       const response = await fetch("/api/wallet/overview");
       if (response.ok) {
         const data = await response.json();
-        setUsdcBalance(data.balances.usdc.formattedBalance);
-        setUsdsBalance(data.balances.usds.formattedBalance);
+        
+        // Handle nested structure (solana/base balances)
+        if (data.balances.solana) {
+          setSolanaUsdcBalance(data.balances.solana.usdc.formattedBalance);
+          setUsdsBalance(data.balances.solana.usds.formattedBalance);
+        } else {
+          // Fallback for old structure
+          setSolanaUsdcBalance(data.balances.usdc.formattedBalance);
+          setUsdsBalance(data.balances.usds.formattedBalance);
+        }
+        
+        // Set Base balances if available
+        if (data.balances.base) {
+          setEthBalance(data.balances.base.eth.formattedBalance);
+          setBaseUsdcBalance(data.balances.base.usdc.formattedBalance);
+        }
       } else {
         console.error("Failed to fetch wallet overview");
         // Set default values if API fails
-        setUsdcBalance("0.000000");
+        setSolanaUsdcBalance("0.000000");
         setUsdsBalance("0.000000");
+        setEthBalance("0.000000");
+        setBaseUsdcBalance("0.000000");
       }
     } catch (error) {
       console.error("Error fetching balances:", error);
       // Set default values if error occurs
-      setUsdcBalance("0.000000");
+      setSolanaUsdcBalance("0.000000");
       setUsdsBalance("0.000000");
+      setEthBalance("0.000000");
+      setBaseUsdcBalance("0.000000");
     } finally {
       setIsLoading(false);
     }
@@ -209,11 +289,15 @@ function SendPage() {
         throw new Error(data.error || "Failed to find user");
       }
 
-      // Set the recipient address from the username lookup
-      setRecipient(data.solanaAddress);
+      // Set the recipient address from the username lookup based on blockchain
+      const recipientAddr = blockchain === "base" ? data.baseAddress : data.solanaAddress;
+      if (recipientAddr) {
+        setRecipient(recipientAddr);
+      }
       setFoundUser({
         username: data.username,
-        solanaAddress: data.solanaAddress
+        solanaAddress: data.solanaAddress,
+        baseAddress: data.baseAddress
       });
       
       toast.success(`Found user ${data.username}`);
@@ -266,11 +350,15 @@ function SendPage() {
           // Set the found user if lookup is successful
           setFoundUser({
             username: data.username,
-            solanaAddress: data.solanaAddress
+            solanaAddress: data.solanaAddress,
+            baseAddress: data.baseAddress
           });
           
-          // Also update the recipient field with the address for consistency
-          setRecipient(data.solanaAddress);
+          // Also update the recipient field with the address for consistency based on blockchain
+          const recipientAddr = blockchain === "base" ? data.baseAddress : data.solanaAddress;
+          if (recipientAddr) {
+            setRecipient(recipientAddr);
+          }
           
         } catch (err) {
           const errorMessage = err instanceof Error ? err.message : "Failed to verify username";
@@ -287,8 +375,8 @@ function SendPage() {
         return false;
       }
 
-      if (!isValidSolanaAddress(recipient)) {
-        setError("Invalid Solana address");
+      if (!isValidAddress(recipient)) {
+        setError(`Invalid ${blockchain === "solana" ? "Solana" : "Base"} address`);
         return false;
       }
     }
@@ -300,22 +388,13 @@ function SendPage() {
     }
 
     // Check if sufficient balance based on selected token type
-    const balance = tokenType === "usdc" ? usdcBalance : usdsBalance;
+    const balance = tokenType === "usdc" ? (blockchain === "solana" ? solanaUsdcBalance : baseUsdcBalance) : usdsBalance;
     if (Number(amount) > Number(balance)) {
       setError(`Insufficient ${tokenType.toUpperCase()} balance`);
       return false;
     }
 
     return true;
-  };
-  
-  // Handle form submission
-  const handleFormSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    
-    if (await validateForm()) {
-      setShowPasscodeModal(true);
-    }
   };
   
   // Handle the send transaction
@@ -414,6 +493,128 @@ function SendPage() {
     }
   };
   
+  // Handle Base transaction (gas-free via Okto)
+  const handleBaseSendTransaction = async () => {
+    setIsLoading(true);
+    setError("");
+
+    try {
+      // Get recipient address - use appropriate address for the blockchain
+      const recipientAddress = activeTab === "username" && foundUser 
+        ? (blockchain === "base" ? foundUser.baseAddress : foundUser.solanaAddress)
+        : recipient;
+
+      // Validate that the recipient has the appropriate address for the selected blockchain
+      if (activeTab === "username" && foundUser && blockchain === "base" && !foundUser.baseAddress) {
+        throw new Error(`User ${foundUser.username} doesn't have a Base wallet address. Please ask them to set up their universal wallet.`);
+      }
+
+      // Prepare the Base transaction
+      const prepareResponse = await fetch("/api/wallet/send-base-transaction", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          to: recipientAddress,
+          amount,
+          tokenSymbol: tokenType === "usdc" ? "USDC" : "ETH",
+          username: foundUser?.username,
+        }),
+      });
+
+      const prepareData = await prepareResponse.json();
+
+      if (!prepareResponse.ok) {
+        throw new Error(prepareData.error || "Failed to prepare Base transaction");
+      }
+
+      // Execute the transaction using Okto SDK
+      console.log("🚀 Executing Base transfer with Okto:", prepareData.transferParams);
+      console.log("🔧 Okto client status:", oktoClient);
+      
+      if (!oktoClient) {
+        throw new Error("Okto client not initialized. Please refresh the page and try again.");
+      }
+      
+      let jobId;
+      try {
+        // For ETH transfers, token should be empty string, for ERC20 tokens use the token address
+        const tokenParam = prepareData.transferParams.token || "";
+        
+        jobId = await tokenTransfer(oktoClient, {
+          amount: BigInt(prepareData.transferParams.amount), // Convert string back to BigInt
+          recipient: prepareData.transferParams.recipient,
+          token: tokenParam,
+          caip2Id: prepareData.transferParams.caip2Id,
+        });
+        console.log("✅ Okto transfer job created:", jobId);
+      } catch (oktoError) {
+        console.error("❌ Okto transfer failed:", oktoError);
+        throw new Error(`Okto transfer failed: ${oktoError instanceof Error ? oktoError.message : 'Unknown error'}`);
+      }
+      
+      if (!jobId) {
+        throw new Error("Okto transfer failed - no job ID returned");
+      }
+
+      // Update the transaction status
+      const updateResponse = await fetch("/api/wallet/update-base-transaction", {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          transactionId: prepareData.transactionId,
+          status: "pending",
+          oktoJobId: jobId,
+        }),
+      });
+      
+      if (!updateResponse.ok) {
+        const updateError = await updateResponse.json();
+        console.error("Failed to update transaction status:", updateError);
+        // Don't throw here since the transfer might have been initiated
+      }
+
+      toast.success(`Base transfer initiated successfully! Job ID: ${jobId} (Gas-free via Okto)`);
+      setShowPasscodeModal(false);
+      setPasscode("");
+      setError("");
+      setUsername("");
+      setRecipient("");
+      setFoundUser(null);
+      setAmount("");
+      
+      setTimeout(() => {
+        router.push("/wallet?refresh=true");
+      }, 1500);
+
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : "Base transaction failed";
+      setError(errorMessage);
+      toast.error(errorMessage);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+  
+  // Modified form submit handler
+  const handleFormSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    const isValid = await validateForm();
+    if (isValid) {
+      if (blockchain === "base") {
+        // For Base, no passcode needed (gas-free via Okto)
+        await handleBaseSendTransaction();
+      } else {
+        // For Solana, show passcode modal
+        setShowPasscodeModal(true);
+      }
+    }
+  };
+  
   // Handle tab change with URL update
   const handleTabChange = (tab: "username" | "address") => {
     setActiveTab(tab);
@@ -493,7 +694,42 @@ function SendPage() {
             </div>
             <div>
               <h1 className="text-xl font-semibold text-white">Send Money</h1>
-              <p className="text-sm text-gray-400">Send SOL, USDC, or USDs to any wallet</p>
+              <p className="text-sm text-gray-400">Send tokens on Solana or Base blockchain</p>
+            </div>
+          </div>
+          
+          {/* Blockchain Selection */}
+          <div className="mb-6">
+            <label className="text-sm font-medium flex items-center text-gray-300 mb-3">
+              Blockchain <span className="text-red-400 ml-1">*</span>
+            </label>
+            <div className="flex items-center space-x-2">
+              <Button
+                type="button"
+                variant={blockchain === "solana" ? "default" : "outline"}
+                className={`flex-1 flex items-center justify-center ${
+                  blockchain === "solana" 
+                    ? "bg-purple-600 hover:bg-purple-700" 
+                    : "bg-zinc-800 border-zinc-700 text-gray-300 hover:bg-zinc-700"
+                }`}
+                onClick={() => handleBlockchainChange("solana")}
+              >
+                <RemloIcon width={16} height={16} className="mr-2" />
+                Solana
+              </Button>
+              <Button
+                type="button"
+                variant={blockchain === "base" ? "default" : "outline"}
+                className={`flex-1 flex items-center justify-center ${
+                  blockchain === "base" 
+                    ? "bg-blue-600 hover:bg-blue-700" 
+                    : "bg-zinc-800 border-zinc-700 text-gray-300 hover:bg-zinc-700"
+                }`}
+                onClick={() => handleBlockchainChange("base")}
+              >
+                <RemloIcon width={16} height={16} className="mr-2" />
+                Base {blockchain === "base" && <span className="ml-1 text-xs">(Gas-free)</span>}
+              </Button>
             </div>
           </div>
           
@@ -612,59 +848,49 @@ function SendPage() {
               <div className="space-y-4">
                 <div className="space-y-2">
                   <label htmlFor="recipient" className="text-sm font-medium flex items-center text-gray-300">
-                    Recipient Solana Address <span className="text-red-400 ml-1">*</span>
+                    Recipient {blockchain === "solana" ? "Solana" : "Base"} Address <span className="text-red-400 ml-1">*</span>
                   </label>
                   <input
                     id="recipient"
                     type="text"
-                    placeholder="Enter Solana address"
+                    placeholder={`Enter ${blockchain === "solana" ? "Solana" : "Base"} address`}
                     value={recipient}
                     onChange={handleRecipientChange}
                     className="w-full p-3 rounded-md border border-zinc-700 bg-zinc-800 text-gray-200 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
                   />
-                  <p className="text-xs text-gray-500">Enter a valid Solana wallet address</p>
+                  <p className="text-xs text-gray-500">Enter a valid {blockchain === "solana" ? "Solana" : "Base"} wallet address</p>
                 </div>
               </div>
             )}
             
             {/* Common fields for both tabs */}
             <div className="pt-2 border-t border-zinc-800">
-              {/* Token selection - one-click buttons */}
+              {/* Token selection - dynamic based on blockchain */}
               <div className="space-y-2 mb-4">
                 <label className="text-sm font-medium flex items-center text-gray-300">
                   Token <span className="text-red-400 ml-1">*</span>
                 </label>
                 <div className="flex items-center space-x-2">
-                  <Button
-                    type="button"
-                    variant={tokenType === "usd" ? "default" : "outline"}
-                    className={`flex-1 flex items-center justify-center ${
-                      tokenType === "usd" 
-                        ? "bg-emerald-600 hover:bg-emerald-700" 
-                        : "bg-zinc-800 border-zinc-700 text-gray-300 hover:bg-zinc-700"
-                    }`}
-                    onClick={() => setTokenType("usd")}
-                  >
-                    <USDsIcon width={16} height={16} className="mr-2" />
-                    USDs
-                  </Button>
-                  <Button
-                    type="button"
-                    variant={tokenType === "usdc" ? "default" : "outline"}
-                    className={`flex-1 flex items-center justify-center ${
-                      tokenType === "usdc" 
-                        ? "bg-blue-600 hover:bg-blue-700" 
-                        : "bg-zinc-800 border-zinc-700 text-gray-300 hover:bg-zinc-700"
-                    }`}
-                    onClick={() => setTokenType("usdc")}
-                  >
-                    <USDCIcon width={16} height={16} className="mr-2" />
-                    USDC
-                  </Button>
+                  {getAvailableTokens().map((token) => (
+                    <Button
+                      key={token.symbol}
+                      type="button"
+                      variant={tokenType === token.symbol ? "default" : "outline"}
+                      className={`flex-1 flex items-center justify-center ${
+                        tokenType === token.symbol 
+                          ? "bg-emerald-600 hover:bg-emerald-700" 
+                          : "bg-zinc-800 border-zinc-700 text-gray-300 hover:bg-zinc-700"
+                      }`}
+                      onClick={() => setTokenType(token.symbol)}
+                    >
+                      {token.icon}
+                      {token.name}
+                    </Button>
+                  ))}
                 </div>
                 <p className="text-xs text-gray-500 flex justify-between">
                   <span>Selected token to send</span>
-                  <span>Balance: {tokenType === "usd" ? usdsBalance : usdcBalance}</span>
+                  <span>Balance: {getCurrentBalance()}</span>
                 </p>
               </div>
               
@@ -703,15 +929,15 @@ function SendPage() {
                 className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white"
                 disabled={activeTab === "username" && (!foundUser || usernameStatus !== "valid")}
               >
-                Review & Send
+                {blockchain === "base" ? "Send (Gas-free)" : "Review & Send"}
               </Button>
             </div>
           </form>
         </div>
       </main>
       
-      {/* Passcode Modal */}
-      {showPasscodeModal && (
+      {/* Passcode Modal - only for Solana transactions */}
+      {showPasscodeModal && blockchain === "solana" && (
         <div className="fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-50 backdrop-blur-sm">
           <div className="bg-zinc-900 rounded-xl p-6 w-full max-w-md shadow-xl border border-zinc-800 animate-in fade-in-0 zoom-in-95">
             <div className="flex items-center mb-6">

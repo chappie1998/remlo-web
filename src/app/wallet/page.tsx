@@ -1191,7 +1191,7 @@ function WalletAddressCard({ solanaAddress, baseAddress }: { solanaAddress: stri
           <AddressRow network="Solana" address={solanaAddress} explorerUrl={`https://solscan.io/address/${solanaAddress}?cluster=devnet`} />
         )}
         {baseAddress && (
-          <AddressRow network="Base" address={baseAddress} explorerUrl={`https://basescan.org/address/${baseAddress}`} />
+          <AddressRow network="Base" address={baseAddress} explorerUrl={`https://sepolia.basescan.org/address/${baseAddress}`} />
         )}
       </div>
     </div>

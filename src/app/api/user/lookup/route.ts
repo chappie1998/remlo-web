@@ -112,6 +112,7 @@ export async function POST(req: NextRequest) {
         id: true,
         username: true,
         solanaAddress: true,
+        baseAddress: true, // Include Base address for cross-chain transfers
         hasPasscode: true // Include to verify user has completed setup
       }
     });
@@ -129,6 +130,7 @@ export async function POST(req: NextRequest) {
         found: true,
         username: user.username,
         solanaAddress: user.solanaAddress,
+        baseAddress: user.baseAddress,
       };
     }
 

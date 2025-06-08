@@ -15,7 +15,7 @@ export const BASE_CONFIG = {
   
   TOKENS: {
     USDC: {
-      address: "0x323e78f944A9a1FcF3a10efcC5319DBb0bB6e673", // Your deployed USDC
+      address: process.env.NEXT_PUBLIC_BASE_USDC_ADDRESS || "0x323e78f944A9a1FcF3a10efcC5319DBb0bB6e673", // Default to custom token if not in env
       decimals: 6,
       symbol: "USDC",
       name: "USD Coin",
