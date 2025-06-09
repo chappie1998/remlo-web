@@ -107,7 +107,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Validate Twitter username
+    // Validate Twitter username - COMMENTED OUT FOR NOW
     console.log('🔍 Validating Twitter username:', twitterUsername);
     const twitterValidation = await validateTwitterUsername(twitterUsername);
     
@@ -118,14 +118,14 @@ export async function POST(req: NextRequest) {
     //   );
     // }
 
-    // Use validation result if available, otherwise create mock user for rate-limited scenarios
+    // Use validated user if available, otherwise create mock user for processing
     const twitterUser = twitterValidation.user || {
-      id: `mock_${twitterUsername}`,
+      id: `temp_${twitterUsername}`,
       username: twitterUsername,
       name: twitterUsername,
       profile_image_url: `https://via.placeholder.com/40?text=${twitterUsername[0].toUpperCase()}`
     };
-    console.log('✅ Twitter user found:', twitterUser.username);
+    console.log('✅ Twitter user processed:', twitterUser.username);
 
     // Check if this Twitter user already has an account in our system
     // Look for exact Twitter username match in our username field
@@ -331,22 +331,26 @@ async function createPaymentLink({
     const shortId = `pl_${generateRandomUsername().slice(0, 8)}`;
     const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
     
-    // For now, create a simple payment link record
-    // You might want to integrate with your existing payment link system
+    // Create payment link with Twitter metadata
     const paymentLink = await prisma.paymentLink.create({
       data: {
         shortId,
         creatorId: senderUser.id,
         amount: amount.toString(),
         tokenType,
-        note: note || `Payment from ${senderUser.name || senderUser.username || 'Remlo user'} to @${twitterUser.username} via Twitter`,
+        note: note || `Twitter payment to @${twitterUser.username}`,
         status: "active",
-        verificationData: "", // You might want to add verification
+        verificationData: JSON.stringify({
+          twitterUsername: twitterUser.username,
+          twitterUserId: twitterUser.id,
+          twitterName: twitterUser.name,
+          isTwitterPayment: true
+        }),
         expiresAt,
       },
     });
     
-    const paymentUrl = `${process.env.NEXTAUTH_URL || 'http://localhost:3000'}/claim/${shortId}`;
+    const paymentUrl = `${process.env.NEXTAUTH_URL || 'http://localhost:3000'}/payment-link/${shortId}`;
     
     // Send DM with payment link
     const message = createPaymentMessage(

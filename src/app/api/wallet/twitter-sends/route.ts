@@ -116,9 +116,12 @@ export async function GET(req: NextRequest) {
     const paymentLinks = await prisma.paymentLink.findMany({
       where: {
         creatorId: user.id,
-        note: {
-          contains: 'via Twitter'
-        }
+        OR: [
+          { verificationData: { contains: '"isTwitterPayment":true' } }, // New Twitter payment links
+          { note: { contains: 'via Twitter' } }, // Legacy format
+          { note: { contains: 'Twitter payment' } }, // New format
+          { note: { contains: '@' } } // Fallback to any @mention
+        ]
       },
       orderBy: {
         createdAt: 'desc'
@@ -131,27 +134,53 @@ export async function GET(req: NextRequest) {
 
     // Parse and add payment links
     paymentLinks.forEach(pl => {
-      // Extract Twitter username from note if possible
-      const noteMatch = pl.note?.match(/Payment from .+ to @?(\w+) via Twitter/) || 
-                       pl.note?.match(/via Twitter to @?(\w+)/) ||
-                       pl.note?.match(/Twitter user @?(\w+)/);
+      let twitterUsername = 'Unknown';
+      let isTwitterPayment = false;
       
-      const twitterUsername = noteMatch?.[1] || 'Unknown';
-
-      twitterSends.push({
-        id: pl.id,
-        type: 'payment_link',
-        twitterUsername,
-        amount: pl.amount,
-        tokenType: pl.tokenType,
-        note: pl.note || undefined,
-        status: pl.status,
-        createdAt: pl.createdAt,
-        paymentUrl: `${process.env.NEXTAUTH_URL || 'http://localhost:3000'}/payment-link/${pl.shortId}`,
-        claimedAt: pl.claimedAt || undefined,
-        claimedBy: pl.claimedBy || undefined,
-        dmSent: true // Assume DM was sent when payment link was created
-      });
+      // First, try to extract from verificationData (more reliable)
+      try {
+        if (pl.verificationData) {
+          const verification = JSON.parse(pl.verificationData);
+          if (verification.isTwitterPayment && verification.twitterUsername) {
+            twitterUsername = verification.twitterUsername;
+            isTwitterPayment = true;
+          }
+        }
+      } catch (error) {
+        // Ignore JSON parse errors and fall back to note parsing
+      }
+      
+      // If not found in verificationData, extract from note with multiple patterns
+      if (!isTwitterPayment) {
+        const noteMatch = pl.note?.match(/Twitter payment to @?(\w+)/) ||
+                         pl.note?.match(/Payment from .+ to @?(\w+) via Twitter/) || 
+                         pl.note?.match(/via Twitter to @?(\w+)/) ||
+                         pl.note?.match(/Twitter user @?(\w+)/) ||
+                         pl.note?.match(/@(\w+)/); // Fallback to any @mention
+        
+        if (noteMatch) {
+          twitterUsername = noteMatch[1];
+          isTwitterPayment = true;
+        }
+      }
+      
+      // Only include if we identified this as a Twitter payment
+      if (isTwitterPayment && twitterUsername !== 'Unknown') {
+        twitterSends.push({
+          id: pl.id,
+          type: 'payment_link',
+          twitterUsername,
+          amount: pl.amount,
+          tokenType: pl.tokenType,
+          note: pl.note || undefined,
+          status: pl.status,
+          createdAt: pl.createdAt,
+          paymentUrl: `${process.env.NEXTAUTH_URL || 'http://localhost:3000'}/payment-link/${pl.shortId}`,
+          claimedAt: pl.claimedAt || undefined,
+          claimedBy: pl.claimedBy || undefined,
+          dmSent: true // Assume DM was sent when payment link was created
+        });
+      }
     });
 
     // Sort all sends by creation date

@@ -1,5 +1,24 @@
 import { NextRequest, NextResponse } from "next/server";
-import { validateTwitterUsername } from "@/lib/twitter";
+import { validateTwitterUsername, getTwitterCacheStats } from "@/lib/twitter";
+
+export async function GET(req: NextRequest) {
+  try {
+    // Return cache statistics for debugging
+    const stats = getTwitterCacheStats();
+    
+    return NextResponse.json({
+      success: true,
+      cache: stats
+    });
+
+  } catch (error) {
+    console.error("Error getting Twitter cache stats:", error);
+    return NextResponse.json(
+      { error: "Internal server error" },
+      { status: 500 }
+    );
+  }
+}
 
 export async function POST(req: NextRequest) {
   try {

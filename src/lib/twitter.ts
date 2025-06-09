@@ -14,81 +14,93 @@ interface TwitterAPIResponse {
 const TWITTER_BEARER_TOKEN = process.env.TWITTER_BEARER_TOKEN;
 const TWITTER_API_BASE = 'https://api.twitter.com/2';
 
-// Simple cache to prevent rapid successive calls and handle rate limits
-const validationCache = new Map<string, { result: any; timestamp: number }>();
-const CACHE_DURATION = 30000; // 30 seconds
+// Enhanced cache with different types of results
+interface CacheEntry {
+  result: {
+    valid: boolean;
+    user?: TwitterUser;
+    error?: string;
+  };
+  timestamp: number;
+  type: 'api_success' | 'api_failure' | 'rate_limited' | 'format_error';
+}
+
+const validationCache = new Map<string, CacheEntry>();
+const CACHE_DURATIONS = {
+  api_success: 5 * 60 * 1000,    // 5 minutes for successful API calls
+  api_failure: 2 * 60 * 1000,    // 2 minutes for failed API calls (user not found)
+  rate_limited: 60 * 1000,       // 1 minute for rate limited responses
+  format_error: 10 * 60 * 1000,  // 10 minutes for format errors
+};
 
 /**
- * Validate if a Twitter username exists
+ * Enhanced Twitter username validation with proper caching and no fallback validation
  */
 export async function validateTwitterUsername(username: string): Promise<{
   valid: boolean;
   user?: TwitterUser;
   error?: string;
 }> {
-  // Remove @ if present
-  const cleanUsername = username.replace(/^@/, '');
+  // Remove @ if present and clean username
+  const cleanUsername = username.replace(/^@/, '').trim();
   
-  // Check cache first to prevent rapid successive calls
+  // Basic format validation
+  if (!cleanUsername || cleanUsername.length < 1) {
+    return { valid: false, error: 'Invalid username format' };
+  }
+
+  if (cleanUsername.length > 15) {
+    return { valid: false, error: 'Twitter usernames cannot exceed 15 characters' };
+  }
+
+  // Check if it's a valid Twitter username format
+  const twitterUsernameRegex = /^[a-zA-Z0-9_]{1,15}$/;
+  if (!twitterUsernameRegex.test(cleanUsername)) {
+    return { 
+      valid: false, 
+      error: 'Invalid Twitter username format (1-15 characters, letters, numbers, underscore only)' 
+    };
+  }
+
+  // Check cache first
   const cacheKey = cleanUsername.toLowerCase();
   const cached = validationCache.get(cacheKey);
   
-  if (cached && Date.now() - cached.timestamp < CACHE_DURATION) {
-    console.log(`📋 Using cached result for ${cleanUsername}`);
-    return cached.result;
+  if (cached) {
+    const cacheAge = Date.now() - cached.timestamp;
+    const maxAge = CACHE_DURATIONS[cached.type];
+    
+    if (cacheAge < maxAge) {
+      console.log(`📋 Using cached result for ${cleanUsername} (${cached.type}, age: ${Math.round(cacheAge / 1000)}s)`);
+      return cached.result;
+    } else {
+      // Remove expired cache entry
+      validationCache.delete(cacheKey);
+    }
   }
 
+  // If no API token is configured, we cannot validate
   if (!TWITTER_BEARER_TOKEN) {
-    // Twitter API not configured - provide limited validation
-    console.log('Twitter API not configured, checking format only');
-    
-    if (!cleanUsername || cleanUsername.length < 1) {
-      return { valid: false, error: 'Invalid username format' };
-    }
-
-    // Check if it's a valid Twitter username format
-    const twitterUsernameRegex = /^[a-zA-Z0-9_]{1,15}$/;
-    
-    if (!twitterUsernameRegex.test(cleanUsername)) {
-      const result = { valid: false, error: 'Invalid Twitter username format (1-15 characters, letters, numbers, underscore only)' };
-      validationCache.set(cacheKey, { result, timestamp: Date.now() });
-      return result;
-    }
-
-    // Known test usernames for demo purposes
-    const knownTestUsers = ['elonmusk', 'twitter', 'jack', 'sundarpichai', 'tim_cook'];
-    
-    if (knownTestUsers.includes(cleanUsername.toLowerCase())) {
-      const result = {
-        valid: true,
-        user: {
-          id: `demo_${cleanUsername}`,
-          username: cleanUsername,
-          name: cleanUsername,
-          profile_image_url: `https://via.placeholder.com/40?text=${cleanUsername[0].toUpperCase()}`
-        }
-      };
-      validationCache.set(cacheKey, { result, timestamp: Date.now() });
-      return result;
-    }
-
-    // For unknown usernames, indicate we can't verify without API
     const result = { 
       valid: false, 
       error: 'Twitter API not configured. Cannot verify if this username exists.' 
     };
     
-    validationCache.set(cacheKey, { result, timestamp: Date.now() });
+    validationCache.set(cacheKey, {
+      result,
+      timestamp: Date.now(),
+      type: 'format_error'
+    });
+    
     return result;
   }
 
-  if (!cleanUsername || cleanUsername.length < 1) {
-    return { valid: false, error: 'Invalid username format' };
-  }
-
+  // Make API call to validate username
   try {
+    console.log(`🔍 Making Twitter API call for ${cleanUsername}`);
+    
     const response = await fetch(
-      `${TWITTER_API_BASE}/users/by/username/${cleanUsername}?user.fields=profile_image_url`,
+      `${TWITTER_API_BASE}/users/by/username/${cleanUsername}?user.fields=profile_image_url,name`,
       {
         headers: {
           'Authorization': `Bearer ${TWITTER_BEARER_TOKEN}`,
@@ -100,43 +112,108 @@ export async function validateTwitterUsername(username: string): Promise<{
     const data: TwitterAPIResponse = await response.json();
 
     if (response.status === 429) {
-      // Rate limit exceeded - cannot verify existence
+      // Rate limit exceeded - DO NOT VALIDATE AS SUCCESSFUL
       console.log('Twitter API rate limit exceeded, cannot verify account existence');
       
-      return {
+      const result = {
         valid: false,
         error: 'Twitter API rate limited. Please try again in a few minutes.',
       };
+
+      validationCache.set(cacheKey, {
+        result,
+        timestamp: Date.now(),
+        type: 'rate_limited'
+      });
+
+      return result;
     }
 
-    let result;
     if (response.ok && data.data) {
-      result = {
+      // User found successfully
+      const result = {
         valid: true,
         user: data.data,
       };
-    } else {
-      result = {
-        valid: false,
-        error: data.errors?.[0]?.detail || 'User not found',
-      };
-    }
 
-    // Cache the result
-    validationCache.set(cacheKey, { result, timestamp: Date.now() });
-    return result;
+      console.log(`✅ Twitter user found: @${data.data.username} (${data.data.name})`);
+
+      validationCache.set(cacheKey, {
+        result,
+        timestamp: Date.now(),
+        type: 'api_success'
+      });
+
+      return result;
+    } else {
+      // User not found or other API error
+      const errorMessage = data.errors?.[0]?.detail || 'User not found';
+      console.log(`❌ Twitter user not found: ${cleanUsername} - ${errorMessage}`);
+      
+      const result = {
+        valid: false,
+        error: errorMessage,
+      };
+
+      validationCache.set(cacheKey, {
+        result,
+        timestamp: Date.now(),
+        type: 'api_failure'
+      });
+
+      return result;
+    }
 
   } catch (error) {
     console.error('Twitter username validation error:', error);
+    
     const result = {
       valid: false,
-      error: 'Failed to validate username',
+      error: 'Network error. Please try again.',
     };
     
-    // Cache the error result too (for a shorter duration)
-    validationCache.set(cacheKey, { result, timestamp: Date.now() });
+    validationCache.set(cacheKey, {
+      result,
+      timestamp: Date.now(),
+      type: 'api_failure'
+    });
+    
     return result;
   }
+}
+
+/**
+ * Clear cache entries (useful for testing or manual cache management)
+ */
+export function clearTwitterCache(): void {
+  validationCache.clear();
+  console.log('🧹 Twitter validation cache cleared');
+}
+
+/**
+ * Get cache statistics (useful for debugging)
+ */
+export function getTwitterCacheStats(): {
+  size: number;
+  entries: Array<{
+    username: string;
+    type: string;
+    age: number;
+    valid: boolean;
+  }>;
+} {
+  const now = Date.now();
+  const entries = Array.from(validationCache.entries()).map(([username, entry]) => ({
+    username,
+    type: entry.type,
+    age: Math.round((now - entry.timestamp) / 1000),
+    valid: entry.result.valid
+  }));
+
+  return {
+    size: validationCache.size,
+    entries
+  };
 }
 
 /**
