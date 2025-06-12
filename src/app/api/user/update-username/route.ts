@@ -68,9 +68,10 @@ export async function POST(req: NextRequest) {
     // Create a new JWT token with the updated user information
     const jwtToken = signJWT({
       userId: updatedUser.id,
-      email: updatedUser.email,
+      email: updatedUser.email!,
       solanaAddress: updatedUser.solanaAddress,
-      hasPasscode: updatedUser.hasPasscode,
+      evmAddress: null, // Will be set when cross-chain wallet is created
+      hasPasscode: updatedUser.hasPasscode || false,
       username: updatedUser.username,
     });
 

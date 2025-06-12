@@ -79,6 +79,7 @@ function SendPage() {
   const [foundUser, setFoundUser] = useState<{ username: string, solanaAddress: string } | null>(null);
   const [usdsBalance, setUsdsBalance] = useState("0.0");
   const [usdcBalance, setUsdcBalance] = useState("0.0");
+  const [baseUsdcBalance, setBaseUsdcBalance] = useState("0.0");
   
   // Username validation states
   const [isValidatingUsername, setIsValidatingUsername] = useState(false);
@@ -159,23 +160,26 @@ function SendPage() {
     try {
       setIsLoading(true);
       
-      // Use the optimized overview endpoint - only returns USDC and USDS
+      // Use the optimized overview endpoint - returns USDC, USDS, and Base USDC
       const response = await fetch("/api/wallet/overview");
       if (response.ok) {
         const data = await response.json();
         setUsdcBalance(data.balances.usdc.formattedBalance);
         setUsdsBalance(data.balances.usds.formattedBalance);
+        setBaseUsdcBalance(data.balances.baseUsdc?.formattedBalance || '0.000000');
       } else {
         console.error("Failed to fetch wallet overview");
         // Set default values if API fails
         setUsdcBalance("0.000000");
         setUsdsBalance("0.000000");
+        setBaseUsdcBalance("0.000000");
       }
     } catch (error) {
       console.error("Error fetching balances:", error);
       // Set default values if error occurs
       setUsdcBalance("0.000000");
       setUsdsBalance("0.000000");
+      setBaseUsdcBalance("0.000000");
     } finally {
       setIsLoading(false);
     }

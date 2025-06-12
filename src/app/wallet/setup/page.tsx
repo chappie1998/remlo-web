@@ -78,11 +78,23 @@ export default function WalletSetup() {
         throw new Error(data.error || "Failed to set up wallet");
       }
 
-      // Update the session with the new wallet info
+      // Update the session with the new wallet info including EVM address
       await update({
         hasPasscode: true,
-        solanaAddress: data.solanaAddress
+        solanaAddress: data.solanaAddress,
+        evmAddress: data.evmAddress // Include EVM address in the update
       });
+
+      // Force refresh the token to ensure the session includes all new data
+      try {
+        await fetch('/api/auth/refresh-token', {
+          method: 'POST',
+          credentials: 'include',
+        });
+        console.log('Session token refreshed successfully');
+      } catch (error) {
+        console.error('Error refreshing session token:', error);
+      }
 
       // Store info for the success screen
       setSolanaAddress(data.solanaAddress);

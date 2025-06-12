@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getUserFromRequest } from "@/lib/jwt";
 import { fetchAllBalances } from "@/lib/solana";
+import { fetchBaseUsdcBalance } from "@/lib/evm";
 import connectionPool from "@/lib/solana-connection-pool";
 import prisma from "@/lib/prisma";
 
@@ -49,18 +50,23 @@ export async function GET(req: NextRequest) {
 
     console.log(`Found user: ${user.email} (via JWT/NextAuth)`);
 
-    // Fetch all data in parallel - optimized single RPC call for token balances
+    // Fetch all data in parallel - Solana tokens, Base USDC, and transactions
     console.log('📊 Fetching balances and transactions in parallel...');
     const dataStartTime = Date.now();
     
-    const [tokenBalances, transactions] = await Promise.all([
+    const [tokenBalances, baseUsdcBalance, transactions] = await Promise.all([
       fetchAllBalances(user.solanaAddress).catch(err => {
-        console.error('Error fetching token balances:', err);
+        console.error('Error fetching Solana token balances:', err);
         return {
           usdc: { balance: 0, formattedBalance: '0.000000' },
           usds: { balance: 0, formattedBalance: '0.000000' }
         };
       }),
+      // Fetch Base USDC balance if EVM address exists
+      user.evmAddress ? fetchBaseUsdcBalance(user.evmAddress).catch(err => {
+        console.error('Error fetching Base USDC balance:', err);
+        return { balance: '0', formattedBalance: '0.000000' };
+      }) : Promise.resolve({ balance: '0', formattedBalance: '0.000000' }),
       prisma.transaction.findMany({
         where: {
           OR: [
@@ -107,6 +113,7 @@ export async function GET(req: NextRequest) {
       {
         success: true,
         address: user.solanaAddress,
+        evmAddress: user.evmAddress,
         balances: {
           usdc: {
             balance: tokenBalances.usdc.balance,
@@ -115,6 +122,10 @@ export async function GET(req: NextRequest) {
           usds: {
             balance: tokenBalances.usds.balance,
             formattedBalance: tokenBalances.usds.formattedBalance,
+          },
+          baseUsdc: {
+            balance: baseUsdcBalance.balance,
+            formattedBalance: baseUsdcBalance.formattedBalance,
           }
         },
         transactions: transactions,

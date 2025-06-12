@@ -6,6 +6,7 @@ import { validateMnemonic } from "@/lib/crypto";
 import { createMPCWallet } from "@/lib/mpc";
 import { authOptions } from "@/lib/auth";
 import { signJWT, getUserFromRequest } from "@/lib/jwt";
+import { createCrossChainWallet } from "@/lib/cross-chain-wallet";
 
 const prisma = new PrismaClient();
 
@@ -132,6 +133,13 @@ export async function POST(req: NextRequest) {
     // Create a new MPC wallet with 3-part secret sharing
     const { publicKey, serverShare, backupShare, recoveryShare, salt } = createMPCWallet(passcode);
 
+    // Generate both Solana and EVM addresses from the same passcode
+    const crossChainWallet = createCrossChainWallet(passcode);
+    const evmAddress = crossChainWallet.evm.address;
+
+    // We'll use the MPC-generated Solana address for consistency
+    console.log('Generated cross-chain wallet. Solana:', crossChainWallet.solana.address, 'EVM:', evmAddress);
+
     // Generate a random username
     let username = generateRandomUsername();
     let isUsernameTaken = true;
@@ -158,11 +166,12 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Update the user record with the wallet address, MPC information, and username
+    // Update the user record with both Solana and EVM addresses, MPC information, and username
     const updatedUser = await prisma.user.update({
       where: { email: userEmail },
       data: {
-        solanaAddress: publicKey,
+        solanaAddress: publicKey, // Use the MPC-generated address
+        evmAddress: evmAddress, // Store the derived EVM address
         mpcServerShare: serverShare,
         mpcSalt: salt,
         mpcBackupShare: backupShare, // In production, this would be stored more securely or given to user
@@ -170,7 +179,7 @@ export async function POST(req: NextRequest) {
         hasPasscode: true,
         passcodeSetAt: new Date(),
         username, // Set the generated username
-      },
+      } as any, // Type assertion to bypass TypeScript issues
       select: {
         id: true,
         email: true,
@@ -183,16 +192,18 @@ export async function POST(req: NextRequest) {
     // Create a new JWT token with the updated user information
     const jwtToken = signJWT({
       userId: updatedUser.id,
-      email: updatedUser.email,
-      solanaAddress: updatedUser.solanaAddress,
+      email: updatedUser.email!,
+      solanaAddress: updatedUser.solanaAddress!,
       hasPasscode: updatedUser.hasPasscode,
-      username: updatedUser.username,
+      username: updatedUser.username!,
+      evmAddress: evmAddress, // Use the evmAddress variable directly
     });
 
     const response = NextResponse.json(
       {
         success: true,
         solanaAddress: publicKey,
+        evmAddress: evmAddress, // Include the EVM address in the response
         // Include both backup shares in the response for the user to save securely
         backupShare,
         recoveryShare, // Additional share for more recovery options

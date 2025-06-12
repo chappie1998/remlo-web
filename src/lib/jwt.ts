@@ -9,6 +9,7 @@ export interface JWTPayload {
   userId: string;
   email: string;
   solanaAddress: string | null;
+  evmAddress: string | null;
   hasPasscode: boolean;
   username: string | null;
   iat?: number;
@@ -19,6 +20,7 @@ export interface UserData {
   id: string;
   email: string;
   solanaAddress: string | null;
+  evmAddress: string | null;
   hasPasscode: boolean;
   username: string | null;
 }
@@ -80,21 +82,15 @@ async function getUserFromNextAuthToken(req: NextRequest): Promise<UserData | nu
       
       const userData = await prisma.user.findUnique({
         where: { id: token.userId as string },
-        select: {
-          id: true,
-          email: true,
-          solanaAddress: true,
-          hasPasscode: true,
-          username: true,
-        },
       });
 
       if (userData) {
         console.log(`🔄 Found wallet in database: ${userData.solanaAddress ? 'Has wallet' : 'No wallet'}`);
         return {
           id: userData.id,
-          email: userData.email,
+          email: userData.email!,
           solanaAddress: userData.solanaAddress,
+          evmAddress: (userData as any).evmAddress,
           hasPasscode: userData.hasPasscode || false,
           username: userData.username,
         };
@@ -105,6 +101,7 @@ async function getUserFromNextAuthToken(req: NextRequest): Promise<UserData | nu
       id: token.userId as string,
       email: token.email,
       solanaAddress: token.solanaAddress as string | null,
+      evmAddress: token.evmAddress as string | null,
       hasPasscode: token.hasPasscode as boolean || false,
       username: token.username as string | null,
     };
@@ -125,6 +122,7 @@ export async function getUserFromRequest(req: NextRequest): Promise<UserData | n
         id: payload.userId,
         email: payload.email,
         solanaAddress: payload.solanaAddress,
+        evmAddress: payload.evmAddress,
         hasPasscode: payload.hasPasscode,
         username: payload.username,
       };

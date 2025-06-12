@@ -1,4 +1,21 @@
 import NextAuth, { DefaultSession } from "next-auth";
+import { JWT } from "next-auth/jwt";
+
+declare module "next-auth/jwt" {
+  /** Returned by the `jwt` callback and `getToken`, when using JWT sessions */
+  interface JWT {
+    /** The user's ID from the database */
+    userId?: string;
+    /** The user's Solana wallet address */
+    solanaAddress?: string | null;
+    /** The user's EVM wallet address */
+    evmAddress?: string | null;
+    /** Whether the user has set up a passcode */
+    hasPasscode?: boolean;
+    /** The user's unique username */
+    username?: string | null;
+  }
+}
 
 declare module "next-auth" {
   /**
@@ -10,6 +27,8 @@ declare module "next-auth" {
       id?: string;
       /** The user's Solana wallet address */
       solanaAddress?: string | null;
+      /** The user's EVM wallet address */
+      evmAddress?: string | null;
       /** Whether the user has set up a passcode */
       hasPasscode?: boolean;
       /** The user's unique username */
@@ -24,6 +43,8 @@ declare module "next-auth" {
   interface User {
     /** The user's Solana wallet address */
     solanaAddress?: string;
+    /** The user's EVM wallet address */
+    evmAddress?: string;
     /** Whether the user has set up a passcode */
     hasPasscode?: boolean;
     /** The user's unique username */

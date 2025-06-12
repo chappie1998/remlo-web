@@ -112,6 +112,38 @@ function ReceivePage() {
   const [isValidatingUsername, setIsValidatingUsername] = useState(false);
   const [usernameStatus, setUsernameStatus] = useState<"idle" | "validating" | "valid" | "invalid">("idle");
   const [foundUser, setFoundUser] = useState<{ username: string, solanaAddress: string } | null>(null);
+  
+  // Cross-chain wallet state - fetch directly from API
+  const [evmAddress, setEvmAddress] = useState<string | null>(null);
+  const [isLoadingEvmAddress, setIsLoadingEvmAddress] = useState(false);
+  const hasCrossChainWallet = !!(session?.user?.evmAddress || evmAddress);
+  
+  // Fetch EVM address directly from the API
+  useEffect(() => {
+    const fetchEvmAddress = async () => {
+      if (!session?.user?.email) return;
+      
+      setIsLoadingEvmAddress(true);
+      try {
+        const response = await fetch('/api/wallet/cross-chain');
+        if (response.ok) {
+          const data = await response.json();
+          console.log('Cross-chain wallet data:', data);
+          if (data.evmAddress) {
+            setEvmAddress(data.evmAddress);
+          }
+        }
+      } catch (error) {
+        console.error('Error fetching EVM address:', error);
+      } finally {
+        setIsLoadingEvmAddress(false);
+      }
+    };
+
+    fetchEvmAddress();
+  }, [session?.user?.email]);
+  
+
 
   // Handle authentication redirects
   useEffect(() => {
@@ -188,6 +220,8 @@ function ReceivePage() {
       refreshClaimedLinks()
     ]);
   };
+
+  // No longer needed - addresses are available directly in session
 
   // Fetch payment requests and claimed links from the API
   useEffect(() => {
@@ -666,46 +700,151 @@ function ReceivePage() {
 
             {activeTab === "address" && (
               <div className="space-y-6">
-                <div className="flex flex-col items-center space-y-4">
-                  <div className="bg-zinc-800 p-4 rounded-lg">
-                    <QRCode 
-                      value={session?.user?.solanaAddress || ''}
-                      size={180}
-                      className="rounded"
-                    />
-                  </div>
-                  
-                  <div className="w-full">
-                    <p className="text-sm text-gray-400 mb-1 text-center">Your Solana Address</p>
-                    <div className="flex items-center justify-center space-x-2 bg-zinc-800 rounded-lg p-3">
-                      <SolanaIcon className="text-emerald-400 h-4 w-4" />
-                      <p className="font-mono text-sm overflow-hidden">
-                        {shortenAddress(session?.user?.solanaAddress || "")}
-                      </p>
-                      <button
-                        onClick={async () => {
-                          await copyToClipboard(session?.user?.solanaAddress || "");
-                          toast.success("Address copied to clipboard");
-                        }}
-                        className="ml-2 p-1 rounded-full hover:bg-zinc-700 transition"
-                      >
-                        <Copy size={16} />
-                      </button>
+                {/* Cross-Chain Addresses Display */}
+                {hasCrossChainWallet ? (
+                  <div className="flex flex-col items-center space-y-4">
+                    <div className="bg-zinc-800 p-4 rounded-lg">
+                      <QRCode 
+                        value={session?.user?.solanaAddress || ''}
+                        size={180}
+                        className="rounded"
+                      />
                     </div>
                     
-                    <div className="flex justify-center mt-3">
-                      <a
-                        href={`https://explorer.solana.com/address/${session?.user?.solanaAddress}?cluster=${process.env.NEXT_PUBLIC_SOLANA_NETWORK || 'devnet'}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-sm text-emerald-400 flex items-center space-x-1 hover:underline"
-                      >
-                        <span>View on Explorer</span>
-                        <ExternalLink size={12} />
-                      </a>
+                    <div className="w-full">
+                      <p className="text-sm text-gray-400 mb-1 text-center">Your Solana Address</p>
+                      <div className="flex items-center justify-center space-x-2 bg-zinc-800 rounded-lg p-3">
+                        <SolanaIcon className="text-emerald-400 h-4 w-4" />
+                        <p className="font-mono text-sm overflow-hidden">
+                          {shortenAddress(session?.user?.solanaAddress || "")}
+                        </p>
+                        <button
+                          onClick={async () => {
+                            await copyToClipboard(session?.user?.solanaAddress || "");
+                            toast.success("Address copied to clipboard");
+                          }}
+                          className="ml-2 p-1 rounded-full hover:bg-zinc-700 transition"
+                        >
+                          <Copy size={16} />
+                        </button>
+                      </div>
+                      
+                      {/* <div className="flex justify-center mt-3">
+                        <a
+                          href={`https://explorer.solana.com/address/${session?.user?.solanaAddress}?cluster=${process.env.NEXT_PUBLIC_SOLANA_NETWORK || 'devnet'}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-sm text-emerald-400 flex items-center space-x-1 hover:underline"
+                        >
+                          <span>View on Explorer</span>
+                          <ExternalLink size={12} />
+                        </a>
+                      </div> */}
+                      
+                      {/* EVM Address Section */}
+                      <div className="mt-6">
+                        <p className="text-sm text-gray-400 mb-1 text-center">Your EVM Address</p>
+                        <div className="flex items-center justify-center space-x-2 bg-zinc-800 rounded-lg p-3">
+                          <div className="w-4 h-4 bg-gradient-to-r from-blue-400 to-purple-500 rounded-full"></div>
+                          <p className="font-mono text-sm overflow-hidden">
+                            {shortenAddress(session?.user?.evmAddress || evmAddress || "")}
+                          </p>
+                          <button
+                            onClick={async () => {
+                              await copyToClipboard(session?.user?.evmAddress || evmAddress || "");
+                              toast.success("EVM address copied to clipboard");
+                            }}
+                            className="ml-2 p-1 rounded-full hover:bg-zinc-700 transition"
+                          >
+                            <Copy size={16} />
+                          </button>
+                        </div>
+                        
+                        {/* <div className="flex justify-center mt-3 space-x-4">
+                          <a
+                            href={`https://etherscan.io/address/${session?.user?.evmAddress || evmAddress}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-sm text-blue-400 flex items-center space-x-1 hover:underline"
+                          >
+                            <span>Ethereum</span>
+                            <ExternalLink size={12} />
+                          </a>
+                          <a
+                            href={`https://polygonscan.com/address/${session?.user?.evmAddress || evmAddress}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-sm text-purple-400 flex items-center space-x-1 hover:underline"
+                          >
+                            <span>Polygon</span>
+                            <ExternalLink size={12} />
+                          </a>
+                          <a
+                            href={`https://bscscan.com/address/${session?.user?.evmAddress || evmAddress}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-sm text-yellow-400 flex items-center space-x-1 hover:underline"
+                          >
+                            <span>BSC</span>
+                            <ExternalLink size={12} />
+                          </a>
+                        </div> */}
+                      </div>
                     </div>
                   </div>
-                </div>
+                ) : (
+                  /* Fallback to original Solana-only display */
+                  <div className="flex flex-col items-center space-y-4">
+                    <div className="bg-zinc-800 p-4 rounded-lg">
+                      <QRCode 
+                        value={session?.user?.solanaAddress || ''}
+                        size={180}
+                        className="rounded"
+                      />
+                    </div>
+                    
+                    <div className="w-full">
+                      <p className="text-sm text-gray-400 mb-1 text-center">Your Solana Address</p>
+                      <div className="flex items-center justify-center space-x-2 bg-zinc-800 rounded-lg p-3">
+                        <SolanaIcon className="text-emerald-400 h-4 w-4" />
+                        <p className="font-mono text-sm overflow-hidden">
+                          {shortenAddress(session?.user?.solanaAddress || "")}
+                        </p>
+                        <button
+                          onClick={async () => {
+                            await copyToClipboard(session?.user?.solanaAddress || "");
+                            toast.success("Address copied to clipboard");
+                          }}
+                          className="ml-2 p-1 rounded-full hover:bg-zinc-700 transition"
+                        >
+                          <Copy size={16} />
+                        </button>
+                      </div>
+                      
+                      {/* <div className="flex justify-center mt-3">
+                        <a
+                          href={`https://explorer.solana.com/address/${session?.user?.solanaAddress}?cluster=${process.env.NEXT_PUBLIC_SOLANA_NETWORK || 'devnet'}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-sm text-emerald-400 flex items-center space-x-1 hover:underline"
+                        >
+                          <span>View on Explorer</span>
+                          <ExternalLink size={12} />
+                        </a>
+                      </div> */}
+                      
+                      <div className="mt-4 p-3 bg-blue-900/20 border border-blue-700/30 rounded-lg">
+                        <p className="text-sm text-blue-300 text-center">
+                          Want to receive on Ethereum, Polygon, or BSC too? 
+                          <br />
+                          <a href="/wallet/cross-chain" className="text-blue-400 hover:underline font-medium">
+                            Enable cross-chain wallet →
+                          </a>
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 

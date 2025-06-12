@@ -32,21 +32,19 @@ export const authOptions: NextAuthOptions = {
       return true; // Do different verification for other providers that don't have `email_verified`
     },
     jwt: async ({ token, user, account }) => {
-      if (user) {
+      // Always fetch fresh user data from database if we have user email
+      const userEmail = user?.email || token.email;
+      
+      if (userEmail) {
+        // Fetch complete user data including evmAddress
         const userData = await prisma.user.findUnique({
-          where: { email: user.email! },
-          select: {
-            id: true,
-            email: true,
-            solanaAddress: true,
-            hasPasscode: true,
-            username: true,
-          },
+          where: { email: userEmail as string },
         });
 
         if (userData) {
           token.userId = userData.id;
           token.solanaAddress = userData.solanaAddress;
+          token.evmAddress = (userData as any).evmAddress;
           token.hasPasscode = userData.hasPasscode;
           token.username = userData.username;
         }
@@ -59,6 +57,7 @@ export const authOptions: NextAuthOptions = {
           ...session.user,
           id: token.userId as string,
           solanaAddress: token.solanaAddress as string | null,
+          evmAddress: token.evmAddress as string | null,
           hasPasscode: token.hasPasscode as boolean,
           username: token.username as string | null,
         };

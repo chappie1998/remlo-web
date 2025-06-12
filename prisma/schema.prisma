@@ -1,6 +1,3 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -11,47 +8,42 @@ datasource db {
 }
 
 model User {
-  id            String    @id @default(cuid())
-  name          String?
-  username      String?   @unique  // Username for user-friendly identification
-  email         String    @unique
-  phone         String?   @unique
-  emailVerified DateTime?
-  phoneVerified DateTime?
-  image         String?
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
-
-  // Account abstraction related fields
-  solanaAddress    String?   @unique  // Public address (public key)
-  encryptedKeypair String?           // Encrypted keypair (legacy field)
-  hasPasscode      Boolean   @default(false)
-  passcodeSetAt    DateTime?
-  passcodeHash     String?
-  recoveryKey      String?
-
-  // MPC related fields
-  mpcServerShare   String?            // Encrypted server share for MPC
-  mpcSalt          String?            // Salt used for passcode derivation
-  mpcBackupShare   String?            // Backup share for recovery (ideally stored elsewhere)
-  usesMPC          Boolean   @default(false) // Whether the user is using MPC
-
-  // Relations
-  accounts        Account[]
-  sessions        Session[]
-  transactions    Transaction[]
-  paymentRequests PaymentRequest[] // Payment requests created by this user
-  requestedPayments PaymentRequest[] @relation("RequestedPayments") // Payment requests where this user is the recipient
-  sentPayments    Payment[]        @relation("SentPayments")
-  contacts        Contact[]        @relation("UserContacts")
-  savedTemplates  SavedTemplate[]  @relation("UserTemplates")
-  paymentLinks    PaymentLink[]    @relation("CreatedPaymentLinks") // Payment links created by this user
+  id                String           @id @default(cuid())
+  name              String?
+  username          String?          @unique
+  email             String           @unique
+  phone             String?          @unique
+  emailVerified     DateTime?
+  phoneVerified     DateTime?
+  image             String?
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+  solanaAddress     String?          @unique
+  encryptedKeypair  String?
+  hasPasscode       Boolean          @default(false)
+  passcodeSetAt     DateTime?
+  passcodeHash      String?
+  recoveryKey       String?
+  mpcServerShare    String?
+  mpcSalt           String?
+  mpcBackupShare    String?
+  usesMPC           Boolean          @default(false)
+  evmAddress        String?
+  accounts          Account[]
+  contacts          Contact[]        @relation("UserContacts")
+  sentPayments      Payment[]        @relation("SentPayments")
+  paymentLinks      PaymentLink[]    @relation("CreatedPaymentLinks")
+  paymentRequests   PaymentRequest[]
+  requestedPayments PaymentRequest[] @relation("RequestedPayments")
+  savedTemplates    SavedTemplate[]  @relation("UserTemplates")
+  sessions          Session[]
+  transactions      Transaction[]
 
   @@index([createdAt])
-  @@index([username]) // Dedicated index for fast username lookups
-  @@index([email, solanaAddress]) // Composite index for frequent lookups
-  @@index([hasPasscode, usesMPC]) // For filtering users by wallet type
-  @@index([username, hasPasscode, solanaAddress]) // Optimized composite index for user lookup validation
+  @@index([username])
+  @@index([email, solanaAddress])
+  @@index([hasPasscode, usesMPC])
+  @@index([username, hasPasscode, solanaAddress])
 }
 
 model Account {
@@ -67,11 +59,10 @@ model Account {
   scope             String?
   id_token          String?
   session_state     String?
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([provider, providerAccountId])
-  @@index([userId, provider]) // For finding user's accounts by provider
+  @@index([userId, provider])
 }
 
 model Session {
@@ -83,8 +74,8 @@ model Session {
 
   @@index([userId])
   @@index([expires])
-  @@index([sessionToken, expires]) // Composite index for session validation
-  @@index([userId, expires]) // For active sessions by user
+  @@index([sessionToken, expires])
+  @@index([userId, expires])
 }
 
 model VerificationToken {
@@ -96,53 +87,49 @@ model VerificationToken {
 }
 
 model Transaction {
-  id          String   @id @default(cuid())
-  userId      String
-  txData      String   // JSON stringified transaction data
-  status      String   // pending, approved, rejected, executed
-  signature   String?  // Transaction signature when executed
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  executedAt  DateTime?
-
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id         String    @id @default(cuid())
+  userId     String
+  txData     String
+  status     String
+  signature  String?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+  executedAt DateTime?
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
   @@index([status])
   @@index([createdAt])
   @@index([signature])
   @@index([userId, status, createdAt])
-  @@index([userId, createdAt]) // Optimized for user transaction history queries
-  @@index([signature, status]) // For transaction status lookups by signature
+  @@index([userId, createdAt])
+  @@index([signature, status])
 }
 
 model PaymasterInfo {
-  id             String   @id @default(cuid())
-  networkName    String
-  gasSponsored   Int      @default(0) // Count of sponsored transactions
+  id              String    @id @default(cuid())
+  networkName     String
+  gasSponsored    Int       @default(0)
   lastSponsoredAt DateTime?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
 }
 
-// Payment request model for tracking link-based payment requests
 model PaymentRequest {
-  id            String    @id @default(cuid())
-  shortId       String    @unique // Short ID for URLs (e.g., pr_123abc)
-  creatorId     String    // User who created the request
-  recipientId   String?   // Optional User who is being requested to pay
-  amount        String    // Amount requested (as string to preserve decimal precision)
-  tokenType     String    // "usds", "usdc", etc.
-  note          String?   // Optional note about the payment
-  status        String    // "pending", "completed", "cancelled", "expired"
-  expiresAt     DateTime? // Optional expiration date
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
-  
-  // Relations
-  creator       User      @relation(fields: [creatorId], references: [id], onDelete: Cascade)
-  recipient     User?     @relation("RequestedPayments", fields: [recipientId], references: [id], onDelete: SetNull)
-  payment       Payment?  // The payment fulfilling this request, if any
+  id          String    @id @default(cuid())
+  shortId     String    @unique
+  creatorId   String
+  recipientId String?
+  amount      String
+  tokenType   String
+  note        String?
+  status      String
+  expiresAt   DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  payment     Payment?
+  creator     User      @relation(fields: [creatorId], references: [id], onDelete: Cascade)
+  recipient   User?     @relation("RequestedPayments", fields: [recipientId], references: [id])
 
   @@index([creatorId])
   @@index([recipientId])
@@ -153,26 +140,23 @@ model PaymentRequest {
   @@index([recipientId, status, createdAt])
 }
 
-// NEW: Payment link model for token delegation with OTP verification
 model PaymentLink {
-  id               String    @id @default(cuid())
-  shortId          String    @unique // Short ID for URLs (e.g., pl_123abc)
-  creatorId        String    // User who created the link
-  amount           String    // Amount approved (as string to preserve decimal precision)
-  tokenType        String    // "usds", "usdc", etc.
-  note             String?   // Optional note about the payment
-  status           String    // "active", "claimed", "expired", "revoked"
-  verificationData String    // HMAC signature for OTP verification (not storing OTP directly)
-  delegationTx     String?   // The transaction signature for the token delegation
-  claimedBy        String?   // Solana address of the recipient who claimed the payment
-  claimedAt        DateTime? // When the payment was claimed
-  claimedTransactionId String? // Transaction ID of the claim transfer
-  expiresAt        DateTime  // Expiration date (required)
-  createdAt        DateTime  @default(now())
-  updatedAt        DateTime  @updatedAt
-  
-  // Relations
-  creator          User      @relation("CreatedPaymentLinks", fields: [creatorId], references: [id], onDelete: Cascade)
+  id                   String    @id @default(cuid())
+  shortId              String    @unique
+  creatorId            String
+  amount               String
+  tokenType            String
+  note                 String?
+  status               String
+  verificationData     String
+  delegationTx         String?
+  claimedBy            String?
+  claimedAt            DateTime?
+  expiresAt            DateTime
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+  claimedTransactionId String?
+  creator              User      @relation("CreatedPaymentLinks", fields: [creatorId], references: [id], onDelete: Cascade)
 
   @@index([creatorId])
   @@index([status])
@@ -181,19 +165,16 @@ model PaymentLink {
   @@index([expiresAt])
 }
 
-// Payment model for tracking payments made to fulfill requests
 model Payment {
-  id              String   @id @default(cuid())
-  payerId         String   // User who made the payment
-  paymentRequestId String  @unique // The payment request being fulfilled
-  transactionSignature String? // Solana transaction signature
-  status          String   // "pending", "confirmed", "failed"
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-  
-  // Relations
-  payer           User     @relation("SentPayments", fields: [payerId], references: [id], onDelete: Cascade)
-  paymentRequest  PaymentRequest @relation(fields: [paymentRequestId], references: [id], onDelete: Cascade)
+  id                   String         @id @default(cuid())
+  payerId              String
+  paymentRequestId     String         @unique
+  transactionSignature String?
+  status               String
+  createdAt            DateTime       @default(now())
+  updatedAt            DateTime       @updatedAt
+  payer                User           @relation("SentPayments", fields: [payerId], references: [id], onDelete: Cascade)
+  paymentRequest       PaymentRequest @relation(fields: [paymentRequestId], references: [id], onDelete: Cascade)
 
   @@index([payerId])
   @@index([status])
@@ -202,39 +183,35 @@ model Payment {
   @@index([payerId, status, createdAt])
 }
 
-// Contact model for saving frequently used recipients
 model Contact {
-  id            String    @id @default(cuid())
+  id            String   @id @default(cuid())
   nickname      String
   username      String?
   solanaAddress String
-  isFavorite    Boolean   @default(false)
-  lastUsed      DateTime  @default(now())
-  createdAt     DateTime  @default(now())
-
-  user          User      @relation("UserContacts", fields: [userId], references: [id], onDelete: Cascade)
+  isFavorite    Boolean  @default(false)
+  lastUsed      DateTime @default(now())
+  createdAt     DateTime @default(now())
   userId        String
-  
+  user          User     @relation("UserContacts", fields: [userId], references: [id], onDelete: Cascade)
+
   @@unique([userId, solanaAddress])
   @@index([userId])
-  @@index([userId, isFavorite, lastUsed]) // For finding favorite contacts ordered by recent use
-  @@index([userId, username]) // For username-based contact searches
+  @@index([userId, isFavorite, lastUsed])
+  @@index([userId, username])
 }
 
-// SavedTemplate model for recurring payments
 model SavedTemplate {
-  id            String    @id @default(cuid())
-  name          String
-  recipient     String    // Can be address or username
-  amount        String
-  tokenType     String    // "usd" or "usdc"
-  description   String?
-  frequency     String?   // "once", "daily", "weekly", "monthly"
-  createdAt     DateTime  @default(now())
-  lastUsed      DateTime  @default(now())
-
-  user          User      @relation("UserTemplates", fields: [userId], references: [id], onDelete: Cascade)
-  userId        String
+  id          String   @id @default(cuid())
+  name        String
+  recipient   String
+  amount      String
+  tokenType   String
+  description String?
+  frequency   String?
+  createdAt   DateTime @default(now())
+  lastUsed    DateTime @default(now())
+  userId      String
+  user        User     @relation("UserTemplates", fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
   @@index([name])

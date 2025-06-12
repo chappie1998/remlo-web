@@ -108,6 +108,7 @@ function AccountDashboard() {
   const [solanaAddress, setSolanaAddress] = useState("");
   const [usdcBalance, setUsdcBalance] = useState("0.0");
   const [usdsBalance, setUsdsBalance] = useState("0.0");
+  const [baseUsdcBalance, setBaseUsdcBalance] = useState("0.0");
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [tokenType, setTokenType] = useState("usd"); // "usd" or "usdc"
   const [isLoading, setIsLoading] = useState(false);
@@ -119,8 +120,8 @@ function AccountDashboard() {
   const [txStatusFilter, setTxStatusFilter] = useState<"all" | "success" | "pending" | "failed">("all");
   const [showFilters, setShowFilters] = useState(false);
 
-  // Calculate the total balance in USD (assuming 1 USDC = 1 USDs = $1)
-  const totalUsdBalance = parseFloat(usdsBalance) + parseFloat(usdcBalance);
+  // Calculate the total balance in USD (assuming 1 USDC = 1 USDs = 1 Base USDC = $1)
+  const totalUsdBalance = parseFloat(usdsBalance) + parseFloat(usdcBalance) + parseFloat(baseUsdcBalance);
 
   useEffect(() => {
     if (session?.user?.solanaAddress) {
@@ -202,9 +203,10 @@ function AccountDashboard() {
       if (response.ok) {
         const data = await response.json();
         
-        // Update only USDC and USDS balances from optimized response
+        // Update USDC, USDS, and Base USDC balances from optimized response
         setUsdcBalance(data.balances.usdc.formattedBalance);
         setUsdsBalance(data.balances.usds.formattedBalance);
+        setBaseUsdcBalance(data.balances.baseUsdc?.formattedBalance || '0.000000');
         setTransactions(data.transactions || []);
       } else {
         console.error("Overview API failed, trying again...");
@@ -214,6 +216,7 @@ function AccountDashboard() {
           const retryData = await retryResponse.json();
           setUsdcBalance(retryData.balances.usdc.formattedBalance);
           setUsdsBalance(retryData.balances.usds.formattedBalance);
+          setBaseUsdcBalance(retryData.balances.baseUsdc?.formattedBalance || '0.000000');
           setTransactions(retryData.transactions || []);
         } else {
           throw new Error("Failed to fetch wallet data");
@@ -224,6 +227,7 @@ function AccountDashboard() {
       // Set default values if all attempts fail
       setUsdcBalance("0.000000");
       setUsdsBalance("0.000000");
+      setBaseUsdcBalance("0.000000");
       setTransactions([]);
     } finally {
       setIsLoading(false);
@@ -675,6 +679,22 @@ function AccountDashboard() {
                   usdcBalance={parseFloat(usdcBalance)} 
                   onFaucetComplete={refreshData} 
                 />
+              </div>
+              
+              {/* Base USDC Balance */}
+              <div className="flex items-center justify-between p-3 rounded-lg bg-zinc-800 border-blue-700/40 border">
+                <div className="flex items-center">
+                  <div className="mr-3 p-2 rounded-full bg-blue-900/40">
+                    <DollarSign size={18} className="text-blue-400" />
+                  </div>
+                  <div>
+                    <div className="font-medium text-white">Base USDC Balance</div>
+                    <div className="flex items-center text-xs text-gray-400 mt-0.5">
+                      <span className="text-blue-400">Base Sepolia Network</span>
+                    </div>
+                  </div>
+                </div>
+                <div className="text-lg font-semibold text-white">${baseUsdcBalance}</div>
               </div>
             </div>
           </div>

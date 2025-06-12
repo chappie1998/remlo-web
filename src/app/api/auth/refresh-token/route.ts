@@ -16,16 +16,9 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Get the complete user data from database
+    // Get the complete user data from database (with raw type to bypass TypeScript issues)
     const user = await prisma.user.findUnique({
       where: { email: session.user.email },
-      select: {
-        id: true,
-        email: true,
-        solanaAddress: true,
-        hasPasscode: true,
-        username: true,
-      },
     });
 
     if (!user) {
@@ -35,11 +28,12 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Create a new JWT token with complete user information
+    // Create a new JWT token with complete user information including EVM address
     const jwtToken = signJWT({
       userId: user.id,
-      email: user.email,
+      email: user.email!,
       solanaAddress: user.solanaAddress,
+      evmAddress: (user as any).evmAddress, // Use type assertion to access evmAddress
       hasPasscode: user.hasPasscode || false,
       username: user.username,
     });
@@ -49,8 +43,9 @@ export async function POST(req: NextRequest) {
       success: true,
       user: {
         id: user.id,
-        email: user.email,
+        email: user.email!,
         solanaAddress: user.solanaAddress,
+        evmAddress: (user as any).evmAddress,
         hasPasscode: user.hasPasscode,
         username: user.username,
       },

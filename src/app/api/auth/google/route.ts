@@ -83,8 +83,9 @@ export async function POST(req: NextRequest) {
     // Create JWT token
     const jwtToken = signJWT({
       userId: user.id,
-      email: user.email,
+      email: user.email!,
       solanaAddress: user.solanaAddress,
+      evmAddress: null, // Will be set when cross-chain wallet is created
       hasPasscode: user.hasPasscode || false,
       username: user.username,
     });
