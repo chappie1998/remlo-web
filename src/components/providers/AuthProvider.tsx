@@ -6,8 +6,8 @@ import { PropsWithChildren } from "react";
 export default function AuthProvider({ children }: PropsWithChildren) {
   return (
     <SessionProvider 
-      refetchInterval={15} // Check session every 15 seconds
-      refetchOnWindowFocus={true} // Refetch session when window gains focus
+      refetchInterval={0} // No polling
+      refetchOnWindowFocus={true} // Only refetch when window regains focus
     >
       {children}
     </SessionProvider>

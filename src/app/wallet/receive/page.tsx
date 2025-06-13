@@ -45,6 +45,19 @@ interface PaymentRequest {
   note?: string;
 }
 
+interface ClaimedPaymentLink {
+  id: string;
+  shortId: string;
+  amount: string;
+  tokenType: string;
+  note?: string;
+  status: string;
+  claimedBy?: string;
+  claimedAt?: string;
+  createdAt: string;
+  type: 'payment_link_claimed';
+}
+
 // Main wrapper component with Suspense
 export default function ReceivePageWrapper() {
   return (
@@ -82,7 +95,7 @@ function ReceivePage() {
     const tabParam = searchParams.get("tab");
     return (tabParam === "username" || tabParam === "address" || tabParam === "link" || tabParam === "request") 
       ? tabParam 
-      : "username";
+      : "username"; // Default to the username tab
   });
   
   const [tokenType, setTokenType] = useState("usds");
@@ -91,6 +104,7 @@ function ReceivePage() {
   const [recipientUsername, setRecipientUsername] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [paymentRequests, setPaymentRequests] = useState<PaymentRequest[]>([]);
+  const [claimedLinks, setClaimedLinks] = useState<ClaimedPaymentLink[]>([]);
   const [newRequestId, setNewRequestId] = useState<string | null>(null);
   const [newRequestLink, setNewRequestLink] = useState<string | null>(null);
   
@@ -145,24 +159,50 @@ function ReceivePage() {
     }
   };
 
-  // Fetch payment requests from the API
-  useEffect(() => {
-    const fetchPaymentRequests = async () => {
-      if (status === "authenticated") {
-        try {
-          const response = await fetch('/api/payment-request/list');
+  // Function to refresh claimed payment links
+  const refreshClaimedLinks = async () => {
+    try {
+      const response = await fetch('/api/payment-link/claimed');
           
           if (!response.ok) {
             const error = await response.json();
-            console.error('Error fetching payment requests:', error);
+        console.error('Error fetching claimed payment links:', error);
             return;
           }
           
           const data = await response.json();
-          console.log('Fetched payment requests:', data);
+      console.log('Refreshed claimed payment links:', data);
+      
+      if (data.success && Array.isArray(data.claimedLinks)) {
+        setClaimedLinks(data.claimedLinks);
+      }
+    } catch (error) {
+      console.error('Error refreshing claimed payment links:', error);
+    }
+  };
+
+  // Combined refresh function
+  const refreshAll = async () => {
+    await Promise.all([
+      refreshPaymentRequests(),
+      refreshClaimedLinks()
+    ]);
+  };
+
+  // Fetch payment requests and claimed links from the API
+  useEffect(() => {
+    const fetchData = async () => {
+      if (status === "authenticated") {
+        try {
+          // Fetch payment requests
+          const requestsResponse = await fetch('/api/payment-request/list');
           
-          if (data.success && Array.isArray(data.paymentRequests)) {
-            setPaymentRequests(data.paymentRequests.map((pr: any) => ({
+          if (requestsResponse.ok) {
+            const requestsData = await requestsResponse.json();
+            console.log('Fetched payment requests:', requestsData);
+            
+            if (requestsData.success && Array.isArray(requestsData.paymentRequests)) {
+              setPaymentRequests(requestsData.paymentRequests.map((pr: any) => ({
               id: pr.id,
               amount: pr.amount,
               tokenType: pr.tokenType,
@@ -176,14 +216,27 @@ function ReceivePage() {
               type: pr.type,
               note: pr.note
             })));
+            }
+          }
+
+          // Fetch claimed payment links
+          const claimedResponse = await fetch('/api/payment-link/claimed');
+          
+          if (claimedResponse.ok) {
+            const claimedData = await claimedResponse.json();
+            console.log('Fetched claimed payment links:', claimedData);
+            
+            if (claimedData.success && Array.isArray(claimedData.claimedLinks)) {
+              setClaimedLinks(claimedData.claimedLinks);
+            }
           }
         } catch (error) {
-          console.error('Error fetching payment requests:', error);
+          console.error('Error fetching data:', error);
         }
       }
     };
 
-    fetchPaymentRequests();
+    fetchData();
   }, [status]);
 
   // Validate username
@@ -210,7 +263,7 @@ function ReceivePage() {
 
       const data = await response.json();
 
-      if (response.ok) {
+      if (response.ok && data.found) {
         setUsernameStatus("valid");
         setFoundUser({
           username: data.username,
@@ -945,7 +998,7 @@ function ReceivePage() {
                     <Button
                       type="submit"
                       className="w-full bg-emerald-600 hover:bg-emerald-700"
-                      disabled={isLoading || usernameStatus !== "valid"}
+                      disabled={isLoading || !foundUser || usernameStatus !== "valid"}
                     >
                       {isLoading ? "Sending..." : "Send Payment Request"}
                     </Button>
@@ -973,13 +1026,21 @@ function ReceivePage() {
             </div>
             
             <div className="bg-zinc-900 rounded-lg">
-              {paymentRequests.length === 0 ? (
+              {(() => {
+                // Filter to only show requests to specific users (recipientUsername exists)
+                const userRequests = paymentRequests.filter(pr => pr.recipientUsername);
+                
+                if (userRequests.length === 0) {
+                  return (
                 <div className="p-6 text-center text-gray-400">
-                  <p>No payment requests yet</p>
+                      <p>No payment requests to specific users yet</p>
                 </div>
-              ) : (
+                  );
+                }
+
+                return (
                 <div className="divide-y divide-zinc-800">
-                  {paymentRequests.map((pr) => (
+                    {userRequests.map((pr) => (
                     <div key={pr.id} className="p-4 border border-zinc-800 rounded-lg bg-zinc-800/50 hover:bg-zinc-800 transition">
                       <div className="flex justify-between items-start mb-3">
                         <div className="flex items-center">
@@ -1063,7 +1124,185 @@ function ReceivePage() {
                     </div>
                   ))}
                 </div>
-              )}
+                );
+              })()}
+            </div>
+          </>
+        )}
+
+        {/* Payment Links History */}
+        {activeTab === "link" && (
+          <>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-xl font-bold">Payment Links History</h2>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={refreshClaimedLinks}
+                className="text-emerald-400"
+              >
+                <RefreshCw size={14} className="mr-1" />
+                Refresh
+              </Button>
+            </div>
+            
+            <div className="bg-zinc-900 rounded-lg">
+              {(() => {
+                // Combine payment receive links (no specific recipient) and claimed payment links
+                const receiveLinks = paymentRequests.filter(pr => !pr.recipientUsername);
+                const allLinkActivity = [
+                  ...receiveLinks.map(pr => ({ ...pr, type: 'payment_receive_link' as const })),
+                  ...claimedLinks
+                ].sort((a, b) => {
+                  const dateA = new Date(a.type === 'payment_link_claimed' ? (a as ClaimedPaymentLink).claimedAt || a.createdAt : a.createdAt);
+                  const dateB = new Date(b.type === 'payment_link_claimed' ? (b as ClaimedPaymentLink).claimedAt || b.createdAt : b.createdAt);
+                  return dateB.getTime() - dateA.getTime();
+                });
+
+                if (allLinkActivity.length === 0) {
+                  return (
+                    <div className="p-6 text-center text-gray-400">
+                      <p>No payment link activity yet</p>
+                    </div>
+                  );
+                }
+
+                return (
+                  <div className="divide-y divide-zinc-800">
+                    {allLinkActivity.map((item) => {
+                                             // Handle payment receive links
+                       if (item.type === 'payment_receive_link') {
+                         const pr = item as unknown as PaymentRequest;
+                        return (
+                          <div key={pr.id} className="p-4 border border-zinc-800 rounded-lg bg-zinc-800/50 hover:bg-zinc-800 transition">
+                            <div className="flex justify-between items-start mb-3">
+                              <div className="flex items-center">
+                                {pr.tokenType === "usds" ? (
+                                  <USDsIcon width={24} height={24} className="text-emerald-400 mr-2" />
+                                ) : (
+                                  <USDCIcon width={24} height={24} className="text-blue-400 mr-2" />
+                                )}
+                                <span className="text-lg font-medium">
+                                  ${pr.amount} {pr.tokenType.toUpperCase()}
+                                </span>
+                              </div>
+                              <div className="flex items-center space-x-1">
+                                {getStatusIcon(pr.status)}
+                                <span className="text-sm capitalize text-gray-300">{pr.status}</span>
+                              </div>
+                            </div>
+                            
+                            {/* Payment Receive Link Info */}
+                            <div className="bg-blue-900/30 text-blue-400 px-3 py-2 rounded-md mb-3 flex items-center">
+                              <LinkIcon size={14} className="mr-2" />
+                              <span className="text-sm">
+                                Payment receive link - anyone can pay
+                              </span>
+                            </div>
+                            
+                            {pr.note && (
+                              <div className="bg-zinc-700/50 px-3 py-2 rounded-md mb-3 text-sm text-gray-300">
+                                "{pr.note}"
+                              </div>
+                            )}
+                              
+                            <div className="text-xs text-gray-500 mb-3">
+                              Created {formatDate(pr.createdAt)}
+                            </div>
+                            
+                            <div className="flex flex-wrap gap-2">
+                              <Button 
+                                size="sm" 
+                                variant="ghost" 
+                                className="bg-zinc-700 hover:bg-zinc-600 text-gray-300"
+                                onClick={() => copyToClipboard(pr.link)}
+                              >
+                                <Copy size={14} className="mr-1" />
+                                Copy Link
+                              </Button>
+                              
+                              <Button 
+                                size="sm" 
+                                variant="ghost" 
+                                className="bg-zinc-700 hover:bg-zinc-600 text-gray-300"
+                                onClick={() => handleShareRequest(pr.link)}
+                              >
+                                <Share2 size={14} className="mr-1" />
+                                Share
+                              </Button>
+                                
+                              {pr.status === "pending" && (
+                                <Button 
+                                  size="sm" 
+                                  variant="ghost" 
+                                  className="bg-red-900/30 text-red-400 hover:bg-red-900/50"
+                                  onClick={() => handleCancelRequest(pr.id)}
+                                >
+                                  <Trash2 size={14} className="mr-1" />
+                                  Cancel
+                                </Button>
+                              )}
+                            </div>
+                          </div>
+                        );
+                                             } else {
+                         // Handle claimed payment links
+                         const cl = item as ClaimedPaymentLink;
+                         return (
+                           <div key={cl.id} className="p-4 border border-zinc-800 rounded-lg bg-zinc-800/50 hover:bg-zinc-800 transition">
+                             <div className="flex justify-between items-start mb-3">
+                               <div className="flex items-center">
+                                 {cl.tokenType === "usds" ? (
+                                   <USDsIcon width={24} height={24} className="text-emerald-400 mr-2" />
+                                 ) : (
+                                   <USDCIcon width={24} height={24} className="text-blue-400 mr-2" />
+                                 )}
+                                 <span className="text-lg font-medium">
+                                   ${cl.amount} {cl.tokenType.toUpperCase()}
+                                 </span>
+                               </div>
+                               <div className="flex items-center space-x-1">
+                                 <CheckCircle2 size={16} className="text-emerald-400" />
+                                 <span className="text-sm text-emerald-400">Claimed</span>
+                               </div>
+                             </div>
+                             
+                             {/* Payment Link Claimed Info */}
+                             <div className="bg-emerald-900/30 text-emerald-400 px-3 py-2 rounded-md mb-3 flex items-center">
+                               <LinkIcon size={14} className="mr-2" />
+                               <span className="text-sm">
+                                 Payment link claimed by {cl.claimedBy ? shortenAddress(cl.claimedBy) : 'Someone'}
+                               </span>
+                             </div>
+                             
+                             {cl.note && (
+                               <div className="bg-zinc-700/50 px-3 py-2 rounded-md mb-3 text-sm text-gray-300">
+                                 "{cl.note}"
+                               </div>
+                             )}
+                               
+                             <div className="text-xs text-gray-500 mb-3">
+                               Claimed {formatDate(cl.claimedAt || cl.createdAt)}
+                             </div>
+                             
+                             <div className="flex flex-wrap gap-2">
+                               <Button 
+                                 size="sm" 
+                                 variant="ghost" 
+                                 className="bg-zinc-700 hover:bg-zinc-600 text-gray-300"
+                                 onClick={() => copyToClipboard(`${window.location.origin}/payment-link/${cl.shortId}`)}
+                               >
+                                 <Copy size={14} className="mr-1" />
+                                 Copy Link
+                               </Button>
+                             </div>
+                           </div>
+                         );
+                       }
+                     })}
+                   </div>
+                 );
+               })()}
             </div>
           </>
         )}

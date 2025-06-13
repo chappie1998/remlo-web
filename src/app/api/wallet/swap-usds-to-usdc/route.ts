@@ -28,6 +28,7 @@ import {
 import { isValidPasscode } from "@/lib/utils";
 import { prepareMPCSigningKeypair } from "@/lib/mpc";
 import { authOptions } from "@/lib/auth";
+import { getUserFromRequest } from "@/lib/jwt";
 
 const prisma = new PrismaClient();
 
@@ -56,7 +57,16 @@ export async function POST(req: NextRequest) {
       console.log('Found user email from NextAuth session:', userEmail);
     }
 
-    // If no NextAuth session, try to get the user from the Authorization header
+    // If no NextAuth session, try to get the user from JWT token (mobile app)
+    if (!userEmail) {
+      const userData = await getUserFromRequest(req);
+      if (userData?.email) {
+        userEmail = userData.email;
+        console.log('Found user email from JWT token:', userEmail);
+      }
+    }
+
+    // Legacy fallback: try to get the user from the Authorization header as session token
     if (!userEmail) {
       const authHeader = req.headers.get('authorization');
       console.log('Authorization header:', authHeader);

@@ -31,48 +31,36 @@ export async function GET(request: NextRequest) {
       );
     }
     
-    // Find the payment link using raw SQL since there's a Prisma issue
-    const rawPaymentLinks = await prisma.$queryRaw`
-      SELECT 
-        pl.id, 
-        pl.shortId,
-        pl."creatorId",
-        pl.amount,
-        pl."tokenType",
-        pl.note,
-        pl.status,
-        pl."expiresAt",
-        pl."verificationData",
-        pl."createdAt",
-        u.name as creatorName,
-        u.image as creatorImage,
-        u."solanaAddress" as creatorSolanaAddress
-      FROM "PaymentLink" pl
-      JOIN "User" u ON pl."creatorId" = u.id
-      WHERE pl."shortId" = ${shortId}
-      LIMIT 1
-    `;
+    // Find the payment link using Prisma's query builder
+    const paymentLink = await prisma.paymentLink.findFirst({
+      where: {
+        shortId: shortId
+      },
+      include: {
+        creator: {
+          select: {
+            name: true,
+            image: true,
+            solanaAddress: true
+          }
+        }
+      }
+    });
     
-    // Convert the raw result to a single payment link
-    const paymentLinks = rawPaymentLinks as any[];
-    
-    if (!paymentLinks || paymentLinks.length === 0) {
+    if (!paymentLink) {
       return NextResponse.json(
         { error: "Payment link not found" },
         { status: 404 }
       );
     }
-    
-    const paymentLink = paymentLinks[0];
 
     // Check if the link is expired but not marked as such
     if (paymentLink.status === "active" && new Date(paymentLink.expiresAt) < new Date()) {
-      // Update the status using raw SQL
-      await prisma.$executeRaw`
-        UPDATE "PaymentLink"
-        SET "status" = 'expired'
-        WHERE "id" = ${paymentLink.id}
-      `;
+      // Update the status using Prisma
+      await prisma.paymentLink.update({
+        where: { id: paymentLink.id },
+        data: { status: "expired" }
+      });
       
       paymentLink.status = "expired";
     }
@@ -88,9 +76,9 @@ export async function GET(request: NextRequest) {
       expiresAt: paymentLink.expiresAt,
       createdAt: paymentLink.createdAt,
       creator: {
-        name: paymentLink.creatorName,
-        image: paymentLink.creatorImage,
-        solanaAddress: paymentLink.creatorSolanaAddress
+        name: paymentLink.creator.name,
+        image: paymentLink.creator.image,
+        solanaAddress: paymentLink.creator.solanaAddress
       }
     });
   } catch (error) {

@@ -44,22 +44,8 @@ export default function PaymentPage() {
   const [showPasscodeModal, setShowPasscodeModal] = useState(false);
   const [passcode, setPasscode] = useState("");
   const [error, setError] = useState("");
-  const [showQrCode, setShowQrCode] = useState(false);
+  const [showQrCode, setShowQrCode] = useState(true);
   const [processingStage, setProcessingStage] = useState("idle");
-
-  // Add check to verify session on mount and refresh
-  useEffect(() => {
-    // Force a session update after 1 second
-    const timer = setTimeout(() => {
-      // This is a simple hack to force re-evaluation of the session state
-      setIsLoading(prev => {
-        if (!prev) return prev;
-        return false;
-      });
-    }, 1000);
-    
-    return () => clearTimeout(timer);
-  }, []);
 
   // Add console logging to debug session state
   useEffect(() => {
@@ -157,7 +143,8 @@ export default function PaymentPage() {
         body: JSON.stringify({
           to: paymentRequest.requesterAddress,
           amount: paymentRequest.amount,
-          passcode: passcode
+          passcode: passcode,
+          tokenType: paymentRequest.tokenType
         }),
         signal: abortController.signal
       }).catch(err => {
@@ -376,18 +363,19 @@ export default function PaymentPage() {
             <button 
               className="flex items-center mt-4 px-4 py-2 rounded-md bg-zinc-800 hover:bg-zinc-700 transition-all text-sm"
               onClick={() => setShowQrCode(!showQrCode)}
+              aria-expanded={showQrCode}
             >
-              <QrCode size={14} className="mr-2" />
+              <QrCode size={14} className={`mr-2 ${showQrCode ? 'text-emerald-400' : ''}`} />
               {showQrCode ? "Hide QR Code" : "Show QR Code"}
             </button>
           </div>
           
           {/* QR Code for direct payment */}
           {showQrCode && (
-            <div className="bg-zinc-800 rounded-lg border border-zinc-700 p-4 mb-6">
+            <div className="bg-zinc-800 rounded-lg border border-zinc-700 p-4 mb-6 transition-all duration-300">
               <div className="flex flex-col items-center text-center mb-4">
-                <p className="text-sm text-gray-400 mb-4">Scan to automatically fill payment details</p>
-                <div className="bg-white p-4 rounded-lg mb-2">
+                <p className="text-sm text-gray-300 mb-4 font-medium">Scan QR Code to Pay</p>
+                <div className="bg-white p-4 rounded-lg mb-2 shadow-lg">
                   <QRCode
                     value={JSON.stringify({
                       action: "send",
@@ -396,15 +384,19 @@ export default function PaymentPage() {
                       token: paymentRequest.tokenType,
                       note: paymentRequest.note || ""
                     })}
-                    size={150}
+                    size={180}
                     style={{ height: "auto", maxWidth: "100%", width: "100%" }}
                     viewBox={`0 0 256 256`}
+                    fgColor="#000000"
+                    bgColor="#FFFFFF"
                   />
                 </div>
-                <p className="text-xs text-gray-500">This QR contains payment information</p>
+                <div className="flex items-center mt-2 text-emerald-400">
+                  <p className="text-xs">Scan with Remlo App</p>
+                </div>
               </div>
-              <div className="bg-zinc-900 rounded p-2 mt-2">
-                <p className="text-xs text-gray-400 text-center">Recipient Address</p>
+              <div className="bg-zinc-900 rounded p-3 mt-2">
+                <p className="text-xs text-gray-400 text-center font-medium">Recipient Address</p>
                 <div className="flex items-center justify-center mt-1">
                   <p className="text-xs text-gray-300 font-mono truncate max-w-[80%]">
                     {paymentRequest.requesterAddress}
@@ -415,6 +407,7 @@ export default function PaymentPage() {
                       copyToClipboard(paymentRequest.requesterAddress);
                       toast.success("Address copied to clipboard");
                     }}
+                    aria-label="Copy address"
                   >
                     <Copy size={14} className="text-gray-400" />
                   </button>

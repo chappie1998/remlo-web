@@ -1,7 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { PrismaClient } from "@prisma/client";
-
-const prisma = new PrismaClient();
+import prisma from "@/lib/prisma";
 
 export async function OPTIONS() {
   return new NextResponse(null, {
@@ -33,37 +31,27 @@ export async function GET(request: NextRequest, context: any) {
 
     console.log(`Using Prisma to find payment request with shortId: ${requestId}`);
     
-    // Log all the table names to verify PaymentRequest exists
-    try {
-      const tableInfo = await prisma.$queryRaw`SELECT name FROM sqlite_master WHERE type='table'`;
-      console.log("Available tables:", tableInfo);
-    } catch (e) {
-      console.error("Error checking tables:", e);
-    }
-
     // Try both ways to find the payment request
     let paymentRequest;
     try {
       // First try to find by shortId
-      paymentRequest = await prisma.$transaction(async (tx) => {
-        return (tx as any).PaymentRequest.findFirst({
-          where: { 
-            OR: [
-              { shortId: requestId },
-              { id: requestId }
-            ]
-          },
-          include: {
-            creator: {
-              select: {
-                id: true,
-                name: true,
-                email: true,
-                solanaAddress: true,
-              }
+      paymentRequest = await (prisma as any).PaymentRequest.findFirst({
+        where: { 
+          OR: [
+            { shortId: requestId },
+            { id: requestId }
+          ]
+        },
+        include: {
+          creator: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              solanaAddress: true,
             }
           }
-        });
+        }
       });
     } catch (e) {
       console.error("Prisma query error:", e);
@@ -101,7 +89,5 @@ export async function GET(request: NextRequest, context: any) {
       { error: "Failed to fetch payment request", details: error instanceof Error ? error.message : String(error) },
       { status: 500 }
     );
-  } finally {
-    await prisma.$disconnect();
   }
 } 

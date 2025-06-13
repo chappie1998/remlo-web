@@ -3,12 +3,48 @@ import { Inter } from "next/font/google";
 import "./globals.css";
 import { Toaster } from "sonner";
 import AuthProvider from "@/components/providers/AuthProvider";
+import TokenRefreshProvider from "@/components/providers/TokenRefreshProvider";
+import AppWalletProvider from "@/components/AppWalletProvider";
 
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "Remlo - Send money instantly",
-  description: "Send and receive money instantly, simply, and securely with Remlo.",
+  title: "Remlo - Send Money Instantly on Solana",
+  description: "Send and receive money instantly, simply, and securely with Remlo. Built on Solana blockchain with bank-level security and no hidden fees.",
+  keywords: ["solana", "wallet", "payments", "crypto", "defi", "send money", "receive money", "blockchain"],
+  authors: [{ name: "Remlo Team" }],
+  creator: "Remlo",
+  publisher: "Remlo",
+  openGraph: {
+    title: "Remlo - Send Money Instantly on Solana",
+    description: "Send and receive money instantly, simply, and securely with Remlo. Built on Solana blockchain with bank-level security and no hidden fees.",
+    url: "https://remlo.com",
+    siteName: "Remlo",
+    type: "website",
+    images: [
+      {
+        url: "/og-image.png",
+        width: 1200,
+        height: 630,
+        alt: "Remlo - Send Money Instantly",
+      },
+    ],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Remlo - Send Money Instantly on Solana",
+    description: "Send and receive money instantly, simply, and securely with Remlo.",
+    images: ["/og-image.png"],
+  },
+  robots: {
+    index: true,
+    follow: true,
+  },
+  icons: {
+    icon: "/favicon.ico",
+    shortcut: "/favicon-16x16.png",
+    apple: "/apple-touch-icon.png",
+  },
 };
 
 export default function RootLayout({
@@ -20,8 +56,11 @@ export default function RootLayout({
     <html lang="en" className="dark">
       <body className={`${inter.className} bg-black text-white`}>
         <AuthProvider>
-          {children}
-          <Toaster position="top-right" richColors theme="dark" />
+          <AppWalletProvider>
+            <TokenRefreshProvider />
+            {children}
+            <Toaster position="top-right" richColors theme="dark" />
+          </AppWalletProvider>
         </AuthProvider>
       </body>
     </html>

@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth/next";
 import { PrismaClient } from "@prisma/client";
-import { authOptions } from "@/lib/auth";
+import { generatePaymentLink } from "@/lib/paymentLinkUtils";
+import prisma from "@/lib/prisma";
+import { getUserFromRequest } from "@/lib/jwt";
 
-const prisma = new PrismaClient();
+// const prisma = new PrismaClient(); // Removed global instance
 
 export async function OPTIONS() {
   return new NextResponse(null, {
@@ -18,39 +19,66 @@ export async function OPTIONS() {
 }
 
 export async function GET(req: NextRequest) {
+  const startTime = Date.now();
+  
   try {
-    // Get the session from NextAuth
-    const session = await getServerSession(authOptions);
+    // Use optimized JWT authentication
+    const user = await getUserFromRequest(req);
     
-    if (!session?.user?.email) {
+    if (!user) {
       return NextResponse.json(
         { error: "You must be signed in to list payment requests" },
         { status: 401 }
       );
     }
 
-    // Find the user
-    const user = await prisma.user.findUnique({
-      where: { email: session.user.email }
-    });
+    console.log(`⚡ Authentication completed in ${Date.now() - startTime}ms`);
 
-    if (!user) {
-      return NextResponse.json(
-        { error: "User not found" },
-        { status: 404 }
-      );
+    // Pagination params
+    const url = req.nextUrl;
+    const limit = parseInt(url.searchParams.get('limit') || '20', 10);
+    const offset = parseInt(url.searchParams.get('offset') || '0', 10);
+
+    // Quick check for any payment requests first (optimization for empty results)
+    const [hasCreated, hasReceived] = await Promise.all([
+      prisma.paymentRequest.count({ where: { creatorId: user.id }, take: 1 }),
+      prisma.paymentRequest.count({ where: { recipientId: user.id }, take: 1 })
+    ]);
+
+    // If no payment requests exist at all, return early
+    if (hasCreated === 0 && hasReceived === 0) {
+      console.log(`User has no payment requests, returning empty result`);
+      console.log(`✅ Total API request time: ${Date.now() - startTime}ms (Auth: JWT) - Empty result`);
+      const isCacheBust = req.nextUrl.searchParams.has('t');
+      
+      return NextResponse.json({
+        success: true,
+        paymentRequests: [],
+        createdTotal: 0,
+        receivedTotal: 0,
+        limit,
+        offset,
+      }, {
+        headers: {
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Methods': 'GET, OPTIONS',
+          'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+          'Access-Control-Allow-Credentials': 'true',
+          'Cache-Control': isCacheBust 
+            ? 'no-cache, no-store, must-revalidate' 
+            : 'public, max-age=60, s-maxage=60', // Cache longer for empty results
+          ...(isCacheBust && {
+            'Pragma': 'no-cache',
+            'Expires': '0'
+          }),
+        }
+      });
     }
 
-    // Extract the table name for debugging
-    const tableNames = await prisma.$queryRaw`SELECT name FROM sqlite_master WHERE type='table'`;
-    console.log("Database tables:", tableNames);
-
     // List all payment requests created by this user
-    const createdRequests = await prisma.$transaction(async (tx) => {
-      return await (tx as any).PaymentRequest.findMany({
-        where: {
-          creatorId: user.id
-        },
+    const [createdRequests, createdTotal] = await Promise.all([
+      hasCreated > 0 ? prisma.paymentRequest.findMany({
+        where: { creatorId: user.id },
         include: {
           recipient: {
             select: {
@@ -60,18 +88,17 @@ export async function GET(req: NextRequest) {
             }
           }
         },
-        orderBy: {
-          createdAt: 'desc'
-        }
-      });
-    });
+        orderBy: { createdAt: 'desc' },
+        take: limit,
+        skip: offset,
+      }) : Promise.resolve([]),
+      hasCreated > 0 ? prisma.paymentRequest.count({ where: { creatorId: user.id } }) : Promise.resolve(0)
+    ]);
 
     // List all payment requests where this user is the recipient
-    const receivedRequests = await prisma.$transaction(async (tx) => {
-      return await (tx as any).PaymentRequest.findMany({
-        where: {
-          recipientId: user.id
-        },
+    const [receivedRequests, receivedTotal] = await Promise.all([
+      hasReceived > 0 ? prisma.paymentRequest.findMany({
+        where: { recipientId: user.id },
         include: {
           creator: {
             select: {
@@ -81,19 +108,15 @@ export async function GET(req: NextRequest) {
             }
           }
         },
-        orderBy: {
-          createdAt: 'desc'
-        }
-      });
-    });
+        orderBy: { createdAt: 'desc' },
+        take: limit,
+        skip: offset,
+      }) : Promise.resolve([]),
+      hasReceived > 0 ? prisma.paymentRequest.count({ where: { recipientId: user.id } }) : Promise.resolve(0)
+    ]);
 
+    console.log(`📊 Data fetching completed in ${Date.now() - startTime}ms`);
     console.log(`Found ${createdRequests.length} created payment requests and ${receivedRequests.length} received payment requests for user`);
-
-    // Count records for debugging
-    const count = await prisma.$transaction(async (tx) => {
-      return await (tx as any).PaymentRequest.count();
-    });
-    console.log("Total payment requests in database:", count);
 
     // Combine the requests and format them
     const allPaymentRequests = [
@@ -106,7 +129,7 @@ export async function GET(req: NextRequest) {
         status: pr.status,
         expiresAt: pr.expiresAt,
         createdAt: pr.createdAt,
-        link: `${process.env.NEXT_PUBLIC_BASE_URL || req.nextUrl.origin}/pay/${pr.shortId}`,
+        link: generatePaymentLink(pr.shortId, req),
         type: 'created',
         recipientUsername: pr.recipient?.username || null,
         recipientEmail: pr.recipient?.email || null
@@ -120,24 +143,47 @@ export async function GET(req: NextRequest) {
         status: pr.status,
         expiresAt: pr.expiresAt,
         createdAt: pr.createdAt,
-        link: `${process.env.NEXT_PUBLIC_BASE_URL || req.nextUrl.origin}/pay/${pr.shortId}`,
+        link: generatePaymentLink(pr.shortId, req),
         type: 'received',
         requesterUsername: pr.creator?.username || null,
         requesterEmail: pr.creator?.email || null
       }))
     ].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
+    // Check if cache busting is requested
+    const isCacheBust = req.nextUrl.searchParams.has('t');
+
+    console.log(`✅ Total API request time: ${Date.now() - startTime}ms (Auth: JWT)`);
+
     return NextResponse.json({
       success: true,
-      paymentRequests: allPaymentRequests
+      paymentRequests: allPaymentRequests,
+      createdTotal,
+      receivedTotal,
+      limit,
+      offset,
+    }, {
+      headers: {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'GET, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+        'Access-Control-Allow-Credentials': 'true',
+        // Add caching headers
+        'Cache-Control': isCacheBust 
+          ? 'no-cache, no-store, must-revalidate' 
+          : 'public, max-age=30, s-maxage=30', // Cache for 30 seconds
+        ...(isCacheBust && {
+          'Pragma': 'no-cache',
+          'Expires': '0'
+        }),
+      }
     });
   } catch (error) {
     console.error("Error listing payment requests:", error);
+    console.log(`❌ Payment requests error in ${Date.now() - startTime}ms`);
     return NextResponse.json(
       { error: "Failed to list payment requests", details: error instanceof Error ? error.message : String(error) },
       { status: 500 }
     );
-  } finally {
-    await prisma.$disconnect();
   }
 } 

@@ -29,6 +29,7 @@ export default function WalletSetup() {
   
   const router = useRouter();
   const { data: session, update } = useSession();
+  const [isRedirecting, setIsRedirecting] = useState(false);
 
   // Handle redirect if user already has wallet (in client-side only)
   useEffect(() => {
@@ -389,10 +390,15 @@ export default function WalletSetup() {
         </div>
 
         <Button
-          onClick={() => router.push('/wallet')}
+          onClick={async () => {
+            setIsRedirecting(true);
+            await update();
+            window.location.href = '/wallet'; // Hard reload
+          }}
           className="w-full"
+          disabled={isRedirecting}
         >
-          Go to My Wallet
+          {isRedirecting ? "Redirecting..." : "Go to My Wallet"}
         </Button>
       </div>
     </div>

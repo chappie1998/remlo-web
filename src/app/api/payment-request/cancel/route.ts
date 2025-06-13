@@ -1,9 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
-import { PrismaClient } from "@prisma/client";
+import prisma from "@/lib/prisma";
 import { authOptions } from "@/lib/auth";
-
-const prisma = new PrismaClient();
 
 export async function OPTIONS() {
   return new NextResponse(null, {
@@ -97,7 +95,5 @@ export async function POST(req: NextRequest) {
       { error: "Failed to cancel payment request", details: error instanceof Error ? error.message : String(error) },
       { status: 500 }
     );
-  } finally {
-    await prisma.$disconnect();
   }
 } 

@@ -103,4 +103,36 @@ export function calculateExpirationDate(hours: number): Date {
   const expiresAt = new Date();
   expiresAt.setHours(expiresAt.getHours() + hours);
   return expiresAt;
+}
+
+/**
+ * Generate a payment link URL given a shortId and optional request
+ * @param shortId The short ID of the payment request
+ * @param req Optional NextRequest for dynamic base URL
+ * @returns Full payment link URL as a string
+ */
+export function generatePaymentLink(shortId: string, req?: { headers?: any }): string {
+  // For mobile app deep linking, always use the production URL
+  // This ensures payment links work with the mobile app's deep link configuration
+  const productionUrl = 'https://beta-remlo.vercel.app';
+  
+  // Check if this is a mobile app request by looking for the Authorization header
+  const isMobileRequest = req && req.headers && req.headers.get('authorization');
+  
+  if (isMobileRequest) {
+    // Always use production URL for mobile app requests to ensure deep linking works
+    return `${productionUrl}/pay/${shortId}`;
+  }
+  
+  // For web requests, use environment variables or request headers
+  let baseUrl = process.env.NEXT_PUBLIC_BASE_URL || process.env.NEXT_PUBLIC_APP_URL || productionUrl;
+  
+  if (req && req.headers && req.headers.get) {
+    const host = req.headers.get('host');
+    if (host && !host.includes('localhost') && !host.includes('192.168')) {
+      baseUrl = `${req.headers.get('x-forwarded-proto') || 'https'}://${host}`;
+    }
+  }
+  
+  return `${baseUrl}/pay/${shortId}`;
 } 

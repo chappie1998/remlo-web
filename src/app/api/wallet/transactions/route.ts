@@ -1,9 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
-import { PrismaClient } from "@prisma/client";
+import prisma from "@/lib/prisma";
 import { authOptions } from "@/lib/auth";
-
-const prisma = new PrismaClient();
+import { getUserFromRequest } from "@/lib/jwt";
 
 // Handle OPTIONS request for CORS preflight
 export async function OPTIONS() {
@@ -30,29 +29,12 @@ export async function GET(req: NextRequest) {
       console.log('Found user email from NextAuth session:', userEmail);
     }
 
-    // If no NextAuth session, try to get the user from the Authorization header
+    // If no NextAuth session, try to get the user from JWT token (mobile app)
     if (!userEmail) {
-      const authHeader = req.headers.get('authorization');
-      console.log('Authorization header:', authHeader);
-
-      if (authHeader?.startsWith('Bearer ')) {
-        const token = authHeader.substring(7);
-        console.log('Extracted token:', token);
-
-        // Find the session in the database
-        const dbSession = await prisma.session.findUnique({
-          where: { sessionToken: token },
-          include: { user: true }
-        });
-
-        console.log('Database session lookup result:', dbSession ? 'Found' : 'Not found');
-
-        if (dbSession?.user?.email && dbSession.expires > new Date()) {
-          userEmail = dbSession.user.email;
-          console.log('Found user email from session token:', userEmail);
-        } else {
-          console.log('Invalid or expired session token');
-        }
+      const userData = await getUserFromRequest(req);
+      if (userData?.email) {
+        userEmail = userData.email;
+        console.log('Found user email from JWT token:', userEmail);
       }
     }
 
@@ -72,15 +54,18 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    // Get the user's ID
+    // Get the user's ID and Solana address
     const user = await prisma.user.findUnique({
       where: { email: userEmail },
-      select: { id: true },
+      select: { 
+        id: true, 
+        solanaAddress: true 
+      },
     });
 
-    if (!user) {
+    if (!user || !user.solanaAddress) {
       return NextResponse.json(
-        { error: "User not found" },
+        { error: "User not found or wallet not set up" },
         {
           status: 404,
           headers: {
@@ -93,24 +78,68 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    // Get the user's transactions
-    const transactions = await prisma.transaction.findMany({
-      where: { userId: user.id },
-      orderBy: { createdAt: "desc" },
-      select: {
-        id: true,
-        txData: true,
-        status: true,
-        signature: true,
-        createdAt: true,
-        executedAt: true,
-      },
-    });
+    // Pagination params
+    const url = req.nextUrl;
+    const limit = parseInt(url.searchParams.get('limit') || '20', 10);
+    const offset = parseInt(url.searchParams.get('offset') || '0', 10);
+
+    // Get the user's transactions - SAME QUERY AS HOMEPAGE AND ACTIVITY
+    const [transactions, total] = await Promise.all([
+      prisma.transaction.findMany({
+        where: {
+          OR: [
+            // Transactions sent by this user
+            { userId: user.id },
+            // Transactions received by this user (proper JSON contains)
+            {
+              txData: {
+                contains: `"to":"${user.solanaAddress}"`
+              }
+            }
+          ]
+        },
+        orderBy: { createdAt: "desc" },
+        select: {
+          id: true,
+          txData: true,
+          status: true,
+          signature: true,
+          createdAt: true,
+          executedAt: true,
+          userId: true, // Include userId to distinguish sent vs received
+          user: {
+            select: {
+              username: true // Include the sender's username for better display
+            }
+          }
+        },
+        take: limit,
+        skip: offset,
+      }),
+      prisma.transaction.count({ 
+        where: {
+          OR: [
+            { userId: user.id },
+            {
+              txData: {
+                contains: `"to":"${user.solanaAddress}"`
+              }
+            }
+          ]
+        }
+      })
+    ]);
+
+    // Check if cache busting is requested
+    const isCacheBust = req.nextUrl.searchParams.has('t');
 
     return NextResponse.json(
       {
         success: true,
         transactions,
+        total,
+        limit,
+        offset,
       },
       {
         headers: {
@@ -118,6 +147,14 @@ export async function GET(req: NextRequest) {
           'Access-Control-Allow-Methods': 'GET, OPTIONS',
           'Access-Control-Allow-Headers': 'Content-Type, Authorization',
           'Access-Control-Allow-Credentials': 'true',
+          // Add caching headers
+          'Cache-Control': isCacheBust 
+            ? 'no-cache, no-store, must-revalidate' 
+            : 'public, max-age=30, s-maxage=30', // Cache for 30 seconds
+          ...(isCacheBust && {
+            'Pragma': 'no-cache',
+            'Expires': '0'
+          }),
         }
       }
     );
@@ -135,8 +172,5 @@ export async function GET(req: NextRequest) {
         }
       }
     );
-  } finally {
-    // Close the Prisma client connection
-    await prisma.$disconnect();
   }
 }

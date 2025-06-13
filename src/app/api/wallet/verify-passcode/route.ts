@@ -5,15 +5,29 @@ import { decryptMnemonic } from "@/lib/crypto";
 import { isValidPasscode } from "@/lib/utils";
 import { verifyPasscodeForMPC } from "@/lib/mpc";
 import { authOptions } from "@/lib/auth";
+import { getUserFromRequest } from "@/lib/jwt";
 
 const prisma = new PrismaClient();
 
 export async function POST(req: NextRequest) {
   try {
-    // Get the current session - pass in the auth options
-    const session = await getServerSession(authOptions);
+    let userEmail = null;
 
-    if (!session || !session.user || !session.user.email) {
+    // First, try to get the session from NextAuth
+    const session = await getServerSession(authOptions);
+    if (session?.user?.email) {
+      userEmail = session.user.email;
+    }
+
+    // If no NextAuth session, try to get the user from JWT token (mobile app)
+    if (!userEmail) {
+      const userData = await getUserFromRequest(req);
+      if (userData?.email) {
+        userEmail = userData.email;
+      }
+    }
+
+    if (!userEmail) {
       return NextResponse.json(
         { error: "You must be signed in to verify your passcode" },
         { status: 401 }
@@ -32,7 +46,7 @@ export async function POST(req: NextRequest) {
 
     // Get the user's wallet information
     const user = await prisma.user.findUnique({
-      where: { email: session.user.email },
+      where: { email: userEmail },
       select: {
         encryptedKeypair: true,
         usesMPC: true,
@@ -64,7 +78,7 @@ export async function POST(req: NextRequest) {
         passcode,
         user.mpcServerShare,
         user.mpcSalt,
-        user.mpcBackupShare  // Include backup share for better verification
+        user.mpcBackupShare || undefined  // Convert null to undefined for TypeScript compatibility
       );
 
       if (!isValid) {

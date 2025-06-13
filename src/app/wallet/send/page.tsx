@@ -79,23 +79,23 @@ function SendPage() {
   const [foundUser, setFoundUser] = useState<{ username: string, solanaAddress: string } | null>(null);
   const [usdsBalance, setUsdsBalance] = useState("0.0");
   const [usdcBalance, setUsdcBalance] = useState("0.0");
-  const [solBalance, setSolBalance] = useState("0.0");
   
   // Username validation states
   const [isValidatingUsername, setIsValidatingUsername] = useState(false);
   const [usernameStatus, setUsernameStatus] = useState<"idle" | "validating" | "valid" | "invalid">("idle");
   
   // Debounced username validation function
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   const debouncedValidateUsername = useCallback(
     debounce(async (username: string) => {
       if (!username || username.length < 3) {
         setUsernameStatus("idle");
+        setFoundUser(null);
         return;
       }
 
       setIsValidatingUsername(true);
       setUsernameStatus("validating");
+      setFoundUser(null);
 
       try {
         const response = await fetch("/api/user/lookup", {
@@ -108,18 +108,20 @@ function SendPage() {
 
         const data = await response.json();
 
-        if (response.ok) {
+        if (response.ok && data.found) {
           setUsernameStatus("valid");
-          // Don't automatically set the found user yet, just indicate it exists
+          setFoundUser({ username: data.username, solanaAddress: data.solanaAddress });
         } else {
           setUsernameStatus("invalid");
+          setFoundUser(null);
         }
       } catch (err) {
         setUsernameStatus("invalid");
+        setFoundUser(null);
       } finally {
         setIsValidatingUsername(false);
       }
-    }, 500), // 500ms debounce time
+    }, 500),
     []
   );
 
@@ -152,27 +154,28 @@ function SendPage() {
     }
   }, [status, session, router]);
   
-  // Fetch token balances
+  // Fetch token balances using combined endpoint
   const fetchBalances = async () => {
     try {
       setIsLoading(true);
       
-      // Fetch SOL balance
-      const solResponse = await fetch("/api/wallet/balance");
-      if (solResponse.ok) {
-        const solData = await solResponse.json();
-        setSolBalance(solData.formattedBalance);
-      }
-
-      // Fetch token balances (USDC and USDs)
-      const tokenResponse = await fetch("/api/wallet/token-balance");
-      if (tokenResponse.ok) {
-        const tokenData = await tokenResponse.json();
-        setUsdcBalance(tokenData.usdc.formattedBalance);
-        setUsdsBalance(tokenData.usds.formattedBalance);
+      // Use the optimized overview endpoint - only returns USDC and USDS
+      const response = await fetch("/api/wallet/overview");
+      if (response.ok) {
+        const data = await response.json();
+        setUsdcBalance(data.balances.usdc.formattedBalance);
+        setUsdsBalance(data.balances.usds.formattedBalance);
+      } else {
+        console.error("Failed to fetch wallet overview");
+        // Set default values if API fails
+        setUsdcBalance("0.000000");
+        setUsdsBalance("0.000000");
       }
     } catch (error) {
       console.error("Error fetching balances:", error);
+      // Set default values if error occurs
+      setUsdcBalance("0.000000");
+      setUsdsBalance("0.000000");
     } finally {
       setIsLoading(false);
     }
@@ -251,29 +254,36 @@ function SendPage() {
           const data = await response.json();
 
           if (!response.ok) {
-            throw new Error(data.error || "Failed to find user");
+            throw new Error(data.error || "Failed to verify username");
           }
 
-          // Set the recipient address from the username lookup
-          setRecipient(data.solanaAddress);
+          if (!data.found) {
+            setError("Username not found");
+            setIsLookingUpUsername(false);
+            return false;
+          }
+
+          // Set the found user if lookup is successful
           setFoundUser({
             username: data.username,
             solanaAddress: data.solanaAddress
           });
           
-          toast.success(`Found user ${data.username}`);
+          // Also update the recipient field with the address for consistency
+          setRecipient(data.solanaAddress);
+          
         } catch (err) {
-          const errorMessage = err instanceof Error ? err.message : "Failed to find user";
+          const errorMessage = err instanceof Error ? err.message : "Failed to verify username";
           setError(errorMessage);
-          setRecipient(""); // Clear recipient address if lookup fails
           setIsLookingUpUsername(false);
           return false;
         }
         setIsLookingUpUsername(false);
       }
     } else {
+      // Address validation
       if (!recipient || recipient.trim() === "") {
-        setError("Recipient address is required");
+        setError("Recipient address cannot be empty");
         return false;
       }
 
@@ -282,18 +292,17 @@ function SendPage() {
         return false;
       }
     }
-    
-    if (!amount || isNaN(parseFloat(amount)) || parseFloat(amount) <= 0) {
-      setError("Enter a valid amount");
+
+    // Validate amount for both tabs
+    if (!amount || isNaN(Number(amount)) || Number(amount) <= 0) {
+      setError("Please enter a valid amount");
       return false;
     }
 
-    // Check if there are sufficient funds
-    if (tokenType === "usd" && parseFloat(amount) > parseFloat(usdsBalance)) {
-      setError("Insufficient USDs balance");
-      return false;
-    } else if (tokenType === "usdc" && parseFloat(amount) > parseFloat(usdcBalance)) {
-      setError("Insufficient USDC balance");
+    // Check if sufficient balance based on selected token type
+    const balance = tokenType === "usdc" ? usdcBalance : usdsBalance;
+    if (Number(amount) > Number(balance)) {
+      setError(`Insufficient ${tokenType.toUpperCase()} balance`);
       return false;
     }
 
@@ -328,6 +337,11 @@ function SendPage() {
         ? "/api/wallet/send-token-transaction"
         : "/api/wallet/send-transaction";
 
+      // Determine the recipient address - if using username tab and found a user, use their address
+      const recipientAddress = activeTab === "username" && foundUser 
+        ? foundUser.solanaAddress 
+        : recipient;
+
       // Include username in the request if a user was found
       const requestData: {
         to: string;
@@ -336,7 +350,7 @@ function SendPage() {
         username?: string;
         tokenType?: string;
       } = {
-        to: recipient,
+        to: recipientAddress,
         amount,
         passcode,
       };
@@ -351,6 +365,9 @@ function SendPage() {
         requestData.username = foundUser.username;
       }
 
+      // Log the request payload to help with debugging
+      console.log("Sending transaction with payload:", requestData);
+
       const response = await fetch(endpoint, {
         method: "POST",
         headers: {
@@ -358,6 +375,9 @@ function SendPage() {
         },
         body: JSON.stringify(requestData),
       });
+
+      // Log the response status
+      console.log("Transaction response status:", response.status);
 
       const data = await response.json();
 
@@ -380,9 +400,9 @@ function SendPage() {
       setFoundUser(null);
       setAmount("");
       
-      // Redirect back to wallet page after successful transaction
+      // Redirect back to wallet page with refresh parameter to trigger balance update
       setTimeout(() => {
-        router.push("/wallet");
+        router.push("/wallet?refresh=true");
       }, 1500);
       
     } catch (err) {
@@ -681,6 +701,7 @@ function SendPage() {
               <Button
                 type="submit"
                 className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white"
+                disabled={activeTab === "username" && (!foundUser || usernameStatus !== "valid")}
               >
                 Review & Send
               </Button>

@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import prisma from "@/lib/prisma";
-import { cookies } from "next/headers";
+import { createLogoutCookie } from "@/lib/jwt";
 
 // Handle OPTIONS request for CORS preflight
 export async function OPTIONS() {
@@ -16,28 +15,14 @@ export async function OPTIONS() {
 }
 
 export async function POST(request: NextRequest) {
+  const startTime = Date.now();
+  
   try {
-    // Get token from request header
-    const cookieStore = await cookies();
+    console.log('Handling signout request');
 
-    // Adjust for HTTPS/production if needed
-    const sessionToken = cookieStore.get("next-auth.session-token")?.value ?? cookieStore.get("__Secure-next-auth.session-token")?.value;
-
-    if (sessionToken) {
-      // Delete the session
-      await prisma.session
-        .delete({
-          where: {
-            sessionToken,
-          },
-        })
-        .catch(() => {
-          // Ignore errors if session doesn't exist
-        });
-    }
-
-    return NextResponse.json(
-      { success: true },
+    // Create response with success
+    const response = NextResponse.json(
+      { success: true, message: "Signed out successfully" },
       {
         headers: {
           "Access-Control-Allow-Origin": "*",
@@ -47,10 +32,43 @@ export async function POST(request: NextRequest) {
         },
       }
     );
+
+    // Clear the JWT token cookie
+    response.cookies.set('auth-token', '', {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      maxAge: 0, // Expire immediately
+      path: '/',
+    });
+
+    // Also clear any NextAuth cookies for backward compatibility
+    response.cookies.set('next-auth.session-token', '', {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      maxAge: 0,
+      path: '/',
+    });
+
+    response.cookies.set('__Secure-next-auth.session-token', '', {
+      httpOnly: true,
+      secure: true,
+      sameSite: 'lax',
+      maxAge: 0,
+      path: '/',
+    });
+
+    console.log(`✅ Total signout time: ${Date.now() - startTime}ms (JWT)`);
+
+    return response;
   } catch (error) {
     console.error("Error during signout:", error);
-    return NextResponse.json(
-      { success: true }, // Return success anyway as the client will clear local storage
+    console.log(`❌ Signout error in ${Date.now() - startTime}ms`);
+    
+    // Return success anyway as the client will clear local storage
+    const response = NextResponse.json(
+      { success: true }, 
       {
         headers: {
           "Access-Control-Allow-Origin": "*",
@@ -60,5 +78,16 @@ export async function POST(request: NextRequest) {
         },
       }
     );
+
+    // Still clear cookies even on error
+    response.cookies.set('auth-token', '', {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      maxAge: 0,
+      path: '/',
+    });
+
+    return response;
   }
 }

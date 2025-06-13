@@ -1,17 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
-import { PrismaClient } from "@prisma/client";
+import prisma from "@/lib/prisma";
 import { authOptions } from "@/lib/auth";
-
-const prisma = new PrismaClient();
 
 // GET a single contact by ID
 export async function GET(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const id = params.id;
+    const { id } = await params;
     
     // Get the user session
     const session = await getServerSession(authOptions);
@@ -63,18 +61,16 @@ export async function GET(
       { error: "Failed to fetch contact" },
       { status: 500 }
     );
-  } finally {
-    await prisma.$disconnect();
   }
 }
 
 // PUT/PATCH to update a contact
 export async function PUT(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const id = params.id;
+    const { id } = await params;
     
     // Get the user session
     const session = await getServerSession(authOptions);
@@ -201,18 +197,16 @@ export async function PUT(
       { error: "Failed to update contact" },
       { status: 500 }
     );
-  } finally {
-    await prisma.$disconnect();
   }
 }
 
 // DELETE a contact
 export async function DELETE(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const id = params.id;
+    const { id } = await params;
     
     // Get the user session
     const session = await getServerSession(authOptions);
@@ -268,7 +262,5 @@ export async function DELETE(
       { error: "Failed to delete contact" },
       { status: 500 }
     );
-  } finally {
-    await prisma.$disconnect();
   }
 } 

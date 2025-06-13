@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, Suspense } from "react";
 import { useSession } from "next-auth/react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
@@ -18,7 +18,8 @@ import {
   Filter,
   Calendar,
   Download,
-  Search
+  Search,
+  CircleDashed
 } from "lucide-react";
 import { ActivityIcon, SendMoneyIcon, ReceiveIcon, RemloIcon } from "@/components/icons";
 
@@ -41,21 +42,72 @@ interface PaymentRequest {
   requesterEmail: string;
 }
 
-export default function ActivityPage() {
+// Main wrapper component with Suspense
+export default function ActivityPageWrapper() {
+  return (
+    <Suspense fallback={<ActivityLoadingState />}>
+      <ActivityPage />
+    </Suspense>
+  );
+}
+
+// Loading state component
+function ActivityLoadingState() {
+  return (
+    <div className="min-h-screen flex flex-col bg-black text-white">
+      <Header />
+      <div className="flex-1 flex items-center justify-center">
+        <div className="flex flex-col items-center space-y-4">
+          <div className="animate-spin">
+            <CircleDashed className="h-10 w-10 text-blue-500" />
+          </div>
+          <p className="text-lg">Loading activity...</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Original component now as a separate function
+function ActivityPage() {
   const { data: session, status } = useSession();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [paymentRequests, setPaymentRequests] = useState<PaymentRequest[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("all");
   const [filterType, setFilterType] = useState("all");
   const [refreshing, setRefreshing] = useState(false);
+  const [txOffset, setTxOffset] = useState(0);
+  const [txTotal, setTxTotal] = useState(0);
+  const [prOffset, setPrOffset] = useState(0);
+  const [prTotal, setPrTotal] = useState(0);
+  const PAGE_SIZE = 20;
 
   useEffect(() => {
     if (session?.user?.solanaAddress) {
       fetchData();
     }
   }, [session?.user?.solanaAddress]);
+
+  // Check for refresh parameter and fetch fresh data if present
+  useEffect(() => {
+    const refreshParam = searchParams.get("refresh");
+    if (refreshParam === "true" && session?.user?.solanaAddress) {
+      console.log("Refreshing activity due to refresh parameter - using cache busting");
+      toast.info("Updating activity after transaction...", { 
+        duration: 3000,
+        icon: "🔄" 
+      });
+      fetchData(true); // Use cache busting for immediate refresh
+      
+      // Remove refresh parameter from URL to prevent repeated refreshes
+      const newUrl = new URL(window.location.href);
+      newUrl.searchParams.delete("refresh");
+      window.history.replaceState({}, "", newUrl.toString());
+    }
+  }, [searchParams, session?.user?.solanaAddress]);
 
   // Handle authentication redirects
   useEffect(() => {
@@ -68,33 +120,82 @@ export default function ActivityPage() {
     }
   }, [status, session, router]);
 
-  const fetchData = async () => {
+  const fetchData = async (bustCache = false) => {
     setIsLoading(true);
+    try {
+      // Use the new combined activity overview endpoint
+      const url = bustCache 
+        ? `/api/activity/overview?limit=${PAGE_SIZE}&offset=0&includeCounts=true&t=${Date.now()}` 
+        : `/api/activity/overview?limit=${PAGE_SIZE}&offset=0&includeCounts=true`;
+      
+      const response = await fetch(url, {
+        // Disable caching when cache busting is requested
+        ...(bustCache && {
+          cache: 'no-cache',
+          headers: {
+            'Cache-Control': 'no-cache, no-store, must-revalidate',
+            'Pragma': 'no-cache'
+          }
+        })
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        
+        // Update all state from single response
+        setTransactions(data.transactions || []);
+        setPaymentRequests(data.paymentRequests || []);
+        
+        if (data.totals) {
+          setTxTotal(data.totals.transactions);
+          setPrTotal(data.totals.createdRequests + data.totals.receivedRequests);
+        }
+        
+        // Reset offsets for fresh data
+        setTxOffset(data.transactions?.length || 0);
+        setPrOffset(data.paymentRequests?.length || 0);
+      } else {
+        // Fallback to individual calls if combined endpoint fails
+        await fetchDataIndividually();
+      }
+    } catch (error) {
+      console.error("Error fetching activity overview:", error);
+      // Fallback to individual calls
+      await fetchDataIndividually();
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const fetchDataIndividually = async () => {
     await Promise.all([
       fetchTransactions(),
       fetchPaymentRequests()
     ]);
-    setIsLoading(false);
   };
 
-  const fetchTransactions = async () => {
+  const fetchTransactions = async (append = false) => {
     try {
-      const response = await fetch("/api/wallet/transactions");
+      const response = await fetch(`/api/wallet/transactions?limit=${PAGE_SIZE}&offset=${append ? txOffset : 0}`);
       if (response.ok) {
         const data = await response.json();
-        setTransactions(data.transactions || []);
+        setTxTotal(data.total || 0);
+        setTxOffset((append ? txOffset : 0) + (data.transactions?.length || 0));
+        setTransactions(prev => append ? [...prev, ...(data.transactions || [])] : (data.transactions || []));
       }
     } catch (error) {
       console.error("Error fetching transactions:", error);
     }
   };
 
-  const fetchPaymentRequests = async () => {
+  const fetchPaymentRequests = async (append = false) => {
     try {
-      const response = await fetch("/api/payment-request/list");
+      const response = await fetch(`/api/payment-request/list?limit=${PAGE_SIZE}&offset=${append ? prOffset : 0}`);
       if (response.ok) {
         const data = await response.json();
-        setPaymentRequests(data.paymentRequests || []);
+        setPrTotal((data.createdTotal || 0) + (data.receivedTotal || 0));
+        setPrOffset((append ? prOffset : 0) + (data.paymentRequests?.length || 0));
+        setPaymentRequests(prev => append ? [...prev, ...(data.paymentRequests || [])] : (data.paymentRequests || []));
       }
     } catch (error) {
       console.error("Error fetching payment requests:", error);
@@ -103,7 +204,11 @@ export default function ActivityPage() {
 
   const refreshData = async () => {
     setRefreshing(true);
-    await fetchData();
+    toast.info("Refreshing activity...", { 
+      duration: 2000,
+      icon: "🔄" 
+    });
+    await fetchData(true); // Use cache busting for refresh
     toast.success("Activity data refreshed");
     setRefreshing(false);
   };
@@ -123,12 +228,21 @@ export default function ActivityPage() {
         return `Swapped ${txData.amount}`;
       }
       
-      // Regular transaction
+      // Regular transaction - use tokenType if available, fallback to checking token address
+      const getTokenDisplay = () => {
+        if (txData.tokenType) {
+          return txData.tokenType; // Use the actual token type (USDC, USDS, etc.)
+        }
+        return txData.token ? 'USDC' : 'SOL'; // Fallback for old transactions
+      };
+      
+      const tokenDisplay = getTokenDisplay();
+      
       if (txData.username) {
-        return `${txData.amount} ${txData.token ? 'USDC' : 'SOL'} to ${txData.username}`;
+        return `${txData.amount} ${tokenDisplay} to ${txData.username}`;
       }
       
-      return `${txData.amount} ${txData.token ? 'USDC' : 'SOL'} to ${shortenAddress(txData.to)}`;
+      return `${txData.amount} ${tokenDisplay} to ${shortenAddress(txData.to)}`;
     } catch (e) {
       return "Unknown transaction";
     }
@@ -142,9 +256,11 @@ export default function ActivityPage() {
       case 'confirmed':
         return <CheckCircle2 className="text-green-500" size={16} />;
       case 'pending':
+      case 'submitted':
       case 'processing':
         return <Clock className="text-yellow-500" size={16} />;
       case 'failed':
+      case 'rejected':
       case 'canceled':
         return <XCircle className="text-red-500" size={16} />;
       default:
@@ -180,11 +296,34 @@ export default function ActivityPage() {
     if (filterType === "all") return true;
     try {
       const txData = JSON.parse(tx.txData);
-      return txData.token ? filterType === "usdc" : filterType === "sol";
+      
+      // Check token type more precisely
+      if (filterType === "sol") {
+        return !txData.token; // SOL transactions don't have token field
+      }
+      
+      if (filterType === "usdc") {
+        // For USDC, check tokenType first, then fallback to checking if any token exists
+        if (txData.tokenType) {
+          return txData.tokenType.toLowerCase() === "usdc";
+        }
+        return !!txData.token; // Fallback for old transactions
+      }
+      
+      // Handle other token types (like USDS) - for future expansion
+      if (filterType === "usds") {
+        return txData.tokenType && txData.tokenType.toLowerCase() === "usds";
+      }
+      
+      return false;
     } catch {
       return false;
     }
   });
+
+  // Add load more handlers
+  const loadMoreTransactions = () => fetchTransactions(true);
+  const loadMorePaymentRequests = () => fetchPaymentRequests(true);
 
   // Loading state
   if (status === "loading" || isLoading) {
@@ -515,6 +654,14 @@ export default function ActivityPage() {
             </Link>
           </Button>
         </div>
+
+        {/* Load More buttons */}
+        {filteredTransactions.length < txTotal && (
+          <Button onClick={loadMoreTransactions} className="mt-4 w-full">Load More Transactions</Button>
+        )}
+        {paymentRequests.length < prTotal && (
+          <Button onClick={loadMorePaymentRequests} className="mt-4 w-full">Load More Payment Requests</Button>
+        )}
       </main>
     </div>
   );

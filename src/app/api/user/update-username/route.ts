@@ -1,16 +1,28 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
-import { PrismaClient } from "@prisma/client";
+import prisma from "@/lib/prisma";
 import { authOptions } from "@/lib/auth";
-
-const prisma = new PrismaClient();
+import { signJWT, getUserFromRequest } from "@/lib/jwt";
 
 export async function POST(req: NextRequest) {
   try {
-    // Get the authenticated user from the session
+    let userEmail = null;
+
+    // First, try to get the session from NextAuth
     const session = await getServerSession(authOptions);
+    if (session?.user?.email) {
+      userEmail = session.user.email;
+    }
+
+    // If no NextAuth session, try to get the user from JWT token (mobile app)
+    if (!userEmail) {
+      const userData = await getUserFromRequest(req);
+      if (userData?.email) {
+        userEmail = userData.email;
+      }
+    }
     
-    if (!session?.user?.email) {
+    if (!userEmail) {
       return NextResponse.json(
         { error: "You must be logged in to update your username" },
         { status: 401 }
@@ -33,7 +45,7 @@ export async function POST(req: NextRequest) {
       where: { username },
     });
 
-    if (existingUser && existingUser.email !== session.user.email) {
+    if (existingUser && existingUser.email !== userEmail) {
       return NextResponse.json(
         { error: "This username is already taken" },
         { status: 400 }
@@ -41,23 +53,48 @@ export async function POST(req: NextRequest) {
     }
 
     // Update the user's username
-    await prisma.user.update({
-      where: { email: session.user.email },
+    const updatedUser = await prisma.user.update({
+      where: { email: userEmail },
       data: { username },
+      select: {
+        id: true,
+        email: true,
+        solanaAddress: true,
+        hasPasscode: true,
+        username: true,
+      },
+    });
+
+    // Create a new JWT token with the updated user information
+    const jwtToken = signJWT({
+      userId: updatedUser.id,
+      email: updatedUser.email,
+      solanaAddress: updatedUser.solanaAddress,
+      hasPasscode: updatedUser.hasPasscode,
+      username: updatedUser.username,
     });
 
     // Return success response
-    return NextResponse.json({
+    const response = NextResponse.json({
       success: true,
       message: "Username updated successfully",
     });
+
+    // Set the updated JWT token as a secure HTTP-only cookie
+    response.cookies.set('auth-token', jwtToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      maxAge: 30 * 24 * 60 * 60, // 30 days
+      path: '/',
+    });
+
+    return response;
   } catch (error) {
     console.error("Error updating username:", error);
     return NextResponse.json(
       { error: "Failed to update username" },
       { status: 500 }
     );
-  } finally {
-    await prisma.$disconnect();
   }
 } 

@@ -38,6 +38,7 @@ import {
   ArrowRight
 } from "lucide-react";
 import { USDsIcon, USDCIcon, SwapIcon, ReceiveIcon, SendMoneyIcon, RemloIcon, ActivityIcon } from "@/components/icons";
+import FaucetButton from '@/components/FaucetButton';
 
 // Define interfaces
 interface Transaction {
@@ -105,7 +106,6 @@ function AccountDashboard() {
   });
   
   const [solanaAddress, setSolanaAddress] = useState("");
-  const [solBalance, setSolBalance] = useState("0.0");
   const [usdcBalance, setUsdcBalance] = useState("0.0");
   const [usdsBalance, setUsdsBalance] = useState("0.0");
   const [transactions, setTransactions] = useState<Transaction[]>([]);
@@ -125,14 +125,52 @@ function AccountDashboard() {
   useEffect(() => {
     if (session?.user?.solanaAddress) {
       fetchBalances();
-      fetchTransactions();
     }
   }, [session?.user?.solanaAddress]); // Only re-run when solanaAddress changes
+
+  // Check for refresh parameter and fetch balances if present
+  useEffect(() => {
+    const refreshParam = searchParams.get("refresh");
+    if (refreshParam === "true" && session?.user?.solanaAddress) {
+      console.log("Refreshing balances due to refresh parameter - using cache busting");
+      toast.info("Updating balance after transaction...", { 
+        duration: 3000,
+        icon: "🔄" 
+      });
+      fetchBalances(true); // Use cache busting for immediate refresh
+      
+      // Reduced polling: only 2 polls over 10 seconds instead of 6 polls over 30 seconds
+      let pollCount = 0;
+      const maxPolls = 2; // Poll 2 times over 10 seconds (every 5 seconds)
+      
+      const pollInterval = setInterval(() => {
+        pollCount++;
+        console.log(`Polling for balance updates... (${pollCount}/${maxPolls})`);
+        fetchBalances(true); // Use cache busting for polling too
+        
+        if (pollCount >= maxPolls) {
+          clearInterval(pollInterval);
+          console.log("Finished polling for balance updates");
+        }
+      }, 5000); // Poll every 5 seconds
+      
+      // Remove refresh parameter from URL to prevent repeated refreshes
+      const newUrl = new URL(window.location.href);
+      newUrl.searchParams.delete("refresh");
+      window.history.replaceState({}, "", newUrl.toString());
+      
+      // Cleanup interval on component unmount
+      return () => {
+        clearInterval(pollInterval);
+      };
+    }
+  }, [searchParams, session?.user?.solanaAddress]);
 
   // Handle authentication redirects
   useEffect(() => {
     if (status === "unauthenticated") {
       router.push("/auth/signin");
+      return;
     }
 
     if (status === "authenticated" && !session?.user?.hasPasscode) {
@@ -140,44 +178,64 @@ function AccountDashboard() {
     }
   }, [status, session, router]);
 
-  const fetchBalances = async () => {
+  const fetchBalances = async (bustCache = false) => {
     try {
       setIsLoading(true);
-      // Fetch SOL balance
-      const solResponse = await fetch("/api/wallet/balance");
-      if (solResponse.ok) {
-        const solData = await solResponse.json();
-        setSolBalance(solData.formattedBalance);
-      }
-
-      // Fetch token balances (USDC and USDs)
-      const tokenResponse = await fetch("/api/wallet/token-balance");
-      if (tokenResponse.ok) {
-        const tokenData = await tokenResponse.json();
-        setUsdcBalance(tokenData.usdc.formattedBalance);
-        setUsdsBalance(tokenData.usds.formattedBalance);
+      
+      // Add cache-busting parameter if needed (e.g., after transactions)
+      const url = bustCache 
+        ? `/api/wallet/overview?t=${Date.now()}` 
+        : "/api/wallet/overview";
+      
+      // Use the optimized overview endpoint - now only returns USDC and USDS
+      const response = await fetch(url, {
+        // Disable caching when cache busting is requested
+        ...(bustCache && {
+          cache: 'no-cache',
+          headers: {
+            'Cache-Control': 'no-cache, no-store, must-revalidate',
+            'Pragma': 'no-cache'
+          }
+        })
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        
+        // Update only USDC and USDS balances from optimized response
+        setUsdcBalance(data.balances.usdc.formattedBalance);
+        setUsdsBalance(data.balances.usds.formattedBalance);
+        setTransactions(data.transactions || []);
+      } else {
+        console.error("Overview API failed, trying again...");
+        // Retry the same optimized endpoint instead of falling back to individual calls
+        const retryResponse = await fetch("/api/wallet/overview");
+        if (retryResponse.ok) {
+          const retryData = await retryResponse.json();
+          setUsdcBalance(retryData.balances.usdc.formattedBalance);
+          setUsdsBalance(retryData.balances.usds.formattedBalance);
+          setTransactions(retryData.transactions || []);
+        } else {
+          throw new Error("Failed to fetch wallet data");
+        }
       }
     } catch (error) {
-      console.error("Error fetching balances:", error);
+      console.error("Error fetching wallet overview:", error);
+      // Set default values if all attempts fail
+      setUsdcBalance("0.000000");
+      setUsdsBalance("0.000000");
+      setTransactions([]);
     } finally {
       setIsLoading(false);
     }
   };
 
-  const fetchTransactions = async () => {
-    try {
-      const response = await fetch("/api/wallet/transactions");
-      if (response.ok) {
-        const data = await response.json();
-        setTransactions(data.transactions || []);
-      }
-    } catch (error) {
-      console.error("Error fetching transactions:", error);
-    }
-  };
-
   const refreshData = async () => {
-    await Promise.all([fetchBalances(), fetchTransactions()]);
+    toast.info("Refreshing balances...", { 
+      duration: 2000,
+      icon: "🔄" 
+    });
+    await fetchBalances(true); // Always use cache busting for manual refresh
     toast.success("Account data refreshed");
   };
 
@@ -322,6 +380,7 @@ function AccountDashboard() {
         amount: string;
         passcode: string;
         username?: string;
+        tokenType?: string;
       } = {
         to: recipient,
         amount,
@@ -331,6 +390,11 @@ function AccountDashboard() {
       // If sending to a user found by username, include the username in the transaction data
       if (foundUser) {
         requestData.username = foundUser.username;
+      }
+      
+      // Convert "usd" to "usds" when passing to the backend
+      if (tokenType) {
+        requestData.tokenType = tokenType === "usd" ? "usds" : tokenType;
       }
 
       const response = await fetch(endpoint, {
@@ -360,9 +424,8 @@ function AccountDashboard() {
       setFoundUser(null);
       setAmount("");
 
-      // Refresh balance and transactions
-      fetchBalances();
-      fetchTransactions();
+      // Refresh balance and transactions with cache busting
+      fetchBalances(true);
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : "Transaction failed";
       setError(errorMessage);
@@ -387,12 +450,22 @@ function AccountDashboard() {
         return `Swapped ${txData.amount}`;
       }
       
+      // Use tokenType if available, fallback to checking token address
+      const getTokenDisplay = () => {
+        if (txData.tokenType) {
+          return txData.tokenType; // Use the actual token type (USDC, USDS, etc.)
+        }
+        return txData.token ? 'USDC' : 'SOL'; // Fallback for old transactions
+      };
+      
+      const tokenDisplay = getTokenDisplay();
+      
       // Check if the transaction includes a username
       if (txData.username) {
-        return `${txData.amount} ${txData.token ? 'USDC' : 'SOL'} to ${txData.username}`;
+        return `${txData.amount} ${tokenDisplay} to ${txData.username}`;
       }
       
-      return `${txData.amount} ${txData.token ? 'USDC' : 'SOL'} to ${shortenAddress(txData.to)}`;
+      return `${txData.amount} ${tokenDisplay} to ${shortenAddress(txData.to)}`;
     } catch (e) {
       return "Unknown transaction";
     }
@@ -410,13 +483,21 @@ function AccountDashboard() {
 
   // Get transaction status icon
   const getStatusIcon = (status: string) => {
-    switch(status) {
+    switch(status.toLowerCase()) {
       case 'executed':
+      case 'confirmed':
+      case 'completed':
         return <CheckCircle2 className="text-green-500" size={16} />;
       case 'pending':
+      case 'submitted':
+      case 'processing':
         return <Clock className="text-yellow-500" size={16} />;
-      default:
+      case 'failed':
+      case 'rejected':
+      case 'canceled':
         return <XCircle className="text-red-500" size={16} />;
+      default:
+        return <Clock className="text-gray-500" size={16} />;
     }
   };
 
@@ -567,25 +648,33 @@ function AccountDashboard() {
               </div>
               
               {/* USDC Balance */}
-              <div className="flex items-center justify-between p-3 rounded-lg bg-zinc-800">
+              <div className="flex flex-col p-3 rounded-lg bg-zinc-800">
+                <div className="flex items-center justify-between mb-2">
                   <div className="flex items-center">
                     <div className="mr-3 p-2 rounded-full bg-zinc-700">
-                    <DollarSign size={18} className="text-blue-400" />
+                      <DollarSign size={18} className="text-blue-400" />
                     </div>
                     <div>
-                    <div className="font-medium text-white">USDC Balance</div>
-                    <div className="flex items-center text-xs text-gray-400 mt-0.5">
-                      <Link 
-                        href="/wallet/swap" 
-                        className="text-blue-400 hover:text-blue-300 flex items-center transition-colors"
-                      >
-                        <ArrowLeftRight size={10} className="mr-1" />
-                        Swap to earn 4.2% APY
-                      </Link>
+                      <div className="font-medium text-white">USDC Balance</div>
+                      <div className="flex items-center text-xs text-gray-400 mt-0.5">
+                        <Link 
+                          href="/wallet/swap" 
+                          className="text-blue-400 hover:text-blue-300 flex items-center transition-colors"
+                        >
+                          <ArrowLeftRight size={10} className="mr-1" />
+                          Swap to earn 4.2% APY
+                        </Link>
+                      </div>
                     </div>
                   </div>
+                  <div className="text-lg font-semibold text-white">${usdcBalance}</div>
                 </div>
-                <div className="text-lg font-semibold text-white">${usdcBalance}</div>
+                
+                {/* Add FaucetButton within the USDC balance section */}
+                <FaucetButton 
+                  usdcBalance={parseFloat(usdcBalance)} 
+                  onFaucetComplete={refreshData} 
+                />
               </div>
             </div>
           </div>
@@ -714,6 +803,29 @@ function AccountDashboard() {
                 </Link>
               </div>
             </div>
+
+            {/* Faucet Button for users with low USDC balance */}
+            {parseFloat(usdcBalance) < 1 && (
+              <div className="bg-gradient-to-r from-blue-900/30 to-blue-800/30 border border-blue-700/30 rounded-xl p-6 shadow-md">
+                <div className="flex flex-col md:flex-row items-start md:items-center gap-4">
+                  <div className="p-3 bg-blue-800/50 rounded-full text-blue-300">
+                    <DollarSign size={30} />
+                  </div>
+                  <div className="flex-1">
+                    <h3 className="text-xl font-bold text-blue-100">
+                      Need USDC for Testing?
+                    </h3>
+                    <p className="text-blue-200 mt-1">
+                      Your USDC balance is low. Get free USDC from our faucet for testing the wallet.
+                    </p>
+                  </div>
+                  <FaucetButton 
+                    usdcBalance={parseFloat(usdcBalance)} 
+                    onFaucetComplete={refreshData} 
+                  />
+                </div>
+              </div>
+            )}
 
             <div className="grid md:grid-cols-2 gap-6">
               {/* Quick Actions */}
@@ -1056,6 +1168,28 @@ function AccountDashboard() {
             </div>
           </div>
         )}
+
+        {/* Wallet Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+          {/* SOL Card */}
+          <div className="bg-gradient-to-r from-purple-900/20 to-indigo-900/20 border border-purple-800/30 backdrop-blur-sm rounded-xl p-6 relative overflow-hidden hover:shadow-lg hover:border-purple-700/50 transition-all duration-300">
+            {/* ... existing SOL card content ... */}
+          </div>
+
+          {/* Token Cards */}
+          {tokenBalances.map((token) => (
+            <div 
+              key={token.tokenSymbol}
+              className={`${
+                token.tokenSymbol === "USDs" 
+                  ? "bg-gradient-to-r from-emerald-900/20 to-green-900/20 border-emerald-800/30 hover:border-emerald-700/50" 
+                  : "bg-gradient-to-r from-blue-900/20 to-sky-900/20 border-blue-800/30 hover:border-blue-700/50"
+              } border backdrop-blur-sm rounded-xl p-6 relative overflow-hidden hover:shadow-lg transition-all duration-300`}
+            >
+              {/* ... existing token card content ... */}
+            </div>
+          ))}
+        </div>
       </main>
     </div>
   );
