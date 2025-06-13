@@ -145,4 +145,3 @@ DATABASE_URL="postgresql://username:password@hostname:port/database?sslmode=requ
 ```
 
 When deploying to production, be sure to set the `NEXT_PUBLIC_BASE_URL` to your domain name for proper payment link generation.
-# Updated Mon May 26 12:16:05 IST 2025
