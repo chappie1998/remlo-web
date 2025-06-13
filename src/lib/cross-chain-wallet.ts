@@ -7,8 +7,9 @@ import { sha256 } from '@noble/hashes/sha256';
 import { generateMnemonic, mnemonicToSeedSync } from 'bip39';
 // import * as bip32 from 'bip32';
 import * as ed25519 from 'ed25519-hd-key';
-// For EVM wallet creation, we'll use a simpler approach
+// For EVM wallet creation, use ethers.js for proper address derivation
 import { createHash } from 'crypto';
+import { ethers } from 'ethers';
 
 // Cross-chain derivation paths (BIP44 standard)
 const DERIVATION_PATHS = {
@@ -111,12 +112,11 @@ function deriveSolanaWallet(masterSeed: Uint8Array) {
 }
 
 /**
- * Derive EVM wallet from master seed using simplified derivation
- * For production, consider using proper BIP44 derivation with ethereumjs-wallet
+ * Derive EVM wallet from master seed using proper ethers.js derivation
+ * Generates REAL Ethereum addresses that can be used on EVM chains
  */
 function deriveEVMWallet(masterSeed: Uint8Array) {
   // Create a deterministic private key for EVM from master seed
-  // This is a simplified approach - in production use proper BIP44 derivation
   const hash = createHash('sha256');
   hash.update(masterSeed);
   hash.update('ethereum'); // Chain identifier
@@ -125,24 +125,23 @@ function deriveEVMWallet(masterSeed: Uint8Array) {
   // Convert to hex string (EVM private key format)
   const privateKey = '0x' + privateKeyBuffer.toString('hex');
   
-  // For this simplified version, we'll create a placeholder public key and address
-  // In production, you would derive these properly from the private key
-  const publicKeyHash = createHash('sha256');
-  publicKeyHash.update(privateKeyBuffer);
-  publicKeyHash.update('public');
-  const publicKey = '0x' + publicKeyHash.digest().toString('hex');
-  
-  // Simple address derivation (not real Ethereum address format)
-  // In production, use proper Ethereum address derivation from public key
-  const addressHash = createHash('sha256');
-  addressHash.update(publicKey);
-  const address = '0x' + addressHash.digest().slice(0, 20).toString('hex');
-  
-  return {
-    privateKey,
-    publicKey,
-    address
-  };
+  try {
+    // Use ethers.js to properly derive the wallet from private key
+    const wallet = new ethers.Wallet(privateKey);
+    
+    // Get the public key using SigningKey
+    const signingKey = new ethers.SigningKey(privateKey);
+    
+    return {
+      privateKey: wallet.privateKey,
+      publicKey: signingKey.publicKey,
+      address: wallet.address
+    };
+  } catch (error) {
+    console.error('Failed to derive EVM wallet:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    throw new Error(`Invalid private key for EVM wallet derivation: ${errorMessage}`);
+  }
 }
 
 /**
@@ -251,7 +250,8 @@ export function getChainWallet(crossChainWallet: CrossChainWallet, chain: 'solan
 }
 
 /**
- * Derive wallet for specific EVM chain (simplified approach)
+ * Derive wallet for specific EVM chain using proper ethers.js derivation
+ * Generates REAL Ethereum addresses for different chains
  */
 export function deriveEVMChainWallet(masterSeed: Uint8Array, chain: 'ethereum' | 'polygon' | 'bsc') {
   // Create a deterministic private key for the specific chain
@@ -263,23 +263,24 @@ export function deriveEVMChainWallet(masterSeed: Uint8Array, chain: 'ethereum' |
   // Convert to hex string (EVM private key format)
   const privateKey = '0x' + privateKeyBuffer.toString('hex');
   
-  // Simple public key derivation
-  const publicKeyHash = createHash('sha256');
-  publicKeyHash.update(privateKeyBuffer);
-  publicKeyHash.update('public');
-  const publicKey = '0x' + publicKeyHash.digest().toString('hex');
-  
-  // Simple address derivation
-  const addressHash = createHash('sha256');
-  addressHash.update(publicKey);
-  const address = '0x' + addressHash.digest().slice(0, 20).toString('hex');
-  
-  return {
-    privateKey,
-    publicKey,
-    address,
-    chain
-  };
+  try {
+    // Use ethers.js to properly derive the wallet from private key
+    const wallet = new ethers.Wallet(privateKey);
+    
+    // Get the public key using SigningKey
+    const signingKey = new ethers.SigningKey(privateKey);
+    
+    return {
+      privateKey: wallet.privateKey,
+      publicKey: signingKey.publicKey,
+      address: wallet.address,
+      chain
+    };
+  } catch (error) {
+    console.error(`Failed to derive EVM wallet for chain ${chain}:`, error);
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    throw new Error(`Invalid private key for ${chain} wallet derivation: ${errorMessage}`);
+  }
 }
 
 /**
